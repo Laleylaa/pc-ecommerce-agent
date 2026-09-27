@@ -1,0 +1,109 @@
+# 本地配置与凭据；仅提交已脱敏的环境模板
+.env
+.env.*
+!/.env.example
+!/frontend/.env.example
+.envrc
+/secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Python：虚拟环境、缓存与打包产物
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.tox/
+.nox/
+
+# 前端：依赖、构建缓存与 TypeScript 生成文件
+node_modules/
+.vite/
+*.tsbuildinfo
+/frontend/vite.config.js
+/frontend/vite.config.d.ts
+
+# 通用构建与下载缓存（含下载的商品数据集）
+build/
+dist/
+.cache/
+
+# 测试覆盖率、浏览器测试报告与运行日志
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+coverage.xml
+junit.xml
+playwright-report/
+test-results/
+logs/
+*.log
+*.log.*
+
+# 本地业务数据、评测输出与容器数据目录
+/data/
+/evals/results/
+/backend/evals/results/
+chroma/
+postgres-data/
+redis-data/
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# backend/data 仅提交运行必需的知识文档与向量索引。
+# 新增正式运行数据时，审查内容后在这里逐项放行。
+/backend/data/*
+!/backend/data/knowledge_documents.json
+!/backend/data/knowledge_vector_index.json
+
+# 数据库备份与本地导出；普通 .sql 源码不一概忽略
+backups/
+local-backups/
+/pc-ecommerce-agent-local-backups/
+*.dump
+*.dump.*
+*.sql.gz
+*.sql.bz2
+*.sql.xz
+*.sql.zst
+*.rdb
+*.aof
+
+# 个人笔记、临时整理材料与本地工具约定
+# docs/ 暂仅保留在本地，稳定后移除此规则再提交；README.md 与 AGENTS.md 仍可提交。
+/docs/
+/private/
+/tmp/
+/temp/
+AGENTS.local.md
+CLAUDE.local.md
+
+# 编辑器与操作系统杂项
+.idea/
+.vscode/
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# 保留版本控制：uv.lock、package-lock.json、.python-version、.nvmrc、
+# Alembic migrations 与 backend/evals 中的测试用例。
+# .gitignore 不会移除已被 Git 跟踪的文件，也不会检查文件内容中的秘密。
