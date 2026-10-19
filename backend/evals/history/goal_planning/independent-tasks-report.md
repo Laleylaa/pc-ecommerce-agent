@@ -16,4 +16,4 @@
 
 审查结论：输出由GoalPlan/ExecutionPlan标准化；LLM2可见schema从正式工具模型派生，实际参数再按public_input_model校验；共用generate_plan回填原始失败输出及错误、最多重试一次。完整模型输入payload尚为dict组装，已记录PI-01；语义依赖合理性、条件保真、目标内诉求完整性不能由Pydantic独自保证。
 
-证据：[逐例原始输出](tool-flow-independent-tasks-2026-10-01.json)、[实现指纹](independent-tasks-manifest.json)、[共享问题清单](../../../docs/development/issues.md)。Ruff与文档/差异检查通过；未提交。
+证据：[逐例原始输出](tool-flow-independent-tasks-2026-10-01.json)、[实现指纹](independent-tasks-manifest.json)、[共享问题清单](../issues-before-agent-loop.md)。Ruff与文档/差异检查通过；未提交。

@@ -1,6 +1,6 @@
 # 共享issues核验记录（2026-10-06，E51）
 
-适用 `feat/orchestrator-catalog-integration`，HEAD `931ba13299e3491aa4e192bd8a0a2a44f2229cbd` 加当前工作区。本报告记录一次核验的证据和删除理由，不另建待办；当前事项仅在[共享issues](../../../docs/development/issues.md)。
+适用 `feat/orchestrator-catalog-integration`，HEAD `931ba13299e3491aa4e192bd8a0a2a44f2229cbd` 加当前工作区。本报告记录一次核验的证据和删除理由，不另建待办；当前事项仅在[共享issues](../issues-before-agent-loop.md)。
 
 仅整理文档，未修改业务、Prompt、guard、trace实现或测试。保留此前全部工作区差异及前端独立会话修复；索引开始为空。本次无add/commit/push，无新测试用例、真实模型/搜索调用、配置数据库或浏览器测试，无完整后端测试/make check。
 
@@ -8,37 +8,37 @@
 
 先读fixture及安全插件：`db_session_factory`会接触配置数据库，不能作只读准备；本次所选用例无该fixture。所有命令启用`-p scripts.orchestration_audit_safety`，阻断socket连接和AsyncEngine.connect；tool_planning_repairs的SQL使用显式内存SQLite及人工记录。测试使用脚本模型、mock HTTP和假持久化，不证明真实模型质量或真实事务结局。
 
-合计905 passed、29 failed、254 deselected，无skip/xfail。254仅来自名称专项的`-k`筛选，不是数据fixture排除。各批无重复文件；原始输出/JUnit在本地忽略目录[issues-review-20261006](../results/issues-review-20261006/)，未强制暂存。
+合计905 passed、29 failed、254 deselected，无skip/xfail。254仅来自名称专项的`-k`筛选，不是数据fixture排除。各批无重复文件；原始输出/JUnit在本地忽略目录[issues-review-20261006](../../results/issues-review-20261006)，未强制暂存。
 
 | 文件 | 通过 | 失败 |
 | --- | ---: | ---: |
-| [test_tool_planning_repairs.py](../../tests/test_tool_planning_repairs.py) | 41 | 0 |
-| [test_catalog_query_policies.py](../../tests/test_catalog_query_policies.py) | 29 | 0 |
-| [test_catalog_identity_intersection.py](../../tests/test_catalog_identity_intersection.py) | 33 | 0 |
-| [test_policy_retrieval_runtime.py](../../tests/test_policy_retrieval_runtime.py) | 8 | 0 |
-| [test_tool_retry_policy.py](../../tests/test_tool_retry_policy.py) | 22 | 0 |
-| [test_planning_handoff.py](../../tests/test_planning_handoff.py) | 105 | 0 |
-| [test_planning_contract_alignment.py](../../tests/test_planning_contract_alignment.py) | 68 | 0 |
-| [test_goal_task_integration.py](../../tests/test_goal_task_integration.py) | 43 | 0 |
-| [test_goal_planning_validation.py](../../tests/test_goal_planning_validation.py) | 67 | 0 |
-| [test_answer_handoff.py](../../tests/test_answer_handoff.py) | 38 | 0 |
-| [test_answer_finalization.py](../../tests/test_answer_finalization.py) | 55 | 0 |
-| [test_answer_context.py](../../tests/test_answer_context.py) | 21 | 0 |
-| [test_orchestrator_outcomes.py](../../tests/test_orchestrator_outcomes.py) | 35 | 0 |
-| [test_orchestrator_runtime_audit.py](../../tests/test_orchestrator_runtime_audit.py) | 12 | 0 |
-| [test_chat_input_rules.py](../../tests/test_chat_input_rules.py) | 89 | 0 |
-| [test_web_search.py](../../tests/test_web_search.py) | 24 | 0 |
-| [test_llm_feedback.py](../../tests/test_llm_feedback.py) | 37 | 0 |
-| [test_input_tool_contract_chain.py](../../tests/test_input_tool_contract_chain.py) | 44 | 0 |
-| [test_agent_tracing.py](../../tests/test_agent_tracing.py) | 28 | 0 |
-| [test_goal_recovery.py](../../tests/test_goal_recovery.py) | 21 | 0 |
-| [test_catalog_search_tool.py](../../tests/test_catalog_search_tool.py) | 26 | 0 |
-| [test_request_router.py](../../tests/test_request_router.py) | 40 | 5 |
-| [test_orchestrator_task_dag.py](../../tests/test_orchestrator_task_dag.py) | 6 | 1 |
-| [test_orchestrator_wave_loop_cases.py](../../tests/test_orchestrator_wave_loop_cases.py) | 13 | 6 |
-| [test_orchestrator_tool_observation_eval.py](../../tests/test_orchestrator_tool_observation_eval.py) | 0 | 17 |
+| [test_tool_planning_repairs.py](../../../tests/test_tool_planning_repairs.py) | 41 | 0 |
+| [test_catalog_query_policies.py](../../../tests/test_catalog_query_policies.py) | 29 | 0 |
+| [test_catalog_identity_intersection.py](../../../tests/test_catalog_identity_intersection.py) | 33 | 0 |
+| [test_policy_retrieval_runtime.py](../../../tests/test_policy_retrieval_runtime.py) | 8 | 0 |
+| [test_tool_retry_policy.py](../../../tests/test_tool_retry_policy.py) | 22 | 0 |
+| [test_planning_handoff.py](../../../tests/test_planning_handoff.py) | 105 | 0 |
+| [test_planning_contract_alignment.py](../../../tests/test_planning_contract_alignment.py) | 68 | 0 |
+| [test_goal_task_integration.py](../../../tests/test_goal_task_integration.py) | 43 | 0 |
+| [test_goal_planning_validation.py](../../../tests/test_goal_planning_validation.py) | 67 | 0 |
+| [test_answer_handoff.py](../../../tests/test_answer_handoff.py) | 38 | 0 |
+| [test_answer_finalization.py](../../../tests/test_answer_finalization.py) | 55 | 0 |
+| [test_answer_context.py](../../../tests/test_answer_context.py) | 21 | 0 |
+| [test_orchestrator_outcomes.py](../../../tests/test_orchestrator_outcomes.py) | 35 | 0 |
+| [test_orchestrator_runtime_audit.py](../../../tests/test_orchestrator_runtime_audit.py) | 12 | 0 |
+| [test_chat_input_rules.py](../../../tests/test_chat_input_rules.py) | 89 | 0 |
+| [test_web_search.py](../../../tests/test_web_search.py) | 24 | 0 |
+| [test_llm_feedback.py](../../../tests/test_llm_feedback.py) | 37 | 0 |
+| [test_input_tool_contract_chain.py](../../../tests/test_input_tool_contract_chain.py) | 44 | 0 |
+| [test_agent_tracing.py](../../../tests/test_agent_tracing.py) | 28 | 0 |
+| [test_goal_recovery.py](../../../tests/test_goal_recovery.py) | 21 | 0 |
+| [test_catalog_search_tool.py](../../../tests/test_catalog_search_tool.py) | 26 | 0 |
+| [test_request_router.py](../../../tests/test_request_router.py) | 40 | 5 |
+| [test_orchestrator_task_dag.py](../../../tests/test_orchestrator_task_dag.py) | 6 | 1 |
+| [test_orchestrator_wave_loop_cases.py](../../../tests/test_orchestrator_wave_loop_cases.py) | 13 | 6 |
+| [test_orchestrator_tool_observation_eval.py](../../../tests/test_orchestrator_tool_observation_eval.py) | 0 | 17 |
 
-29失败名称及断言保留在[legacy-tests.txt](../results/issues-review-20261006/legacy-tests.txt)，数量与E49一致；旧入口、route_plan/catalog_context、工具输出及重试fixture未迁移。未修测试求绿，不将其等同29个生产故障。OrderRows无filters签名也仍存在。
+29失败名称及断言保留在[legacy-tests.txt](../../results/issues-review-20261006/legacy-tests.txt)，数量与E49一致；旧入口、route_plan/catalog_context、工具输出及重试fixture未迁移。未修测试求绿，不将其等同29个生产故障。OrderRows无filters签名也仍存在。
 
 命令均从backend执行，公共前缀为`.venv/bin/python -m pytest -p scripts.orchestration_audit_safety`，公共后缀为`-q --tb=short --junitxml=/tmp/pc-issues-<批次>.xml`，输出重定向至`/tmp/pc-issues-<批次>-tests.txt`，再复制到上述忽略目录：
 

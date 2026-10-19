@@ -53,6 +53,6 @@ LLM1目标增加scope，允许将可信context_refs中的SKU/SPU补入query并�
 - [主复测实现指纹](tool-flow-flat-scope-manifest.json)
 - [最终Prompt单例复核](tool-flow-flat-scope-final-wording.json)
 - [上轮24例原始结果](tool-flow-2026-10-01.json)
-- [跨模块问题](../../../docs/development/issues.md)
+- [跨模块问题](../issues-before-agent-loop.md)
 
 所有原始成绩保留，Ruff与差异检查另行执行；本轮没有完整后端测试或make check。唯一xfail仍为纯空白输入，未在本轮修复。

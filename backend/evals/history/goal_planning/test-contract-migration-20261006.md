@@ -1,6 +1,6 @@
 # TP-02与旧编排测试迁移（2026-10-06，E52）
 
-适用`feat/orchestrator-catalog-integration`，HEAD `931ba13299e3491aa4e192bd8a0a2a44f2229cbd`加当前工作区。仅处理TP-02核对和OR-06的四个旧测试文件；无业务实现/Prompt/模型配置变更，无新测试场景，无真实模型、搜索、配置数据库或浏览器调用。台账唯一入口仍为[issues](../../../docs/development/issues.md)。
+适用`feat/orchestrator-catalog-integration`，HEAD `931ba13299e3491aa4e192bd8a0a2a44f2229cbd`加当前工作区。仅处理TP-02核对和OR-06的四个旧测试文件；无业务实现/Prompt/模型配置变更，无新测试场景，无真实模型、搜索、配置数据库或浏览器调用。台账唯一入口仍为[issues](../issues-before-agent-loop.md)。
 
 ## 结果
 
@@ -11,9 +11,9 @@
 
 ## TP-02核对依据
 
-1. [goal_planning.validate_execution](../../app/agent/goal_planning.py)限定product类型task_output只能来自catalog_search，不能把任意工具对象当商品依赖。
-2. [正式工具包装器](../../app/tools/contracts.py)使用CatalogSearchResult验证输出后才交付。SearchProduct继承[ProductCard](../../app/schemas/catalog.py)的必需spu_id；[SearchProduct](../../app/schemas/catalog_search.py)要求candidate_sku_ids非空、正值、唯一，SKU身份一致，SPU候选与variants完全对应。缺字段、空候选不是可用正式结果。父型号ID来自正式repository，不能以人为构造缺关系字典代表真实查询结果。
-3. [artifact提取](../../app/agent/artifacts.py)对v3保留整个输出，只补query及移除分页控制；不会裁掉产品身份关系。bound_inputs直接读取对应关系。
+1. [goal_planning.validate_execution](../../../app/agent/goal_planning.py)限定product类型task_output只能来自catalog_search，不能把任意工具对象当商品依赖。
+2. [正式工具包装器](../../../app/tools/contracts.py)使用CatalogSearchResult验证输出后才交付。SearchProduct继承[ProductCard](../../../app/schemas/catalog.py)的必需spu_id；[SearchProduct](../../../app/schemas/catalog_search.py)要求candidate_sku_ids非空、正值、唯一，SKU身份一致，SPU候选与variants完全对应。缺字段、空候选不是可用正式结果。父型号ID来自正式repository，不能以人为构造缺关系字典代表真实查询结果。
+3. [artifact提取](../../../app/agent/artifacts.py)对v3保留整个输出，只补query及移除分页控制；不会裁掉产品身份关系。bound_inputs直接读取对应关系。
 4. 无匹配/对象不存在或非exact依赖由既有任务状态/准入处理，不能伪装为成功但缺身份的对象。已有context缺关系、位置越界、SKU/SPU混合、依赖绑定及正式schema错误测试保留。
 5. 本次重跑planning_handoff、goal_task_integration、goal_planning_validation及20项搜索schema/包装器回归。关闭限定当前正式生产者与契约；不是宣称任意自定义executor返回都安全，也不要求为不可达字典状态建立新测试。
 
@@ -21,10 +21,10 @@
 
 | 文件 | 当前数量 | 迁移内容及保留的独立断言 |
 | --- | ---: | --- |
-| [test_request_router.py](../../tests/test_request_router.py) | 45 | 5项回答/SSE场景改为GoalPlan及source_text、统一summarize_goals/finish_answer；保留原回答内容、历史材料、无业务调用、SSE delta/done、持久化结果及调用次数。纯文本场景按现行契约一次格式修复后接受结构化回答，不允许最终guard重试。本店材料改由policy_search，避免用已改为Web的knowledge_search假装本店知识库 |
-| [test_orchestrator_task_dag.py](../../tests/test_orchestrator_task_dag.py) | 7 | 单SPU多版本场景经LLM1/LLM2正式入口提交可信scope；工具运行时仅接user_id，不再断言旧catalog_context。保留一个型号多个版本的范围及多型号需澄清场景；歧义决定由脚本LLM1提交，程序保留且不猜对象，不宣称测到了真实模型消歧能力 |
-| [test_orchestrator_wave_loop_cases.py](../../tests/test_orchestrator_wave_loop_cases.py) | 17 | 回答状态使用有效task关联和schema校验的v3事实；保留预算停止、被替代来源不可引用、回答失败保留商品、额外品牌拒绝及后续失败保留先前结果。未涉及的兼容策略单测保持原范围，不据此声称旧循环仍为正式入口 |
-| [test_orchestrator_tool_observation_eval.py](../../tests/test_orchestrator_tool_observation_eval.py) | 15 | 复用planning_harness交付计划，按正式顺序执行→归一化→artifact→ledger；保留参数/认证身份、业务状态、有效来源和可用结果断言。超时验证同波两次相同调用、旧尝试superseded且额度耗尽；普通invalid_input不当成超时重试 |
+| [test_request_router.py](../../../tests/test_request_router.py) | 45 | 5项回答/SSE场景改为GoalPlan及source_text、统一summarize_goals/finish_answer；保留原回答内容、历史材料、无业务调用、SSE delta/done、持久化结果及调用次数。纯文本场景按现行契约一次格式修复后接受结构化回答，不允许最终guard重试。本店材料改由policy_search，避免用已改为Web的knowledge_search假装本店知识库 |
+| [test_orchestrator_task_dag.py](../../../tests/test_orchestrator_task_dag.py) | 7 | 单SPU多版本场景经LLM1/LLM2正式入口提交可信scope；工具运行时仅接user_id，不再断言旧catalog_context。保留一个型号多个版本的范围及多型号需澄清场景；歧义决定由脚本LLM1提交，程序保留且不猜对象，不宣称测到了真实模型消歧能力 |
+| [test_orchestrator_wave_loop_cases.py](../../../tests/test_orchestrator_wave_loop_cases.py) | 17 | 回答状态使用有效task关联和schema校验的v3事实；保留预算停止、被替代来源不可引用、回答失败保留商品、额外品牌拒绝及后续失败保留先前结果。未涉及的兼容策略单测保持原范围，不据此声称旧循环仍为正式入口 |
+| [test_orchestrator_tool_observation_eval.py](../../../tests/test_orchestrator_tool_observation_eval.py) | 15 | 复用planning_harness交付计划，按正式顺序执行→归一化→artifact→ledger；保留参数/认证身份、业务状态、有效来源和可用结果断言。超时验证同波两次相同调用、旧尝试superseded且额度耗尽；普通invalid_input不当成超时重试 |
 
 终态断言调整有当前契约依据：确定性兜底可保留事实但无法完成综合说明，因此标partial；查询已执行且无匹配是可回答结果；Web检索为空只证明无证据，保持insufficient/no_retrieval_evidence。并未把失败改为成功，或用trace存在替代行为断言。
 
@@ -51,6 +51,6 @@
 .venv/bin/ruff check tests/test_request_router.py tests/test_orchestrator_task_dag.py tests/test_orchestrator_wave_loop_cases.py tests/test_orchestrator_tool_observation_eval.py
 ```
 
-结果为522 passed＋20 passed/260 deselected（未选的搜索场景），合计542 passed，无失败/skip/xfail；Ruff及git diff --check通过。最后仅缩短一个测试函数名称满足100列规范，未改逻辑；JUnit中保留运行时旧名称。原始输出/JUnit在[本地忽略产物](../results/test-contract-migration-20261006/)，不强制加入Git。未跑完整后端测试或make check。
+结果为522 passed＋20 passed/260 deselected（未选的搜索场景），合计542 passed，无失败/skip/xfail；Ruff及git diff --check通过。最后仅缩短一个测试函数名称满足100列规范，未改逻辑；JUnit中保留运行时旧名称。原始输出/JUnit在[本地忽略产物](../../results/test-contract-migration-20261006)，不强制加入Git。未跑完整后端测试或make check。
 
 本次新增工作区差异仅四个测试文件、此报告、evals入口、issues和本地development入口。索引保持开始时空状态，已有业务/guard/trace及frontend修改保留；未add、commit、push。

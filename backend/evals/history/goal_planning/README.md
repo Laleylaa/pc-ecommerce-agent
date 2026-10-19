@@ -2,7 +2,7 @@
 
 当前入口：
 
-- [Agent trace 与统一产物](../README.md)：新运行默认集中到 `evals/results/agent_traces/`；历史报告保留原位。
+- [Agent trace 与统一产物](../../README.md)：新运行默认集中到 `evals/results/agent_traces/`；历史报告保留原位。
 
 - [最新：工具调用与结果边界独立审查](tool-flow-boundary-audit-report.md)：E23修复目录 JSON 反馈、失败回退、能力拒绝覆盖和错误输出类型；隔离869通过/33写库fixture排除，统一目录保留前后trace与关联ID。无真实模型/正常LLM3验收。
 
@@ -72,11 +72,11 @@
 
 ## 证据与复跑
 
-- [人工输入与预期](cases.json)
+- [人工输入与预期](../../goal_planning/cases.json)
 - [正式原始输出和初始评分](live-2026-10-01.json)
 - [人工复核后的评分（保留原评分）](reviewed-2026-10-01.json)
 - [实现指纹](implementation-metadata.json)
-- [独立评测入口](../../scripts/eval_goal_planning.py)
+- [独立评测入口](../../../scripts/eval_goal_planning.py)
 
 从 backend 执行：
 ```sh

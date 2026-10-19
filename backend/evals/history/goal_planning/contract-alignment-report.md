@@ -8,11 +8,11 @@
 
 ## 覆盖与证据
 
-- [规划契约回归](../../tests/test_planning_contract_alignment.py)：新 GoalPlan 到内部结构转换；订单原文/历史引用来源、伪造身份拒绝；SQLite 内存表执行正式订单 repository 的用户归属谓词。
-- [执行策略回归](../../tests/test_planning_execution_policy.py)：历史复用由 LLM1 决定；无历史依据时反馈修复；两阶段实际输入不包含旧控制字段；六工具显式/默认数量经过规划、Runtime、正式绑定保持一致；严格类型/范围检查；内部错误和依赖故障不重试。
-- [工具链回归](../../tests/test_goal_task_integration.py)：脚本模型＋真实商品工具＋内存商品；默认/指定候选数返回；已移除的商品分页参数不能执行。内部 offset 实现仍可直接测试，不对 LLM 暴露。
-- [既有规划验证](../../tests/test_goal_planning_validation.py)、[评测 fixture 验证](../../tests/test_goal_tool_flow_fixtures.py)：非法 JSON、覆盖/依赖/范围校验、Prompt 示例及测试数据隔离。
-- [工具测试](../../tests/test_tools.py)选中公开 schema、身份注入、订单快路径、数量窗口及知识返回上限用例；[路由测试](../../tests/test_request_router.py)选中职责与权限 guard 用例。
+- [规划契约回归](../../../tests/test_planning_contract_alignment.py)：新 GoalPlan 到内部结构转换；订单原文/历史引用来源、伪造身份拒绝；SQLite 内存表执行正式订单 repository 的用户归属谓词。
+- [执行策略回归](../../../tests/test_planning_execution_policy.py)：历史复用由 LLM1 决定；无历史依据时反馈修复；两阶段实际输入不包含旧控制字段；六工具显式/默认数量经过规划、Runtime、正式绑定保持一致；严格类型/范围检查；内部错误和依赖故障不重试。
+- [工具链回归](../../../tests/test_goal_task_integration.py)：脚本模型＋真实商品工具＋内存商品；默认/指定候选数返回；已移除的商品分页参数不能执行。内部 offset 实现仍可直接测试，不对 LLM 暴露。
+- [既有规划验证](../../../tests/test_goal_planning_validation.py)、[评测 fixture 验证](../../../tests/test_goal_tool_flow_fixtures.py)：非法 JSON、覆盖/依赖/范围校验、Prompt 示例及测试数据隔离。
+- [工具测试](../../../tests/test_tools.py)选中公开 schema、身份注入、订单快路径、数量窗口及知识返回上限用例；[路由测试](../../../tests/test_request_router.py)选中职责与权限 guard 用例。
 
 六工具的绑定测试使用回执 handler 检查真实入参；另有真实商品、订单和知识工具执行测试，数据/模型 I/O 由内存对象替换。不能据此声称六工具真实业务链全部验收。
 

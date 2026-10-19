@@ -2,7 +2,7 @@
 
 审查对象：`feat/orchestrator-catalog-integration`、HEAD `744cc0f` 加审查开始时已有的未提交修改。没有修改生产实现、Prompt、锁文件或数据库，没有提交、推送、回退。新增隔离复现测试及本报告，现行开发入口仍为原编排 iteration。
 
-证据：[原始测试结果和最终源码指纹](orchestration-audit-results.json)、[复现测试](../../tests/test_orchestrator_runtime_audit.py)、[隔离运行保护](../../scripts/orchestration_audit_safety.py)。测试是**现状刻画**：断言已观察到的问题；通过不表示问题已修复，修复时要将断言改为期望行为。源码指纹对应最终审查工作区，未读取或收录凭据。
+证据：[原始测试结果和最终源码指纹](orchestration-audit-results.json)、[复现测试](../../../tests/test_orchestrator_runtime_audit.py)、[隔离运行保护](../../../scripts/orchestration_audit_safety.py)。测试是**现状刻画**：断言已观察到的问题；通过不表示问题已修复，修复时要将断言改为期望行为。源码指纹对应最终审查工作区，未读取或收录凭据。
 
 ## 实际执行链路
 

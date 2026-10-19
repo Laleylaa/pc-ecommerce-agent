@@ -38,6 +38,12 @@
 安全插件继续阻断 socket 与 AsyncEngine.connect，作为额外保护，不能替代 fixture 审查。
 当前已选模块冒烟使用替身，无真实模型；评测脚本仍可能访问模型或数据库，应单独审查。
 
+## 2026-10-19文件清理
+
+论文消融runner及其3项协议测试移入`backend/evals/history/retired/`，不再参与默认收集。其余业务测试和support保持原位；退役范围与承接见[清理记录](../evals/history/README.md)。下方1825项为清理前基线，不混用成绩。
+
+清理后完整隔离回归：**1822通过，0失败，0跳过，0排除**（23.75秒），数量减少仅来自退役的3项论文协议测试。运行`.venv/bin/python -m pytest -p scripts.orchestration_audit_safety tests -q`；全后端Ruff、当前入口链接与退役模块引用检查、diff检查通过。未运行真实模型、数据库或浏览器验收；前端源码未改，本轮不重复构建。
+
 ## 本次提交的验证边界
 
 2026-10-19收尾提交补齐执行详情实现、前端接入及SSE退役后的普通聊天评测入口，
@@ -56,12 +62,12 @@
 普通聊天、权限和订单归属的替身测试、业务规则及查询构造检查继续保留。
 
 最终隔离回归：**1764通过，0失败，0跳过，0排除**。生产代码和数据库未修改，未提交。
-详见[数据库测试删除记录](../evals/test_maintenance/db-test-removal-20261018.json)。
+详见[数据库测试删除记录](../evals/history/test_maintenance/db-test-removal-20261018.json)。
 这表示保留的隔离集合通过，不验证真实数据库读写、事务、SQL执行或跨用户持久化隔离。
 完整应用E2E冒烟仍未建立，后续按功能变化补充必要测试。
 
 历史记录：
-[SSE退役](../evals/test_maintenance/sse-retirement-20261018.json)、
-[目录迁移与首轮删除](../evals/test_maintenance/cleanup-20261018.json)、
-[第二轮删除](../evals/test_maintenance/pruning-20261018.json)、
-[第三轮清理](../evals/test_maintenance/final-pruning-20261018.json)。
+[SSE退役](../evals/history/test_maintenance/sse-retirement-20261018.json)、
+[目录迁移与首轮删除](../evals/history/test_maintenance/cleanup-20261018.json)、
+[第二轮删除](../evals/history/test_maintenance/pruning-20261018.json)、
+[第三轮清理](../evals/history/test_maintenance/final-pruning-20261018.json)。

@@ -38,12 +38,12 @@ HEAD `f90c5f6` 加工作区。开始时 trace 已提交、暂存区为空；既�
 
 统一根目录 `backend/evals/results/agent_traces/`，全部人工数据、本地记录，无云上传。
 
-- 修复前：[索引](../results/agent_traces/audit-before-confirmed-20261003/report.md)、
-  [results](../results/agent_traces/audit-before-confirmed-20261003/results.json)、
-  [manifest](../results/agent_traces/audit-before-confirmed-20261003/manifest.json)。
-- 最终修复后：[索引](../results/agent_traces/audit-verified-20261003/report.md)、
-  [results](../results/agent_traces/audit-verified-20261003/results.json)、
-  [manifest](../results/agent_traces/audit-verified-20261003/manifest.json)。
+- 修复前：[索引](../../results/agent_traces/audit-before-confirmed-20261003/report.md)、
+  [results](../../results/agent_traces/audit-before-confirmed-20261003/results.json)、
+  [manifest](../../results/agent_traces/audit-before-confirmed-20261003/manifest.json)。
+- 最终修复后：[索引](../../results/agent_traces/audit-verified-20261003/report.md)、
+  [results](../../results/agent_traces/audit-verified-20261003/results.json)、
+  [manifest](../../results/agent_traces/audit-verified-20261003/manifest.json)。
 
 以下三例共用 `goal_id=goal_1`、`task_id=task_1`、`tool_call_id=planned_task_1`、`wave=1`。
 `trace_id` 为根 run，events.run_id 对应 execute_tool_wave 的原生子 run；完整 parent_run_id 见 results。

@@ -97,7 +97,7 @@ LLM2 选择 catalog_facets 正确。内部模型生成 `spec_key=layout`，实�
 - [正式 24 例原始输入、模型输出、工具结果与回答上下文](tool-flow-2026-10-01.json)
 - [独立 2 例预检](tool-flow-smoke.json)
 - [运行时实现指纹和人工数据快照](tool-flow-manifest.json)
-- [评测入口](../../scripts/eval_goal_tool_flow.py)、[人工数据边界](../../scripts/goal_tool_fixtures.py)
+- [评测入口](../../../scripts/eval_goal_tool_flow.py)、[人工数据边界](../../../scripts/goal_tool_fixtures.py)
 
 从 backend 运行 `.venv/bin/python -m scripts.eval_goal_tool_flow --live --output evals/goal_planning/<new-run>.json`；它会调用真实模型但不连接数据库。请使用新文件保存复测，避免覆盖本轮证据。程序退出成功只表示评测完成；逐例失败仍需检查 planning_failures、information_issues 和人工审阅。
 

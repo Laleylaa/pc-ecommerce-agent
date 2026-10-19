@@ -11,7 +11,7 @@
 - fallback按目标保留同样准入的事实并引用来源，最终任务仍未完成；guard只检查，拒绝交确定性收尾，无重试或恢复回跳。
 - Prompt明确已确认产品口径，并保留候选范围/替代条件/缺资料的事实边界。完整目标本来已有独立成功结果的场景保持原行为。
 
-实现：[answer_context](../../app/agent/answer_context.py)、[输出校验](../../app/agent/outcomes.py)、[guard调用](../../app/agent/graph.py)、[fallback](../../app/agent/responses.py)、[LLM3契约](../../app/agent/prompts/observation.py)。未改工具、模型/推理配置、权限或前端。
+实现：[answer_context](../../../app/agent/answer_context.py)、[输出校验](../../../app/agent/outcomes.py)、[guard调用](../../../app/agent/graph.py)、[fallback](../../../app/agent/responses.py)、[LLM3契约](../../../app/agent/prompts/observation.py)。未改工具、模型/推理配置、权限或前端。
 
 ## 本次验证
 
@@ -29,7 +29,7 @@
 .venv/bin/ruff check app/agent/answer_context.py app/agent/responses.py app/agent/outcomes.py app/agent/graph.py app/agent/prompts/observation.py tests/test_goal_task_integration.py tests/test_goal_recovery.py tests/test_answer_handoff.py
 ```
 
-257 passed，无失败/排除/skip/xfail；Ruff、文档链接和git diff --check通过。fixture已检查，启用安全插件阻断外部连接及配置数据库；未新建测试会话、调用真实模型/搜索、操作数据库。原始pytest输出和JUnit在本地忽略目录[partial-answer-20261007](../results/partial-answer-20261007/)，未覆盖历史trace或强制暂存。
+257 passed，无失败/排除/skip/xfail；Ruff、文档链接和git diff --check通过。fixture已检查，启用安全插件阻断外部连接及配置数据库；未新建测试会话、调用真实模型/搜索、操作数据库。原始pytest输出和JUnit在本地忽略目录[partial-answer-20261007](../../results/partial-answer-20261007)，未覆盖历史trace或强制暂存。
 
 ## 后续话术与展示考虑（仅分析，尚未实施）
 

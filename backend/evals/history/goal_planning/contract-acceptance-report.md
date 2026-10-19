@@ -14,7 +14,7 @@
 | 当前用户显式订单号 | `explicit_order`：订单号7001进入 order_lookup.order_id，正式工具返回人工订单与物流，ChatResponse 含对应订单卡片；`short_order`：短编号123也通过规划校验 |
 | 历史订单 | `historical_order`：LLM1 引用可信订单对象，LLM2 使用 context binding，未直填历史 order_id |
 | 目录与对象事实 | `layout_choices` 选 catalog_facets；`object_layout` 选 catalog_search，SKU201的 query/scope 一致 |
-| 正式 schema 与身份边界 | 重跑[契约对齐测试](../../tests/test_planning_contract_alignment.py)及[执行策略测试](../../tests/test_planning_execution_policy.py)：参数类型/来源、身份覆盖拒绝、绑定、正式 repository 归属谓词均在隔离环境通过 |
+| 正式 schema 与身份边界 | 重跑[契约对齐测试](../../../tests/test_planning_contract_alignment.py)及[执行策略测试](../../../tests/test_planning_execution_policy.py)：参数类型/来源、身份覆盖拒绝、绑定、正式 repository 归属谓词均在隔离环境通过 |
 
 以上覆盖本项的公开说明、订单输入路径、校验与自然表达回归。未在编排复制目录规格字典。目录工具内部布局解析仍属于 CF-01；本轮目录两例只验收规划选择，不宣称目录查询整体修复。身份隔离证据使用 SQLite 内存表，未宣称真实 PostgreSQL/API 权限验收。
 
@@ -29,7 +29,7 @@
 - 输入：`挑两款白色的蓝牙键盘给我看看`（`products_two`）。
 - LLM1/2 正确，limit=2，返回两张商品卡片。
 - 实际最终回答包含：`符合条件的一共有 4 款，本次先展示这 2 款，如果你还想看更多，我可以继续往下翻。`
-- 定位：[answer_context.py](../../app/agent/answer_context.py) 的 `_response_contract` 对 catalog_search v3 仍要求 `按next_offset说明分页`，并向回答模型提供 next_offset。无工具目标的 graph._summarize_goals 已有禁止分页说明，但有工具结果的回答链仍收到上述旧指令。
+- 定位：[answer_context.py](../../../app/agent/answer_context.py) 的 `_response_contract` 对 catalog_search v3 仍要求 `按next_offset说明分页`，并向回答模型提供 next_offset。无工具目标的 graph._summarize_goals 已有禁止分页说明，但有工具结果的回答链仍收到上述旧指令。
 - 下一步：对齐商品结果回答契约，区分内部结果窗口统计与用户可用能力；保留返回数量/候选池解释，不承诺跳页或自动排除旧商品。不能误删订单自己的续查能力。
 
 ### 2. “找一条知识资料”被直接回答（自然表达边界待修复）
@@ -46,7 +46,7 @@
 
 - [首批17例原始计划、回答及源码 SHA-256](contract-acceptance-results.json)
 - [补充2例原始计划、回答及源码 SHA-256](contract-acceptance-supplement.json)
-- [验收脚本与固定用例](../../scripts/eval_contract_acceptance.py)
+- [验收脚本与固定用例](../retired/backend/scripts/eval_contract_acceptance.py.txt)
 - [隔离回归的范围与安全复现命令](contract-alignment-report.md)
 
 首批结果保留原始自动评分，人工发现的分页违规没有覆盖原始 JSON。脚本仅检查结构、参数和部分响应形状，最终回答必须人工审核。补充用例独立保存，没有覆盖或重采样掩盖首批失败；补充前仅增加两个用例和格式化脚本，业务源码未变。各结果保存实际运行时源码指纹。
