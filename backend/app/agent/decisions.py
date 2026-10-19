@@ -3,7 +3,11 @@ from typing import Any, Literal
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agent.answer_contract import AnswerText
+from app.agent.recovery import RecoveryInput
+
 DecisionType = Literal[
+    "recovery",
     "clarification",
     "grounded_response",
     "partial_response",
@@ -39,12 +43,15 @@ class OrchestratorDecision(BaseModel):
     unavailable_parts: list[str] = Field(default_factory=list)
     offer_handoff_confirmation: bool = False
     observation_coverage_failure: bool = False
+    covered_goal_ids: list[str] = Field(default_factory=list)
+    recovery_requests: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class _ControlInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    response: str = Field(min_length=1, max_length=6000)
+    response: AnswerText
+    covered_goal_ids: list[str] = Field(default_factory=list, max_length=8)
 
 
 class AskClarificationInput(_ControlInput):
@@ -85,6 +92,7 @@ class FinishUnavailableInput(_ControlInput):
 
 
 _CONTROL_MODELS: dict[str, type[BaseModel]] = {
+    "request_recovery": RecoveryInput,
     "ask_clarification": AskClarificationInput,
     "finish_answer": FinishAnswerInput,
     "finish_partial": FinishPartialInput,
@@ -94,6 +102,7 @@ _CONTROL_MODELS: dict[str, type[BaseModel]] = {
 CONTROL_TOOL_NAMES = frozenset(_CONTROL_MODELS)
 
 _CONTROL_DESCRIPTIONS = {
+    "request_recovery": "Request one bounded batch of goal-understanding or tool-plan corrections.",
     "ask_clarification": (
         "Ask exactly one focused clarification when required information is missing."
     ),
@@ -129,6 +138,8 @@ def decision_from_ai_message(
 ) -> OrchestratorDecision:
     """Parse one native business-tool wave or one observation control action."""
 
+    if message.invalid_tool_calls:
+        raise ValueError("invalid tool calls cannot accompany an answer")
     if message.tool_calls:
         control_calls = [
             call for call in message.tool_calls if str(call.get("name")) in CONTROL_TOOL_NAMES
@@ -182,12 +193,15 @@ def _decision_from_control_call(call: dict[str, Any]) -> OrchestratorDecision:
     name = str(call["name"])
     payload = _CONTROL_MODELS[name].model_validate(call.get("args") or {})
     data = payload.model_dump(mode="json")
+    if name == "request_recovery":
+        return OrchestratorDecision(type="recovery", recovery_requests=data["requests"])
     response = str(data["response"])
 
     if name == "ask_clarification":
         return OrchestratorDecision(
             type="clarification",
             response=response,
+            covered_goal_ids=data["covered_goal_ids"],
             reason="missing_information",
             control_action=name,
             unavailable_parts=list(data["missing_information"]),
@@ -196,6 +210,7 @@ def _decision_from_control_call(call: dict[str, Any]) -> OrchestratorDecision:
         return OrchestratorDecision(
             type="grounded_response",
             response=response,
+            covered_goal_ids=data["covered_goal_ids"],
             control_action=name,
             used_tool_call_ids=list(data["used_tool_call_ids"]),
         )
@@ -203,6 +218,7 @@ def _decision_from_control_call(call: dict[str, Any]) -> OrchestratorDecision:
         return OrchestratorDecision(
             type="partial_response",
             response=response,
+            covered_goal_ids=data["covered_goal_ids"],
             control_action=name,
             used_tool_call_ids=list(data["used_tool_call_ids"]),
             unavailable_parts=list(data["unavailable_parts"]),
@@ -211,6 +227,7 @@ def _decision_from_control_call(call: dict[str, Any]) -> OrchestratorDecision:
     return OrchestratorDecision(
         type="unavailable_response",
         response=response,
+        covered_goal_ids=data["covered_goal_ids"],
         control_action="finish_unavailable",
         unavailable_parts=list(data["unavailable_parts"]),
         offer_handoff_confirmation=bool(data["offer_handoff_confirmation"]),

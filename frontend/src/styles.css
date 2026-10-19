@@ -902,7 +902,7 @@ select:focus-visible {
   width: 100%;
 }
 
-.message p,
+.message .bubble-stack > p,
 .message .markdown-content {
   margin: 0;
   max-width: 100%;
@@ -915,24 +915,24 @@ select:focus-visible {
   font-size: 14px;
 }
 
-.message p {
+.message .bubble-stack > p {
   white-space: pre-wrap;
 }
 
-.message.user p {
+.message.user .bubble-stack > p {
   background: linear-gradient(135deg, #1b3545 0%, #1a2e3d 100%);
   color: var(--text-primary);
   border-color: rgba(91, 156, 245, 0.2);
 }
 
-.message.failed p {
+.message.failed .bubble-stack > p,
+.message.failed .markdown-content {
   border-color: var(--crimson-dim);
   background: var(--crimson-weak);
   color: var(--crimson);
 }
 
-.message.pending p,
-.message.streaming p {
+.message.pending .bubble-stack > p {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -1051,6 +1051,14 @@ select:focus-visible {
   gap: var(--space-2);
   border-top: 1px solid var(--border-default);
   background: var(--bg-panel);
+}
+
+.composer-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .composer input,
@@ -2196,3 +2204,27 @@ select:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Per-request execution details in the conversation timeline. */
+.turn-execution { margin-top: 12px; border-top: 1px solid var(--border-default); padding-top: 10px; }
+.turn-execution summary { cursor: pointer; overflow-wrap: anywhere; }
+.turn-execution > summary { font-size: 12px; font-weight: 600; }
+.turn-execution > summary small { display: block; margin: 5px 0 0 14px; font-weight: 400; }
+.execution-body { display: grid; gap: 12px; margin-top: 12px; }
+.execution-goal { min-width: 0; border-left: 2px solid var(--copper); padding-left: 10px; }
+.execution-goal > header { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.execution-goal > header span, .execution-body small, .execution-unrecorded { color: var(--text-muted); font-size: 11px; }
+.execution-goal p, .execution-call p { font-size: 12px; overflow-wrap: anywhere; }
+.execution-call { margin-top: 8px; padding: 8px; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: 6px; }
+.execution-call summary { font-size: 11px; }
+.execution-call summary span { display: block; margin-top: 4px; }
+.execution-call-error { border-left: 2px solid #c26056; }
+.execution-call h4 { font-size: 11px; margin: 10px 0 4px; }
+.execution-call pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; margin: 0; }
+.execution-models { display: grid; gap: 5px; font-size: 11px; }
+.execution-unrecorded { display: block; margin-top: 8px; }
+
+.execution-references { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.execution-references article { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--border-default); border-radius: 6px; overflow-wrap: anywhere; }
+.execution-references a { color: var(--copper); }
+.execution-references p { margin: 0; font-size: 11px; }

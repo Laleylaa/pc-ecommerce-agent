@@ -67,7 +67,7 @@ export function ChatPanel({
     <main className="chat-panel">
       <header className="topbar">
         <div>
-          <h1>客服会话</h1>
+          <h1>小帕瓦</h1>
           <span>{conversationId ? `#${conversationId}` : "ready"}</span>
         </div>
         <div className="status-stack">
@@ -116,15 +116,16 @@ export function ChatPanel({
         <input
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
-          placeholder="输入预算、用途、订单号或售后诉求"
+          placeholder="想找什么商品，或有什么需要帮忙的？"
           disabled={loading}
         />
-        <button type="submit" disabled={loading || !input.trim()} title="发送">
+        <button type="submit" disabled={loading} title="发送">
           {loading ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
         </button>
         <button type="button" disabled={!loading} title="取消" onClick={onCancel}>
           <CircleStop size={18} />
         </button>
+        <p className="composer-note">AI 回答仅供参考，商品价格与库存以下单页为准。</p>
       </form>
     </main>
   );
@@ -136,7 +137,7 @@ function MessageRow({ message, onProductClick }: { message: ChatMessage; onProdu
     message.role === "assistant" && message.products !== undefined && message.products.length > 0;
   const bubbleContent =
     message.content ||
-    (message.status === "pending" ? message.streamStage || "正在处理" : message.content);
+    (message.status === "pending" ? message.requestStage || "正在处理" : message.content);
   return (
     <article
       className={`message ${message.role} ${hasProducts ? "has-products" : ""} ${
@@ -215,13 +216,6 @@ function statusMeta(status: ResponseStatus | "loading") {
       label: "处理中"
     };
   }
-  if (status === "streaming") {
-    return {
-      className: "busy",
-      icon: <Loader2 size={14} className="spin" />,
-      label: "生成中"
-    };
-  }
   if (status === "handoff") {
     return {
       className: "handoff",
@@ -267,11 +261,8 @@ function statusMeta(status: ResponseStatus | "loading") {
 function messageMeta(message: ChatMessage) {
   const parts = [formatClock(message.createdAt)].filter(Boolean);
   if (message.status === "failed") parts.push("发送失败");
-  if (message.status === "pending") parts.push(message.streamStage ?? "处理中");
-  if (message.status === "streaming") parts.push(message.streamStage ?? "生成中");
+  if (message.status === "pending") parts.push(message.requestStage ?? "处理中");
   if (message.status === "cancelled") parts.push("已取消");
-  if (message.intent) parts.push(message.intent);
-  if (message.evidenceCount) parts.push(`${message.evidenceCount} 条依据`);
   if (message.productCount) parts.push(`${message.productCount} 个商品`);
   if (message.orderId) parts.push(`订单 #${message.orderId}`);
   return parts;

@@ -199,64 +199,64 @@ DEPENDENCY_CASES: tuple[dict[str, Any], ...] = (
         "case_id": "S5-DEP-NORMAL-001",
         "scenario": "normal",
         "producer_query": "查找两款无线鼠标候选",
-        "consumer_query": "比较上一步找到的两款无线鼠标",
+        "consumer_query": "查询上一步找到的两款无线鼠标",
     },
     {
         "case_id": "S5-DEP-NORMAL-002",
         "scenario": "normal",
         "producer_query": "查找两款机械键盘候选",
-        "consumer_query": "比较上一步找到的两款机械键盘",
+        "consumer_query": "查询上一步找到的两款机械键盘",
     },
     {
         "case_id": "S5-DEP-NORMAL-003",
         "scenario": "normal",
         "producer_query": "查找两款无线耳机候选",
-        "consumer_query": "比较上一步找到的两款无线耳机",
+        "consumer_query": "查询上一步找到的两款无线耳机",
     },
     {
         "case_id": "S5-DEP-EMPTY-001",
         "scenario": "empty",
         "producer_query": "查找支持特定高 DPI 条件的无线鼠标",
-        "consumer_query": "比较符合条件的无线鼠标",
+        "consumer_query": "查询符合条件的无线鼠标",
     },
     {
         "case_id": "S5-DEP-EMPTY-002",
         "scenario": "empty",
         "producer_query": "查找同时满足低延迟和静音条件的无线键盘",
-        "consumer_query": "比较符合条件的无线键盘",
+        "consumer_query": "查询符合条件的无线键盘",
     },
     {
         "case_id": "S5-DEP-FAILED-001",
         "scenario": "failed",
         "error_code": "dependency_unavailable",
         "producer_query": "查找两款人体工学鼠标候选",
-        "consumer_query": "比较上一步找到的人体工学鼠标",
+        "consumer_query": "查询上一步找到的人体工学鼠标",
     },
     {
         "case_id": "S5-DEP-FAILED-002",
         "scenario": "failed",
         "error_code": "catalog_timeout",
         "producer_query": "查找两款 4K 摄像头候选",
-        "consumer_query": "比较上一步找到的 4K 摄像头",
+        "consumer_query": "查询上一步找到的 4K 摄像头",
     },
     {
         "case_id": "S5-DEP-FAILED-003",
         "scenario": "failed",
         "error_code": "invalid_catalog_payload",
         "producer_query": "查找两款开放式游戏耳机候选",
-        "consumer_query": "比较上一步找到的游戏耳机",
+        "consumer_query": "查询上一步找到的游戏耳机",
     },
     {
         "case_id": "S5-DEP-MISSING-ARTIFACT-001",
         "scenario": "missing_artifact",
         "producer_query": "查找两款办公鼠标候选",
-        "consumer_query": "比较上一步找到的办公鼠标",
+        "consumer_query": "查询上一步找到的办公鼠标",
     },
     {
         "case_id": "S5-DEP-MISSING-ARTIFACT-002",
         "scenario": "missing_artifact",
         "producer_query": "查找两款紧凑型键盘候选",
-        "consumer_query": "比较上一步找到的紧凑型键盘",
+        "consumer_query": "查询上一步找到的紧凑型键盘",
     },
 )
 
@@ -425,8 +425,8 @@ def _dependency_plan(case: Mapping[str, Any], *, flat: bool) -> RequestRoutePlan
         "task_2",
         "goal_1",
         str(case["consumer_query"]),
-        "catalog_compare",
-        "comparison",
+        "catalog_search",
+        "products",
         depends_on=() if flat else ("task_1",),
         input_requirements=(
             ()
@@ -486,7 +486,6 @@ def _terminal_plan(*, task_count: int) -> RequestRoutePlan:
 def _artifact_for_tool(tool_name: str) -> str:
     return {
         "catalog_search": "products",
-        "catalog_compare": "comparison",
         "catalog_facets": "facets",
         "order_lookup": "order",
         "policy_search": "documents",
@@ -504,17 +503,6 @@ def _usable_output(tool_name: str) -> dict[str, Any]:
             "total_match_count": 2,
             "returned_count": 2,
             "is_exhaustive": True,
-            "query_plan": {},
-            "diagnostics": [],
-        }
-    if tool_name == "catalog_compare":
-        return {
-            "result_type": "comparison",
-            "comparison_level": "sku",
-            "products": [deepcopy(PRODUCT_A), deepcopy(PRODUCT_B)],
-            "series": [],
-            "series_differences": [],
-            "comparison_fields": ["price", "connection_type"],
             "query_plan": {},
             "diagnostics": [],
         }

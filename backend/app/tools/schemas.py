@@ -1,11 +1,37 @@
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
+from app.core.llm_feedback import OutputValidationError
 from app.schemas.catalog import ProductCard
+from app.schemas.catalog_search import CatalogSearchRequest, CategoryHint, FieldIssue, SearchScope
 from app.schemas.context import CatalogMemory
-from app.schemas.order import OrderCard, OrderQueryMode, OrderSummary
+from app.schemas.order import OrderCard, OrderFilters, OrderQueryMode, OrderSuggestion, OrderSummary
+from app.tools.order_identity import explicit_order_ids
+
+NonBlankQuery = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+
+
+def validate_order_lookup_selection(order_id: int | None, query: str | None) -> None:
+    if order_id is None and query is None:
+        raise OutputValidationError(
+            "order lookup requires a nonblank query or an explicit order_id",
+        )
+    query_ids = explicit_order_ids(query or "")
+    if len(query_ids) > 1:
+        raise OutputValidationError(
+            "one order lookup accepts one explicit order ID; split multiple IDs", path=("query",),
+        )
+    if order_id is not None and query_ids and query_ids != {order_id}:
+        raise OutputValidationError("query order ID conflicts with order_id", path=("query",))
 
 
 class ToolError(BaseModel):
@@ -13,6 +39,8 @@ class ToolError(BaseModel):
     message: str
     retryable: bool = False
     recommended_action: str = "stop"
+    phase: Literal["plan_validation", "execution"] | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolExecutionResult(BaseModel):
@@ -49,7 +77,6 @@ class CatalogTargetIdentity(BaseModel):
     source: Literal[
         "current_turn_artifact",
         "working_memory_reference",
-        "comparison_context",
         "explicit_argument",
     ]
 
@@ -71,7 +98,6 @@ class CatalogDependencyArtifact(BaseModel):
     selected_sku_ids: list[int] = Field(default_factory=list, max_length=20)
     selected_spu_ids: list[int] = Field(default_factory=list, max_length=20)
     selection_scope: Literal["sku", "spu"] | None = None
-    comparison_level: Literal["sku", "spu"] | None = None
 
 
 class CatalogToolRuntimeContext(BaseModel):
@@ -130,58 +156,6 @@ class CatalogSearchOutput(BaseModel):
     diagnostics: list[ToolDiagnostic] = Field(default_factory=list)
 
 
-class CatalogCompareInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    query: str = Field(min_length=1)
-    comparison_level: Literal["auto", "sku", "spu"] = "auto"
-    targets: list[CatalogTargetIdentity] = Field(default_factory=list, max_length=10)
-    catalog_context: CatalogToolRuntimeContext = Field(
-        default_factory=CatalogToolRuntimeContext
-    )
-    sku_ids: list[int] = Field(default_factory=list, max_length=10)
-    spu_ids: list[int] = Field(default_factory=list, max_length=10)
-    limit: int = Field(default=5, ge=2, le=10)
-
-    @model_validator(mode="after")
-    def validate_identifier_scope(self) -> "CatalogCompareInput":
-        if (
-            self.comparison_level == "auto"
-            and not self.targets
-            and self.sku_ids
-            and not self.spu_ids
-        ):
-            self.comparison_level = "sku"
-        elif (
-            self.comparison_level == "auto"
-            and not self.targets
-            and self.spu_ids
-            and not self.sku_ids
-        ):
-            self.comparison_level = "spu"
-        if self.comparison_level == "sku" and self.spu_ids:
-            raise ValueError("spu_ids require comparison_level=spu")
-        if self.comparison_level == "spu" and self.sku_ids:
-            raise ValueError("sku_ids require comparison_level=sku")
-        return self
-
-
-class ProductComparisonItem(BaseModel):
-    sku_id: int
-    spu_id: int
-    title: str
-    brand: str
-    category: str
-    price: Decimal
-    stock: int
-    sku_sales_count: int = 0
-    sku_sales_count_scope: Literal["sku"] = "sku"
-    sales_count: int = 0
-    sales_count_scope: Literal["spu"] = "spu"
-    specs: dict[str, str] = Field(default_factory=dict)
-    image_url: str | None = None
-
-
 class CatalogSeriesSpecValue(BaseModel):
     value: str
     sku_count: int = Field(ge=1)
@@ -204,7 +178,7 @@ class CatalogSeriesVariant(BaseModel):
     image_url: str | None = None
 
 
-class CatalogSeriesComparisonItem(BaseModel):
+class CatalogSeriesSummary(BaseModel):
     spu_id: int
     title: str
     brand: str
@@ -220,37 +194,18 @@ class CatalogSeriesComparisonItem(BaseModel):
     variants: list[CatalogSeriesVariant] = Field(default_factory=list)
 
 
-class CatalogSeriesFieldDifference(BaseModel):
-    field: str
-    shared_values: list[str] = Field(default_factory=list)
-    left_only_values: list[str] = Field(default_factory=list)
-    right_only_values: list[str] = Field(default_factory=list)
-    left_missing_sku_count: int = Field(ge=0)
-    right_missing_sku_count: int = Field(ge=0)
-
-
-class CatalogSeriesPairDifference(BaseModel):
-    left_spu_id: int
-    right_spu_id: int
-    fields: list[CatalogSeriesFieldDifference] = Field(default_factory=list)
-
-
-class CatalogCompareOutput(BaseModel):
-    result_type: Literal["comparison", "empty"]
-    comparison_level: Literal["sku", "spu"] = "sku"
-    products: list[ProductComparisonItem] = Field(default_factory=list)
-    series: list[CatalogSeriesComparisonItem] = Field(default_factory=list)
-    series_differences: list[CatalogSeriesPairDifference] = Field(default_factory=list)
-    comparison_fields: list[str] = Field(default_factory=list)
-    missing_fields: dict[int, list[str]] = Field(default_factory=dict)
-    query_plan: dict = Field(default_factory=dict)
-    diagnostics: list[ToolDiagnostic] = Field(default_factory=list)
+class CatalogFacetValue(BaseModel):
+    value: str
+    sku_ids: list[int] = Field(default_factory=list)
+    spu_ids: list[int] = Field(default_factory=list)
 
 
 class CatalogFacetInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = ""
+    category_hint: CategoryHint = None
+    scope: SearchScope | None = None
     facet: Literal["category", "brand", "spec_key", "spec_value"] = "brand"
     category: str | None = None
     brand: str | None = None
@@ -261,11 +216,18 @@ class CatalogFacetInput(BaseModel):
     catalog_context: CatalogToolRuntimeContext = Field(
         default_factory=CatalogToolRuntimeContext
     )
-    limit: int = Field(default=20, ge=1, le=50)
+    limit: int = Field(default=20, ge=1, le=50, strict=True)
+
+    @field_validator("scope")
+    @classmethod
+    def reject_empty_scope(cls, scope: SearchScope | None) -> SearchScope | None:
+        return CatalogSearchRequest.reject_explicit_empty_scope(scope) if scope else None
 
 
 class CatalogFacetItem(BaseModel):
     value: str
+    spec_key: str | None = None
+    values: list[CatalogFacetValue] = Field(default_factory=list)
     count: int
     count_scope: Literal["sku", "spu"] = "spu"
     sku_count: int = 0
@@ -279,6 +241,12 @@ class CatalogFacetOutput(BaseModel):
     category: str | None = None
     brand: str | None = None
     spec_key: str | None = None
+    scope: SearchScope | None = None
+    total_value_count: int = Field(default=0, ge=0)
+    returned_count: int = Field(default=0, ge=0)
+    is_exhaustive: bool = True
+    matching_complete: bool = True
+    field_issues: list[FieldIssue] = Field(default_factory=list)
     query_plan: dict = Field(default_factory=dict)
     diagnostics: list[ToolDiagnostic] = Field(default_factory=list)
 
@@ -287,10 +255,15 @@ class OrderLookupInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: int
-    order_id: int | None = None
-    query: str | None = Field(default=None, max_length=256)
-    limit: int = Field(default=5, ge=1, le=5)
+    order_id: int | None = Field(default=None, gt=0, strict=True)
+    query: NonBlankQuery | None = Field(default=None, max_length=256)
+    limit: int = Field(default=5, ge=1, le=5, strict=True)
     offset: int = Field(default=0, ge=0, le=10000)
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "OrderLookupInput":
+        validate_order_lookup_selection(self.order_id, self.query)
+        return self
 
 
 class OrderLookupOutput(BaseModel):
@@ -299,13 +272,20 @@ class OrderLookupOutput(BaseModel):
         "order_candidates",
         "order_count",
         "order_analysis",
+        "order_suggestions",
         "unsupported",
+        "invalid_query",
         "planning_failed",
         "not_found",
     ]
     order: OrderCard | None = None
     candidates: list[OrderSummary] = Field(default_factory=list)
     analysis_orders: list[OrderCard] = Field(default_factory=list)
+    # Suggestions are never exact matches or automatic downstream binding inputs.
+    suggestions: list[OrderSuggestion] = Field(default_factory=list)
+    suggestion_filters: OrderFilters | None = None
+    suggestion_total_count: int = Field(default=0, ge=0)
+    suggestion_is_exhaustive: bool = True
     focus_order_ids: list[int] = Field(default_factory=list)
     query_mode: OrderQueryMode = "recent"
     total_match_count: int = Field(default=0, ge=0)
@@ -320,9 +300,9 @@ class OrderLookupOutput(BaseModel):
 class DocumentSearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    query: str = Field(min_length=1)
+    query: NonBlankQuery
     document_type: str | None = None
-    limit: int = Field(default=3, ge=1, le=10)
+    limit: int = Field(default=3, ge=1, le=10, strict=True)
     retrieval_mode: Literal["bm25", "vector", "hybrid"] = "hybrid"
 
 
@@ -340,3 +320,27 @@ class DocumentSearchOutput(BaseModel):
     result_type: Literal["documents", "empty"]
     documents: list[DocumentSearchHit] = Field(default_factory=list)
     search_strategy: Literal["bm25", "vector", "hybrid"] = "hybrid"
+
+
+class WebSearchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: NonBlankQuery
+    limit: int = Field(default=3, ge=1, le=10, strict=True)
+
+
+class WebSearchHit(BaseModel):
+    source_type: Literal["web_page"] = "web_page"
+    source_id: int
+    url: str
+    title: str
+    document_type: Literal["peripheral_knowledge"] = "peripheral_knowledge"
+    snippet: str
+    score: float
+    metadata: dict = Field(default_factory=dict)
+
+
+class WebSearchOutput(BaseModel):
+    result_type: Literal["documents", "empty"]
+    documents: list[WebSearchHit] = Field(default_factory=list)
+    search_strategy: Literal["web"] = "web"

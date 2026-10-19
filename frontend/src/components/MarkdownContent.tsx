@@ -7,6 +7,11 @@ type MarkdownContentProps = {
 };
 
 const components: Components = {
+  table: ({ children }) => (
+    <div className="markdown-table" role="region" aria-label="回答中的表格" tabIndex={0}>
+      <table>{children}</table>
+    </div>
+  ),
   // Open links in new tab for security
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer">

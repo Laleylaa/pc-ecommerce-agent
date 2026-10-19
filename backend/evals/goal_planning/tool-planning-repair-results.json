@@ -1,0 +1,111 @@
+{
+  "scope": "synthetic model planning only; no database or answers",
+  "cases": [
+    {
+      "tool": "search",
+      "query": "找白色蓝牙键盘，200元以内",
+      "category_hint": "键盘",
+      "expected": "conditions",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.126,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "search",
+      "query": "白色键盘，300元以上，不要蓝牙",
+      "category_hint": "键盘",
+      "expected": "negation",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.106,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "search",
+      "query": "帮我找个75%布局的蓝牙键盘，预算不超过400元",
+      "category_hint": "鼠标",
+      "expected": "layout",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.106,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "facets",
+      "query": "白色蓝牙键盘200元以内有哪些布局可选",
+      "category_hint": "键盘",
+      "expected": "conditions",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.109,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "facets",
+      "query": "蓝牙键盘有哪些75%布局选项，价格不能超过400元",
+      "category_hint": "鼠标",
+      "expected": "layout",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.111,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "facets",
+      "query": "这款有什么规格",
+      "category_hint": "键盘",
+      "expected": "object",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.113,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "orders",
+      "query": "去年我一共有几笔订单",
+      "category_hint": null,
+      "expected": "year_count",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.115,
+      "raw_outputs": [],
+      "repairs": []
+    },
+    {
+      "tool": "orders",
+      "query": "列出2025年3月到5月付款、已完成、商品包括白色键盘的订单",
+      "category_hint": null,
+      "expected": "paid_filter",
+      "failures": [
+        "ModelCallError"
+      ],
+      "error_code": "planning_transport_failed",
+      "elapsed": 0.11,
+      "raw_outputs": [],
+      "repairs": []
+    }
+  ],
+  "verification_status": "blocked_no_model_output",
+  "authorization_status": "external_model_evaluation_auto_review_rejected_pending_user_authorization"
+}

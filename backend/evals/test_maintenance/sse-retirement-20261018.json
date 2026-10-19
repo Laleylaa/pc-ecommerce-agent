@@ -1,0 +1,53 @@
+{
+  "scope": "用户确认当前前端不用SSE后，退役SSE接口及专属实现、测试，迁移两项评测调用方。",
+  "changed_code": [
+    "backend/app/core/tracing.py",
+    "backend/app/agent/events.py",
+    "backend/app/agent/graph.py",
+    "backend/app/api/routers/chat.py",
+    "backend/tests/memory/test_memory_response.py",
+    "backend/tests/orchestration/test_agent_tool_wiring.py",
+    "backend/tests/orchestration/test_execution_details.py",
+    "backend/tests/orchestration/test_request_router.py",
+    "backend/tests/orchestration/test_agent_tracing.py",
+    "backend/tests/orchestration/test_orchestrator_runtime_audit.py",
+    "backend/tests/orchestration/test_planning_call_policy.py",
+    "backend/tests/orchestration/test_answer_finalization.py",
+    "backend/tests/api/test_api_integration.py",
+    "backend/tests/api/test_chat_input_rules.py",
+    "backend/scripts/eval_order_tool_live_e2e.py",
+    "backend/scripts/run_customer_service_evals.py",
+    "frontend/src/App.tsx",
+    "frontend/src/api.ts",
+    "frontend/src/types.ts",
+    "frontend/src/components/ChatPanel.tsx",
+    "frontend/src/styles.css"
+  ],
+  "api": "POST /api/chat/stream -> 404; POST /api/chat continues returning one ChatResponse with execution_details.",
+  "retained": "普通聊天取消、全轮及规划超时、失败清理/审计、记忆、执行详情、LangGraph内部事件与模型跟踪。",
+  "evaluation_adapters": {
+    "run_customer_service_evals": "/api/chat + execution_details.tool_calls; missing details is an evaluation error; --no-stream removed.",
+    "eval_order_tool_live_e2e": "/api/chat + persisted AgentRun/ToolCall audit in same outer transaction; sequential evaluation, no SSE events."
+  },
+  "verification": {
+    "isolated_tests_passed": 1764,
+    "database_tests_deselected": 30,
+    "failures": 0,
+    "frontend_build": "passed",
+    "ruff": "passed",
+    "diff_check": "passed",
+    "offline_adapter_checks": "3 passed with MockTransport and fake audit session; temporary probe initially used wrong status capitalization, corrected to existing pass/error contract",
+    "retired_route": "isolated HTTP test checks 404 without runtime invocation"
+  },
+  "not_run": [
+    "真实模型/数据库评测",
+    "30项写库测试",
+    "浏览器交互与部署验收"
+  ],
+  "qa_01": "Closed by retiring the SSE feature, not by repairing its async-generator closing behavior.",
+  "notes": [
+    "原完整隔离结果1779通过/1失败/31排除；退役SSE参数分支及专属用例后1764通过/30排除。",
+    "迁移的订单DB接口断言未执行；仍保留工具调用及unsupported摘要检查，原内部query_plan字段由工具层/评测审计检查。",
+    "未暂存、提交或推送；保留用户既有修改。"
+  ]
+}

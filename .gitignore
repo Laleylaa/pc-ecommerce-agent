@@ -53,6 +53,8 @@ logs/
 /data/
 /evals/results/
 /backend/evals/results/
+# 商品搜索本地评测：输入、报告、接口示例统一保留在本机
+/backend/evals/catalog_search/
 chroma/
 postgres-data/
 redis-data/
@@ -85,8 +87,12 @@ local-backups/
 *.aof
 
 # 个人笔记、临时整理材料与本地工具约定
-# docs/ 暂仅保留在本地，稳定后移除此规则再提交；README.md 与 AGENTS.md 仍可提交。
-/docs/
+# docs/ 仅放行共享问题台账；模块与迭代文档继续保留在本地。
+# 逐级放行父目录，不扩大到其他 docs 或评测产物。
+/docs/*
+!/docs/development/
+/docs/development/*
+!/docs/development/issues.md
 /private/
 /tmp/
 /temp/
@@ -105,5 +111,5 @@ Desktop.ini
 *~
 
 # 保留版本控制：uv.lock、package-lock.json、.python-version、.nvmrc、
-# Alembic migrations 与 backend/evals 中的测试用例。
+# Alembic migrations 与其他已纳入版本管理的评测用例；商品搜索本地评测目录除外。
 # .gitignore 不会移除已被 Git 跟踪的文件，也不会检查文件内容中的秘密。

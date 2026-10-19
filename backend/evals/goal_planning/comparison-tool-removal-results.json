@@ -1,0 +1,117 @@
+{
+  "branch": "feat/orchestrator-catalog-integration",
+  "head": "6d3f84211734bbc61ed0daf3a4d9171c4283a46d",
+  "scope": "CC-01 comparison tool removal; scripted models and fake repositories; no external I/O",
+  "main_before": {
+    "passed": 973,
+    "failed": 5,
+    "deselected_database_fixture": 39
+  },
+  "main_after": {
+    "passed": 927,
+    "failed": 5,
+    "deselected_database_fixture": 33
+  },
+  "legacy_before": {
+    "passed": 83,
+    "failed": 59,
+    "deselected_database_fixture": 5
+  },
+  "legacy_after": {
+    "passed": 66,
+    "failed": 46,
+    "deselected_database_fixture": 0
+  },
+  "enhanced_integration_after": {
+    "passed": 41,
+    "failed": 0
+  },
+  "retained_legacy_cases": 112,
+  "new_legacy_failures": [],
+  "legacy_final_failures": [
+    "tests.test_orchestrator_task_dag::test_context_product_accepts_one_spu_with_multiple_sku_variants",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_recommendation_window_reaches_answer_as_total_and_primary_candidate",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_order_candidate_binds_detail_and_catalog_stays_independent",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_depends_on_only_passes_second_order_candidate_to_detail_wave",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_chained_goal_completes_while_capability_gap_offers_handoff[order-detail-plus-barcode-scan]",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_single_goal_expands_to_multiple_tasks[latest-order-candidate-then-detail]",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_single_goal_expands_to_multiple_tasks[recommendation-and-policy-in-parallel]",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_single_goal_expands_to_multiple_tasks[recommendation-and-knowledge-in-parallel]",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_single_goal_expands_to_multiple_tasks[facets-and-recommendation-in-parallel]",
+    "tests.test_orchestrator_plan_execute_e2e::test_e2e_single_goal_expands_to_multiple_tasks[order-detail-chain-with-parallel-policy]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[01-catalog-applied]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[02-catalog-expanded]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[03-catalog-plain-products]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[04-catalog-empty]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[05-usage-mapping-unavailable]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[06-catalog-unsupported]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[07-catalog-invalid-plan]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[08-catalog-contract-mismatch]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[12-facets-usable]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[13-facets-empty]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[14-order-single]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[15-order-candidates]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[16-order-not-found]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[17-policy-document]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[18-knowledge-empty]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[19-timeout-recovery]",
+    "tests.test_orchestrator_tool_observation_eval::test_scripted_tool_observations_through_orchestrator[20-invalid-input-recovery]",
+    "tests.test_orchestrator_wave_loop_cases::test_runtime_terminates_invalid_input_fix_that_rewrites_query",
+    "tests.test_orchestrator_wave_loop_cases::test_wave_loop_terminal_cases[17-limit-preserves-usable-result]",
+    "tests.test_orchestrator_wave_loop_cases::test_wave_loop_terminal_cases[19-superseded-result-is-not-citable]",
+    "tests.test_orchestrator_wave_loop_cases::test_office_keyboard_more_brand_wave_is_terminated_with_existing_result",
+    "tests.test_orchestrator_wave_loop_cases::test_later_timeout_cannot_replace_first_wave_usable_result_at_limit",
+    "tests.test_agent_tool_wiring::test_document_search_runtime_supplies_default_top_k[policy_search]",
+    "tests.test_agent_tool_wiring::test_document_search_runtime_supplies_default_top_k[knowledge_search]",
+    "tests.test_agent_tool_wiring::test_equivalent_tool_call_reuses_previous_usable_result",
+    "tests.test_agent_tool_wiring::test_sync_runtime_uses_context_and_catalog_registry",
+    "tests.test_agent_tool_wiring::test_catalog_fallback_sends_current_query_without_structured_overrides",
+    "tests.test_agent_tool_wiring::test_sync_runtime_uses_authenticated_order_lookup_and_preserves_order_shape",
+    "tests.test_agent_tool_wiring::test_stream_registry_failure_emits_tool_error_and_finishes_safely",
+    "tests.test_agent_tool_wiring::test_v2_working_query_plan_routes_generic_catalog_followup",
+    "tests.test_agent_tool_wiring::test_sync_runtime_tool_exception_degrades_to_safe_response",
+    "tests.test_agent_tool_wiring::test_current_negative_catalog_request_stays_in_query",
+    "tests.test_agent_tool_wiring::test_fallback_does_not_emit_long_term_preferences_as_tool_overrides",
+    "tests.test_agent_tool_wiring::test_fallback_does_not_emit_working_memory_as_tool_overrides",
+    "tests.test_orchestrator::test_tool_result_prompt_explains_scenario_semantics_without_copying_rules",
+    "tests.test_orchestrator::test_third_orchestrator_call_cannot_start_third_tool_wave"
+  ],
+  "remaining_contracts_unchanged": [
+    "catalog_facets",
+    "catalog_search",
+    "knowledge_search",
+    "order_lookup",
+    "policy_search"
+  ],
+  "contract_comparison_fields": [
+    "registry",
+    "description",
+    "runtime_fields",
+    "timeout",
+    "public",
+    "output"
+  ],
+  "contract_snapshot_sha256": "d5806600c2a6b1d30f16170e050c92404bcbaaa351a3fe8a896e1ecb161676dd",
+  "collection": {
+    "collected": 1444,
+    "total": 1498,
+    "deselected_database_fixture": 54
+  },
+  "final_handoff_rerun": {
+    "passed": 105,
+    "failed": 0
+  },
+  "offline_eval_smoke": {
+    "cases": 30,
+    "runs": 60,
+    "groups": 6,
+    "external_io": false
+  },
+  "isolated_staging_verification": {
+    "base": "HEAD plus comparison removal only",
+    "passed": 100,
+    "failed": 0,
+    "ruff": "passed",
+    "external_io": false
+  }
+}

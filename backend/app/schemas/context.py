@@ -1,10 +1,17 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.memory import MemoryChange
+from app.schemas.order import PendingOrderSuggestion
 
 SAFE_QUERY_PLAN_KEYS = {
+    "operation",
+    "name",
+    "target",
+    "conditions",
+    "requested_fields",
+    "scope",
     "brands",
     "category",
     "excluded_brands",
@@ -61,35 +68,28 @@ class CatalogDisplayIdentity(BaseModel):
     brand: str | None = None
     category: str | None = None
     image_url: str | None = None
-
-
-class CatalogComparisonMemory(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    query: str | None = None
-    comparison_level: Literal["sku", "spu"] = "sku"
-    sku_ids: list[int] = Field(default_factory=list)
-    spu_ids: list[int] = Field(default_factory=list)
-    comparison_fields: list[str] = Field(default_factory=list)
-
-    @field_validator("sku_ids", "spu_ids", mode="before")
-    @classmethod
-    def unique_comparison_ids(cls, value: Any) -> list[int]:
-        if not isinstance(value, list):
-            return []
-        return list(dict.fromkeys(int(item) for item in value if item is not None))[:10]
+    candidate_sku_ids: list[int] = Field(default_factory=list)
+    match_kind: Literal["exact", "alternative", "object_facts"] | None = None
 
 
 class CatalogMemory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query_plan: dict[str, Any] = Field(default_factory=dict)
-    comparison: CatalogComparisonMemory = Field(default_factory=CatalogComparisonMemory)
     candidate_spu_ids: list[int] = Field(default_factory=list)
     candidate_sku_ids: list[int] = Field(default_factory=list)
     candidate_display: list[CatalogDisplayIdentity] = Field(default_factory=list)
     referenced_spu_id: int | None = None
     referenced_sku_id: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_retired_fields(cls, value: Any) -> Any:
+        # Read old persisted sessions without restoring a removed conversation capability.
+        # Keep this compatibility read until stored working-memory snapshots are migrated.
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k not in {"search_page", "comparison"}}
+        return value
 
     @field_validator("query_plan", mode="before")
     @classmethod
@@ -97,6 +97,17 @@ class CatalogMemory(BaseModel):
         if not isinstance(value, dict):
             return {}
         sanitized = {key: item for key, item in value.items() if key in SAFE_QUERY_PLAN_KEYS}
+        if "conditions" in sanitized:
+            from app.schemas.catalog_search import SearchCondition
+
+            sanitized["conditions"] = [
+                SearchCondition.model_validate(c).model_dump(mode="json")
+                for c in sanitized["conditions"]
+            ][:24]
+        if sanitized.get("scope"):
+            from app.schemas.catalog_search import SearchScope
+
+            sanitized["scope"] = SearchScope.model_validate(sanitized["scope"]).model_dump()
         filters = sanitized.get("filters")
         if isinstance(filters, dict):
             sanitized["filters"] = {
@@ -120,12 +131,21 @@ class CatalogMemory(BaseModel):
 class OrderMemory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    pending_suggestions: list[PendingOrderSuggestion] = Field(default_factory=list, max_length=5)
     last_order_id: int | None = None
     candidate_order_ids: list[int] = Field(default_factory=list)
     total_match_count: int = Field(default=0, ge=0)
     returned_count: int = Field(default=0, ge=0)
     is_exhaustive: bool = True
-    next_offset: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_retired_cursor(cls, value: Any) -> Any:
+        # Read old persisted sessions without restoring a removed conversation capability.
+        # Keep this compatibility read until stored working-memory snapshots are migrated.
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k != "next_offset"}
+        return value
 
     @field_validator("candidate_order_ids", mode="before")
     @classmethod

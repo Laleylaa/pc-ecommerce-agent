@@ -15,6 +15,8 @@ def build_chat_model(
     settings: Settings,
     *,
     temperature: float = 0.2,
+    max_retries: int = 2,
+    timeout: float | None = None,
 ) -> ChatOpenAI | None:
     if not settings.llm_api_key:
         return None
@@ -30,5 +32,7 @@ def build_chat_model(
         model=settings.llm_model,
         temperature=temperature,
         streaming=False,
+        max_retries=max_retries,
+        timeout=timeout,
         **provider_options,
     )

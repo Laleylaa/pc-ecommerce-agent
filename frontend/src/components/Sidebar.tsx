@@ -67,8 +67,8 @@ export function Sidebar({
             <MessageSquarePlus size={16} />
           </span>
           <div>
-            <strong>PC Agent</strong>
-            <small>客服工作台</small>
+            <strong>小帕瓦</strong>
+            <small>在线咨询</small>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export function Sidebar({
           disabled={disabled}
         >
           <Plus size={16} />
-          新会话
+          新对话
         </button>
       </div>
 
@@ -96,7 +96,7 @@ export function Sidebar({
 
       <section className="conversation-section">
         <div className="conversation-section-head">
-          <h2>会话</h2>
+          <h2>历史对话</h2>
         </div>
         <div className="conversation-list">
           {groupConversations(conversations).map((group) => (
@@ -121,7 +121,7 @@ export function Sidebar({
             </div>
           )}
           {!conversations.length && !conversationsLoading && (
-            <div className="conversation-empty">暂无历史会话</div>
+            <div className="conversation-empty">还没有聊天记录</div>
           )}
         </div>
       </section>
@@ -194,7 +194,7 @@ function ConversationRow({
         className="conversation-delete"
         onClick={() => setConfirming(true)}
         disabled={disabled}
-        aria-label="删除会话"
+        aria-label="删除对话"
       >
         <Trash2 size={14} />
       </button>

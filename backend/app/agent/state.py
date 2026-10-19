@@ -12,7 +12,16 @@ class AgentState(TypedDict, total=False):
     user_message_id: int
     run_id: int
     message: str
+    input_rule_id: str
     request_router_call_count: int
+    goal_plan: dict[str, Any]
+    execution_plan: dict[str, Any]
+    context_objects: dict[str, Any]
+    planning_error: dict[str, Any]
+    planning_deadline_monotonic: float
+    answer_deadline_monotonic: float
+    answer_call_count: int
+    task_planner_call_count: int
     route_source: str
     route_plan: dict[str, Any]
     rewritten_query: str
@@ -21,6 +30,9 @@ class AgentState(TypedDict, total=False):
     task_status: dict[str, dict[str, Any]]
     task_artifacts: dict[str, dict[str, Any]]
     answer_context: dict[str, Any]
+    recovery_batch: dict[str, Any]
+    turn_deadline_monotonic: float
+    final_answer_deadline_monotonic: float
     intent: str
     decision: dict[str, Any]
     orchestrator_call_count: int
@@ -29,7 +41,6 @@ class AgentState(TypedDict, total=False):
     tool_results: list[dict[str, Any]]
     normalized_tool_results: list[dict[str, Any]]
     subquery_ledger: list[dict[str, Any]]
-    terminal_guard_replan_count: int
     terminal_guard_feedback: str
     terminal_guard_status: str
     boundary: dict[str, Any]

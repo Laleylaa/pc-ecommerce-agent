@@ -113,7 +113,6 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     expect = case["expect"]
     query_plan = output.get("query_plan") or {}
-    semantic_plan = query_plan.get("compare_plan") or query_plan
     diagnostics = output.get("diagnostics") or []
 
     if output.get("result_type") != expect.get("result_type"):
@@ -132,12 +131,12 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
             failures.append(f"diagnostic_code expected {expected_code}, got {actual_code}")
 
     if expected_category := expect.get("category"):
-        actual_category = semantic_plan.get("category")
+        actual_category = query_plan.get("category")
         if actual_category != expected_category:
             failures.append(f"category expected {expected_category}, got {actual_category}")
 
     if expected_filters := expect.get("filters"):
-        actual_filters = semantic_plan.get("filters") or {}
+        actual_filters = query_plan.get("filters") or {}
         for key, expected_value in expected_filters.items():
             if key not in actual_filters:
                 failures.append(f"missing query_plan filter {key}")
@@ -147,20 +146,20 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
                 )
 
     if expected_brands := expect.get("brands"):
-        actual_brands = semantic_plan.get("brands") or []
+        actual_brands = query_plan.get("brands") or []
         missing = [brand for brand in expected_brands if brand not in actual_brands]
         if missing:
             failures.append(f"missing query_plan brands {missing}, got {actual_brands}")
 
     if expected_min_price := expect.get("min_price"):
-        if not decimal_equal(semantic_plan.get("min_price"), expected_min_price):
+        if not decimal_equal(query_plan.get("min_price"), expected_min_price):
             failures.append(
-                f"min_price expected {expected_min_price}, got {semantic_plan.get('min_price')}"
+                f"min_price expected {expected_min_price}, got {query_plan.get('min_price')}"
             )
     if expected_max_price := expect.get("max_price"):
-        if not decimal_equal(semantic_plan.get("max_price"), expected_max_price):
+        if not decimal_equal(query_plan.get("max_price"), expected_max_price):
             failures.append(
-                f"max_price expected {expected_max_price}, got {semantic_plan.get('max_price')}"
+                f"max_price expected {expected_max_price}, got {query_plan.get('max_price')}"
             )
     if expected_purpose := expect.get("result_purpose"):
         if output.get("result_purpose") != expected_purpose:
@@ -174,14 +173,8 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
                 f"selection_scope expected {expected_scope}, "
                 f"got {output.get('selection_scope')}"
             )
-    if expected_level := expect.get("comparison_level"):
-        if output.get("comparison_level") != expected_level:
-            failures.append(
-                f"comparison_level expected {expected_level}, "
-                f"got {output.get('comparison_level')}"
-            )
     for field_name in expect.get("requested_fields", []):
-        if field_name not in semantic_plan.get("requested_fields", []):
+        if field_name not in query_plan.get("requested_fields", []):
             failures.append(f"requested field {field_name} was not preserved")
 
     if case["tool"] == "catalog_facets":
@@ -211,7 +204,7 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
                 )
         return failures
 
-    products = output.get("products") or output.get("series") or []
+    products = output.get("products") or []
     min_product_count = expect.get("min_product_count", 0)
     if len(products) < min_product_count:
         failures.append(f"product count expected >= {min_product_count}, got {len(products)}")
@@ -250,20 +243,17 @@ def assert_output(case: dict[str, Any], output: dict[str, Any]) -> list[str]:
 def summarize_output(output: dict[str, Any]) -> dict[str, Any]:
     query_plan = output.get("query_plan") or {}
     products = output.get("products") or []
-    series = output.get("series") or []
     items = output.get("items") or []
     diagnostics = output.get("diagnostics") or []
     return {
         "result_type": output.get("result_type"),
         "error_type": query_plan.get("error_type"),
         "diagnostic_code": diagnostics[0].get("code") if diagnostics else None,
-        "planner": query_plan.get("planner")
-        or (query_plan.get("compare_plan") or {}).get("planner"),
+        "planner": query_plan.get("planner"),
         "category": query_plan.get("category"),
         "brands": query_plan.get("brands"),
         "filters": query_plan.get("filters"),
         "product_count": len(products),
-        "series_count": len(series),
         "facet_count": len(items),
         "top_titles": [product.get("title") for product in products[:2]],
     }

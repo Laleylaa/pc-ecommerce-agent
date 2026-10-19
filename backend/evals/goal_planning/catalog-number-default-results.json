@@ -1,0 +1,512 @@
+{
+  "scope": "E30 synthetic boundary audit; scripted model, in-memory records, no external I/O",
+  "cases": [
+    {
+      "case": "order_explicit_selection_without_identity",
+      "query": "去年有哪些订单",
+      "expectation": "Invalid model selection gets RULE_ERROR feedback and one repair; no DB",
+      "model_calls": 1,
+      "reads": [],
+      "execution": {
+        "tool_name": "order_lookup",
+        "ok": true,
+        "output": {
+          "result_type": "planning_failed",
+          "order": null,
+          "candidates": [],
+          "analysis_orders": [],
+          "focus_order_ids": [],
+          "query_mode": "recent",
+          "total_match_count": 0,
+          "returned_count": 0,
+          "is_exhaustive": true,
+          "offset": 0,
+          "next_offset": null,
+          "query_plan": {
+            "error_type": "invalid_order_plan",
+            "fallback_reason": "explicit order selection requires a trusted order id"
+          },
+          "diagnostics": [
+            {
+              "code": "invalid_order_plan",
+              "severity": "error",
+              "message": "The Order Tool could not safely plan this request.",
+              "recommended_action": "ask_user_to_rephrase",
+              "details": {
+                "reason": "explicit order selection requires a trusted order id"
+              }
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "order_remaining_without_offset",
+      "query": "去年有哪些订单",
+      "expectation": "Invalid model selection gets RULE_ERROR feedback and one repair; no DB",
+      "model_calls": 1,
+      "reads": [],
+      "execution": {
+        "tool_name": "order_lookup",
+        "ok": true,
+        "output": {
+          "result_type": "planning_failed",
+          "order": null,
+          "candidates": [],
+          "analysis_orders": [],
+          "focus_order_ids": [],
+          "query_mode": "recent",
+          "total_match_count": 0,
+          "returned_count": 0,
+          "is_exhaustive": true,
+          "offset": 0,
+          "next_offset": null,
+          "query_plan": {
+            "error_type": "invalid_order_plan",
+            "fallback_reason": "remaining order selection requires trusted continuation context"
+          },
+          "diagnostics": [
+            {
+              "code": "invalid_order_plan",
+              "severity": "error",
+              "message": "The Order Tool could not safely plan this request.",
+              "recommended_action": "ask_user_to_rephrase",
+              "details": {
+                "reason": "remaining order selection requires trusted continuation context"
+              }
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "facet_conflicting_identities_bypass_source_checks",
+      "query": "请告诉我SPU 1的键盘配列有哪些",
+      "expectation": "No read of fabricated SKU 9999; multiple identity and source errors cannot be ignored",
+      "model_calls": 1,
+      "reads": [
+        {
+          "category": "键盘",
+          "scope": {
+            "sku_ids": [
+              9999
+            ],
+            "spu_ids": []
+          }
+        }
+      ],
+      "execution": {
+        "tool_name": "catalog_facets",
+        "ok": true,
+        "output": {
+          "result_type": "facets",
+          "facet": "spec_value",
+          "items": [
+            {
+              "value": "75%",
+              "spec_key": "style",
+              "values": [
+                {
+                  "value": "75%",
+                  "sku_ids": [
+                    9999
+                  ],
+                  "spu_ids": [
+                    2
+                  ]
+                }
+              ],
+              "count": 1,
+              "count_scope": "spu",
+              "sku_count": 1,
+              "spu_count": 1
+            }
+          ],
+          "category": "keyboard",
+          "brand": null,
+          "spec_key": "style",
+          "scope": null,
+          "total_value_count": 1,
+          "returned_count": 1,
+          "is_exhaustive": true,
+          "matching_complete": true,
+          "field_issues": [],
+          "query_plan": {
+            "selection": "object",
+            "name": "K01",
+            "target": {
+              "kind": "sku",
+              "id": 9999
+            },
+            "conditions": [],
+            "unsupported_requirements": [],
+            "query": "请告诉我SPU 1的键盘配列有哪些",
+            "facet": "spec_value",
+            "category": "keyboard",
+            "brand": null,
+            "spec_key": "style",
+            "min_price": null,
+            "max_price": null,
+            "filters": {},
+            "count_scope": "spu",
+            "limit": 20,
+            "supported": true,
+            "unsupported_reason": null,
+            "planner": "llm",
+            "normalization_debug": {}
+          },
+          "diagnostics": []
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "facet_bare_number_defaults_to_sku",
+      "query": "编号1有什么规格",
+      "expectation": "Bare catalog number defaults to SKU under the user's confirmed business rule",
+      "model_calls": 0,
+      "reads": [
+        {
+          "category": null,
+          "scope": {
+            "sku_ids": [
+              1
+            ],
+            "spu_ids": []
+          }
+        }
+      ],
+      "execution": {
+        "tool_name": "catalog_facets",
+        "ok": true,
+        "output": {
+          "result_type": "facets",
+          "facet": "spec_key",
+          "items": [
+            {
+              "value": "style",
+              "spec_key": "style",
+              "values": [
+                {
+                  "value": "75%",
+                  "sku_ids": [
+                    1
+                  ],
+                  "spu_ids": [
+                    1
+                  ]
+                }
+              ],
+              "count": 1,
+              "count_scope": "spu",
+              "sku_count": 1,
+              "spu_count": 1
+            }
+          ],
+          "category": null,
+          "brand": null,
+          "spec_key": null,
+          "scope": null,
+          "total_value_count": 1,
+          "returned_count": 1,
+          "is_exhaustive": true,
+          "matching_complete": true,
+          "field_issues": [],
+          "query_plan": {
+            "selection": "object",
+            "name": null,
+            "target": {
+              "kind": "sku",
+              "id": 1
+            },
+            "conditions": [],
+            "unsupported_requirements": [],
+            "query": "编号1有什么规格",
+            "facet": "spec_key",
+            "category": null,
+            "brand": null,
+            "spec_key": null,
+            "min_price": null,
+            "max_price": null,
+            "filters": {},
+            "count_scope": "spu",
+            "limit": 20,
+            "supported": true,
+            "unsupported_reason": null,
+            "planner": "rule_based",
+            "normalization_debug": {}
+          },
+          "diagnostics": []
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "facet_empty_object_specs_report_exhaustive",
+      "query": "这款有什么规格",
+      "expectation": "Report missing specification data instead of a conclusive no-match",
+      "model_calls": 0,
+      "reads": [
+        {
+          "category": null,
+          "scope": {
+            "sku_ids": [
+              1
+            ],
+            "spu_ids": []
+          }
+        }
+      ],
+      "execution": {
+        "tool_name": "catalog_facets",
+        "ok": true,
+        "output": {
+          "result_type": "empty",
+          "facet": "spec_key",
+          "items": [],
+          "category": null,
+          "brand": null,
+          "spec_key": null,
+          "scope": {
+            "sku_ids": [
+              1
+            ],
+            "spu_ids": []
+          },
+          "total_value_count": 0,
+          "returned_count": 0,
+          "is_exhaustive": true,
+          "matching_complete": true,
+          "field_issues": [],
+          "query_plan": {
+            "selection": "object",
+            "name": null,
+            "target": null,
+            "conditions": [],
+            "unsupported_requirements": [],
+            "query": "这款有什么规格",
+            "facet": "spec_key",
+            "category": null,
+            "brand": null,
+            "spec_key": null,
+            "min_price": null,
+            "max_price": null,
+            "filters": {},
+            "count_scope": "spu",
+            "limit": 20,
+            "supported": true,
+            "unsupported_reason": null,
+            "planner": "rule_based",
+            "normalization_debug": {}
+          },
+          "diagnostics": [
+            {
+              "code": "not_found",
+              "severity": "info",
+              "message": "No confirmed facet values",
+              "recommended_action": "use_result",
+              "details": {}
+            }
+          ]
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "facet_soft_preference_becomes_hard_filter",
+      "query": "键盘有哪些布局，最好白色，但其他颜色也可以",
+      "expectation": "Define and honor preference semantics, or explicitly reject unsupported preference; do not silently execute it as a requirement",
+      "model_calls": 1,
+      "reads": [
+        {
+          "category": "键盘",
+          "scope": {
+            "sku_ids": [],
+            "spu_ids": []
+          }
+        }
+      ],
+      "execution": {
+        "tool_name": "catalog_facets",
+        "ok": true,
+        "output": {
+          "result_type": "facets",
+          "facet": "spec_value",
+          "items": [
+            {
+              "value": "75%",
+              "spec_key": "style",
+              "values": [
+                {
+                  "value": "75%",
+                  "sku_ids": [
+                    1
+                  ],
+                  "spu_ids": [
+                    1
+                  ]
+                }
+              ],
+              "count": 1,
+              "count_scope": "spu",
+              "sku_count": 1,
+              "spu_count": 1
+            }
+          ],
+          "category": "keyboard",
+          "brand": null,
+          "spec_key": "style",
+          "scope": null,
+          "total_value_count": 1,
+          "returned_count": 1,
+          "is_exhaustive": true,
+          "matching_complete": true,
+          "field_issues": [],
+          "query_plan": {
+            "selection": "catalog",
+            "name": null,
+            "target": null,
+            "conditions": [
+              {
+                "key": "color",
+                "operator": "eq",
+                "values": [
+                  "白色"
+                ],
+                "evidence": "最好白色",
+                "strength": "preference",
+                "preference_evidence": "其他颜色也可以"
+              }
+            ],
+            "unsupported_requirements": [],
+            "query": "键盘有哪些布局，最好白色，但其他颜色也可以",
+            "facet": "spec_value",
+            "category": "keyboard",
+            "brand": null,
+            "spec_key": "style",
+            "min_price": null,
+            "max_price": null,
+            "filters": {},
+            "count_scope": "spu",
+            "limit": 20,
+            "supported": true,
+            "unsupported_reason": null,
+            "planner": "llm",
+            "normalization_debug": {}
+          },
+          "diagnostics": []
+        },
+        "error": null
+      }
+    },
+    {
+      "case": "facet_nonmatching_sku_contaminates_completeness",
+      "query": "白色键盘有哪些布局",
+      "expectation": "A known color mismatch cannot make the white-keyboard facet incomplete via other conflicts",
+      "model_calls": 1,
+      "reads": [
+        {
+          "category": "键盘",
+          "scope": {
+            "sku_ids": [],
+            "spu_ids": []
+          }
+        }
+      ],
+      "execution": {
+        "tool_name": "catalog_facets",
+        "ok": true,
+        "output": {
+          "result_type": "facets",
+          "facet": "spec_value",
+          "items": [
+            {
+              "value": "75%",
+              "spec_key": "style",
+              "values": [
+                {
+                  "value": "75%",
+                  "sku_ids": [
+                    1
+                  ],
+                  "spu_ids": [
+                    1
+                  ]
+                }
+              ],
+              "count": 1,
+              "count_scope": "spu",
+              "sku_count": 1,
+              "spu_count": 1
+            }
+          ],
+          "category": "keyboard",
+          "brand": null,
+          "spec_key": "style",
+          "scope": null,
+          "total_value_count": 1,
+          "returned_count": 1,
+          "is_exhaustive": false,
+          "matching_complete": false,
+          "field_issues": [
+            {
+              "sku_id": 2,
+              "field": "style",
+              "status": "conflict",
+              "values": [
+                "全尺寸",
+                "75%"
+              ]
+            }
+          ],
+          "query_plan": {
+            "selection": "catalog",
+            "name": null,
+            "target": null,
+            "conditions": [
+              {
+                "key": "color",
+                "operator": "eq",
+                "values": [
+                  "白色"
+                ],
+                "evidence": "白色",
+                "strength": "requirement",
+                "preference_evidence": null
+              }
+            ],
+            "unsupported_requirements": [],
+            "query": "白色键盘有哪些布局",
+            "facet": "spec_value",
+            "category": "keyboard",
+            "brand": null,
+            "spec_key": "style",
+            "min_price": null,
+            "max_price": null,
+            "filters": {},
+            "count_scope": "spu",
+            "limit": 20,
+            "supported": true,
+            "unsupported_reason": null,
+            "planner": "llm",
+            "normalization_debug": {}
+          },
+          "diagnostics": [
+            {
+              "code": "data_insufficient",
+              "severity": "warning",
+              "message": "Missing or conflicting SKU facts limit the result",
+              "recommended_action": "use_result",
+              "details": {
+                "unknown_sku_count": 0
+              }
+            }
+          ]
+        },
+        "error": null
+      }
+    }
+  ]
+}

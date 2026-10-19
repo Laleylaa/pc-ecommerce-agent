@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.agent.limits import TOOL_RETRY_POLICY
 from app.agent.outcomes import (
     build_subquery_ledger,
     is_active_ledger_entry,
@@ -15,7 +16,9 @@ from app.agent.prompts.static import (
 
 FAILURE_ACTION_RULES = {
     "retry_once": (
-        "允许对相同 Tool 和相同参数重试一次。若相同调用已经因相同错误失败两次，不得再次调用；"
+        "仅在code=timeout且retryable=true时允许对相同Tool和相同参数恢复。"
+        f"相同任务调用最多执行{TOOL_RETRY_POLICY.max_attempts}次（含首次）。"
+        "超时重试在当前wave内完成，不消耗依赖层数；达到尝试上限后不得再次调用；"
         "应说明暂时无法查询。"
     ),
     "replan_arguments": (
@@ -88,7 +91,7 @@ def build_tool_failure_prompt(
     for fingerprint, item in unique_failures.items():
         attempts = attempt_counts[fingerprint]
         attempt_note = f"相同调用与错误已失败 {attempts} 次"
-        if item["action"] == "retry_once" and attempts >= 2:
+        if item["action"] == "retry_once" and attempts >= TOOL_RETRY_POLICY.max_attempts:
             attempt_note += "，已达到重试上限"
         failure_lines.append(
             f"- {item['name']}：code={item['code']}，action={item['action']}，{attempt_note}。"

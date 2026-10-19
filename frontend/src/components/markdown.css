@@ -4,6 +4,7 @@
    ========================================================================== */
 
 .markdown-content {
+  min-width: 0;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -108,10 +109,16 @@
 }
 
 /* Tables */
+.markdown-content .markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
 .markdown-content table {
   width: 100%;
   border-collapse: collapse;
-  margin: var(--space-3) 0;
+  margin: 0;
   font-size: 13px;
 }
 
@@ -125,6 +132,8 @@
 }
 
 .markdown-content td {
+  min-width: 6em;
+  vertical-align: top;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);

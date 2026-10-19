@@ -1,0 +1,241 @@
+{
+  "scope": "Second pass: retire only verified obsolete/duplicated tests; keep current-contract regressions even if failing.",
+  "removed": [
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_fallback_does_not_emit_working_memory_as_tool_overrides",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_fallback_does_not_emit_long_term_preferences_as_tool_overrides",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_current_negative_catalog_request_stays_in_query",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_sync_runtime_tool_exception_degrades_to_safe_response",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_v2_working_query_plan_routes_generic_catalog_followup",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_stream_registry_failure_emits_tool_error_and_finishes_safely",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals",
+        "orchestration/test_tool_retry_policy.py::test_timeout_success_preserves_inputs_and_records_both_attempts"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_catalog_fallback_sends_current_query_without_structured_overrides",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_sync_runtime_uses_context_and_catalog_registry",
+      "reason": "Requires keyword-based no-model routing to execute a business tool. graph._request_route explicitly rejects unavailable LLM1 except input rules. Retires that fallback path, not the underlying query/history/error requirement.",
+      "retained_coverage": [
+        "orchestration/test_goal_task_integration.py::test_budget_replacement_uses_new_query_and_preserves_remaining_conditions",
+        "orchestration/test_goal_task_integration.py::test_unknown_name_search_binds_identity_into_scoped_object_facets",
+        "orchestration/test_request_router.py::test_planning_preserves_conditions_at_each_handoff",
+        "orchestration/test_planning_execution_policy.py::test_planning_payloads_exclude_old_runtime_controls_and_unrelated_context",
+        "orchestration/test_orchestrator_runtime_audit.py::test_sync_and_stream_both_cleanup_failure",
+        "orchestration/test_answer_handoff.py::test_full_graph_merges_tool_success_failure_and_non_tool_goals"
+      ]
+    },
+    {
+      "file": "orchestration/test_agent_tool_wiring.py",
+      "test": "test_document_search_runtime_supplies_default_top_k",
+      "reason": "Asserts an explicit limit=1 must be overwritten with default 3. Current public contract preserves explicit limits.",
+      "retained_coverage": [
+        "orchestration/test_planning_execution_policy.py::test_limit_survives_planning_runtime_and_formal_binding",
+        "knowledge/test_retrieval_tools.py::test_document_search_limit_bounds_returned_chunks"
+      ]
+    },
+    {
+      "file": "orchestration/test_boundary_classification.py",
+      "test": "test_purchase_guidance_direct_response_explains_read_only_order_flow",
+      "reason": "Requires an open-language purchase question to be routed without LLM1. Current input rules do not classify this request; no-model business fallback is retired.",
+      "retained_coverage": [
+        "orchestration/test_request_router.py::test_planning_terminal_classification_uses_current_rule_boundary",
+        "orchestration/test_request_router.py::test_direct_response_uses_dynamic_general_answer_prompt",
+        "orchestration/test_request_router.py::test_planning_order_write_preserves_llm1_handoff"
+      ]
+    },
+    {
+      "file": "orchestration/test_orchestrator.py",
+      "test": "test_third_orchestrator_call_cannot_start_third_tool_wave",
+      "reason": "Legacy budget unit test constructs an incomplete state without goals. Wave-limit stopping is already exercised with complete state and preservation of successful results.",
+      "retained_coverage": [
+        "orchestration/test_orchestrator_wave_loop_cases.py::test_wave_loop_terminal_cases",
+        "orchestration/test_orchestrator_wave_loop_cases.py::test_later_timeout_cannot_replace_first_wave_usable_result_at_limit",
+        "orchestration/test_goal_recovery.py::test_no_budget_never_dispatches_recovery"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_eval.py",
+      "test": "test_rule_based_product_plan_keeps_brand_as_safe_prefilter",
+      "reason": "Tests _plan_to_product_search translation used only by retired CatalogToolService.search. Formal search uses SearchPlan/CatalogSearchService/CatalogSearchRepository. Direct API repository checks and facet/shared validation checks remain.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_matching_subset_survives_model_enrichment",
+        "catalog/test_tool_planning_repairs.py::test_empty_search_repair_preserves_all_conditions_and_filters_same_sku",
+        "catalog/test_catalog_repository.py"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_eval.py",
+      "test": "test_rule_based_product_plan_avoids_overconstrained_sql_prefilter",
+      "reason": "Tests _plan_to_product_search translation used only by retired CatalogToolService.search. Formal search uses SearchPlan/CatalogSearchService/CatalogSearchRepository. Direct API repository checks and facet/shared validation checks remain.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_matching_subset_survives_model_enrichment",
+        "catalog/test_tool_planning_repairs.py::test_empty_search_repair_preserves_all_conditions_and_filters_same_sku",
+        "catalog/test_catalog_repository.py"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_eval.py",
+      "test": "test_llm_product_plan_avoids_numeric_spec_keyword_prefilter",
+      "reason": "Tests _plan_to_product_search translation used only by retired CatalogToolService.search. Formal search uses SearchPlan/CatalogSearchService/CatalogSearchRepository. Direct API repository checks and facet/shared validation checks remain.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_matching_subset_survives_model_enrichment",
+        "catalog/test_tool_planning_repairs.py::test_empty_search_repair_preserves_all_conditions_and_filters_same_sku",
+        "catalog/test_catalog_repository.py"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_eval.py",
+      "test": "test_llm_product_plan_avoids_overconstrained_model_keyword_prefilter",
+      "reason": "Tests _plan_to_product_search translation used only by retired CatalogToolService.search. Formal search uses SearchPlan/CatalogSearchService/CatalogSearchRepository. Direct API repository checks and facet/shared validation checks remain.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_matching_subset_survives_model_enrichment",
+        "catalog/test_tool_planning_repairs.py::test_empty_search_repair_preserves_all_conditions_and_filters_same_sku",
+        "catalog/test_catalog_repository.py"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_eval.py",
+      "test": "test_catalog_product_plan_to_search_request_preserves_structured_filters",
+      "reason": "Tests _plan_to_product_search translation used only by retired CatalogToolService.search. Formal search uses SearchPlan/CatalogSearchService/CatalogSearchRepository. Direct API repository checks and facet/shared validation checks remain.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_matching_subset_survives_model_enrichment",
+        "catalog/test_tool_planning_repairs.py::test_empty_search_repair_preserves_all_conditions_and_filters_same_sku",
+        "catalog/test_catalog_repository.py"
+      ]
+    },
+    {
+      "file": "catalog/test_catalog_tools.py",
+      "test": "test_catalog_search_prompt_contains_compact_enum_guidance",
+      "reason": "Literal guidance in _catalog_planner_system_prompt belongs to the retired ProductQueryPlan search model, not the formal SearchPlan planner.",
+      "retained_coverage": [
+        "catalog/test_catalog_search_tool.py::test_spec_matching_keeps_decimal_and_protocol_punctuation",
+        "catalog/test_catalog_query_stages.py::test_title_misuse_and_operator_errors_repair_together_before_query"
+      ]
+    }
+  ],
+  "base": "37c2337 plus preserved user worktree; after first directory cleanup",
+  "before": {
+    "passed": 1788,
+    "failed": 29,
+    "deselected_db": 31,
+    "test_definitions": 807
+  },
+  "after": {
+    "passed": 1782,
+    "failed": 17,
+    "deselected_db": 31,
+    "test_definitions": 790
+  },
+  "removed_expanded_cases": 18,
+  "removed_unused_helpers": [
+    "orchestration/test_agent_tool_wiring.py::PRODUCT",
+    "orchestration/test_agent_tool_wiring.py::SECOND_PRODUCT"
+  ],
+  "checks": [
+    "Retained test function AST identical",
+    "Production Python source hashes unchanged",
+    "No newly failing tests; 12 obsolete failing cases and 6 passing cases removed",
+    "No database/model/network evaluation; orchestration_audit_safety enabled"
+  ],
+  "remaining_failures": [
+    "knowledge/test_knowledge_rag.py::test_after_sales_fallback_answer_includes_knowledge_evidence",
+    "knowledge/test_knowledge_rag.py::test_multi_document_fallback_does_not_dump_raw_snippets",
+    "orchestration/test_agent_tool_wiring.py::test_equivalent_tool_call_reuses_previous_usable_result",
+    "orchestration/test_agent_tool_wiring.py::test_sync_runtime_uses_authenticated_order_lookup_and_preserves_order_shape",
+    "orchestration/test_agent_tracing.py::test_sse_can_be_closed_from_another_task_without_context_leak",
+    "orchestration/test_boundary_classification.py::test_handoff_answer_preserves_direct_part_and_uses_mixed_template",
+    "orchestration/test_orchestrator.py::test_route_path_uses_phase_specific_tool_bindings",
+    "orchestration/test_orchestrator.py::test_fallback_answer_renders_catalog_facets_result",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_recommendation_window_reaches_answer_as_total_and_primary_candidate",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_order_candidate_binds_detail_and_catalog_stays_independent",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_depends_on_only_passes_second_order_candidate_to_detail_wave",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_chained_goal_completes_while_capability_gap_offers_handoff[order-detail-plus-barcode-scan]",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_single_goal_expands_to_multiple_tasks[latest-order-candidate-then-detail]",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_single_goal_expands_to_multiple_tasks[recommendation-and-policy-in-parallel]",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_single_goal_expands_to_multiple_tasks[recommendation-and-knowledge-in-parallel]",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_single_goal_expands_to_multiple_tasks[facets-and-recommendation-in-parallel]",
+    "orchestration/test_plan_execute_scenarios.py::test_e2e_single_goal_expands_to_multiple_tasks[order-detail-chain-with-parallel-policy]"
+  ]
+}

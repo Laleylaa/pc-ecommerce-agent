@@ -29,6 +29,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ConversationTurn,
+  ExecutionDetails,
   EvidenceItem,
   HandoffRequest,
   HandoffRequestType,
@@ -186,6 +187,7 @@ export default function App() {
   }
 
   function resetActiveConversation() {
+    conversationDetailRequestVersionRef.current += 1;
     setConversationId(undefined);
     setInput("");
     setLoading(false);
@@ -357,14 +359,13 @@ export default function App() {
   }
 
   async function submitMessage(message: string, options: SubmitOptions = {}) {
-    const trimmed = message.trim();
-    if (!trimmed || loading) return;
+    if (loading || requestAbortRef.current) return;
 
     const shouldAppendUser = options.appendUser !== false;
     const userMessageId = options.messageId ?? crypto.randomUUID();
     const requestConversationId = options.conversationId ?? conversationId;
     const request: PendingRequest = {
-      message: trimmed,
+      message: message,
       conversationId: requestConversationId,
       messageId: userMessageId
     };
@@ -382,7 +383,7 @@ export default function App() {
         {
           id: userMessageId,
           role: "user",
-          content: trimmed,
+          content: message,
           createdAt: new Date().toISOString(),
           status: "sent"
         }
@@ -400,7 +401,7 @@ export default function App() {
         content: "",
         createdAt: new Date().toISOString(),
         status: "pending",
-        streamStage: "正在处理"
+        requestStage: "正在处理"
       }
     ]);
 
@@ -409,11 +410,11 @@ export default function App() {
 
     try {
       const response = await sendChat(
-        trimmed,
+        message,
         requestConversationId,
         abortController.signal
       );
-      applyFinalResponse(response, assistantMessageId, trimmed);
+      applyFinalResponse(response, assistantMessageId, message);
       if (response.memory_changes?.length) {
         void refreshMemories();
       }
@@ -430,7 +431,7 @@ export default function App() {
         updateMessage(assistantMessageId, (message) => ({
           ...message,
           status: "cancelled",
-          streamStage: "已取消"
+          requestStage: "已取消"
         }));
         return;
       }
@@ -443,7 +444,7 @@ export default function App() {
         ...message,
         status: "failed",
         content: message.content || requestError.message,
-        streamStage: undefined
+        requestStage: undefined
       }));
     } finally {
       setLoading(false);
@@ -483,7 +484,7 @@ export default function App() {
       content: response.answer,
       createdAt: receivedAt,
       status: "received",
-      streamStage: undefined,
+      requestStage: undefined,
       boundary: response.boundary,
       intent: response.intent,
       evidenceCount: response.evidence.length,
@@ -497,12 +498,12 @@ export default function App() {
       {
         id: crypto.randomUUID(),
         userMessage,
+        executionDetails: response.execution_details,
         assistantAnswer: response.answer,
-        intent: response.intent,
         boundary: response.boundary,
-        evidenceCount: response.evidence.length,
+        evidence: response.evidence,
         productCount: response.products.length,
-        orderId: currentTurnOrderId,
+        orderCount: returnedOrderCount(response.order, response.orders),
         suggestedActions: response.suggested_actions,
         createdAt: receivedAt
       }
@@ -857,12 +858,12 @@ function turnsFromHistory(detail: ConversationDetail): ConversationTurn[] {
     turns.push({
       id: `${user.id}-${assistant.id}`,
       userMessage: user.content,
+      executionDetails: executionDetailsFromMetadata(metadata.execution_details),
       assistantAnswer: assistant.content,
-      intent: typeof metadata.intent === "string" ? metadata.intent : "unknown",
       boundary,
-      evidenceCount: evidence.length,
+      evidence,
       productCount: products.length,
-      orderId: order?.id,
+      orderCount: returnedOrderCount(order, listFromMetadata<OrderSummary>(metadata.orders)),
       suggestedActions: [],
       createdAt: assistant.created_at
     });
@@ -967,4 +968,21 @@ function numberFromPayload(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function executionDetailsFromMetadata(value: unknown): ExecutionDetails | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const details = value as ExecutionDetails;
+  if (!Array.isArray(details.goals) || !Array.isArray(details.tool_calls)) return undefined;
+  return details;
+}
+
+function returnedOrderCount(
+  order: OrderCard | null | undefined,
+  orders: OrderSummary[]
+): number {
+  // Count only records returned in this turn, deduplicating a selected detail.
+  const ids = new Set(orders.map((item) => item.id));
+  if (order) ids.add(order.id);
+  return ids.size;
 }

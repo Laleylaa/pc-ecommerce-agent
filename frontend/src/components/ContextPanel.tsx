@@ -17,6 +17,7 @@ import {
   Truck
 } from "lucide-react";
 import { useState } from "react";
+import { TurnExecution } from "./TurnExecution";
 import { BoundaryBadge, BoundaryStatusCard, BoundaryStatusBar } from "./Boundary";
 import { EmptyState, displayValue, formatDateTime } from "./common";
 import { getCategoryIcon } from "../utils/category-icon";
@@ -134,7 +135,7 @@ export function ContextPanel({
         <div className="metrics-strip">
           <Metric icon={<Boxes size={14} />} label="SKU" value={skuCount} />
           <Metric icon={<Truck size={14} />} label="订单" value={orderCount} />
-          <Metric icon={<BookOpenText size={14} />} label="依据" value={evidenceCount} />
+          <Metric icon={<BookOpenText size={14} />} label="参考资料" value={evidenceCount} />
         </div>
       )}
 
@@ -203,9 +204,9 @@ export function ContextPanel({
           <div className="hero-icon">
             <MessageSquareText size={28} />
           </div>
-          <h3 className="hero-title">工作台详情</h3>
+          <h3 className="hero-title">相关信息</h3>
           <p className="hero-desc">
-            在左侧发送消息，这里会实时展示检索到的商品、订单和知识依据。
+            聊天中找到的商品、订单和参考资料会显示在这里。
           </p>
           <div className="hero-hints">
             <div className="hero-hint">
@@ -218,7 +219,7 @@ export function ContextPanel({
             </div>
             <div className="hero-hint">
               <BookOpenText size={14} />
-              <span>售后政策与知识依据</span>
+              <span>售后政策与选购知识</span>
             </div>
           </div>
         </section>
@@ -285,7 +286,7 @@ export function ContextPanel({
         <section className="panel-section">
           <div className="section-title">
             <BookOpenText size={14} />
-            <h2>依据</h2>
+            <h2>参考资料</h2>
             {evidence.length > 0 && <span className="section-count">{evidence.length}</span>}
           </div>
           {evidence.length > 0 ? (
@@ -295,7 +296,7 @@ export function ContextPanel({
               ))}
             </div>
           ) : (
-            <EmptyState text="回答带依据时展示" />
+            <EmptyState text="有参考资料时会显示在这里" />
           )}
         </section>
       )}
@@ -304,13 +305,13 @@ export function ContextPanel({
         <section className="panel-section">
           <div className="section-title">
             <History size={14} />
-            <h2>上下文</h2>
+            <h2>聊天记录</h2>
             {turns.length > 0 && <span className="section-count">{turns.length}</span>}
           </div>
           {turns.length > 0 ? (
             <ConversationTimeline turns={turns} />
           ) : (
-            <EmptyState text="多轮对话后展示" />
+            <EmptyState text="聊天后会显示在这里" />
           )}
         </section>
       )}
@@ -473,7 +474,8 @@ function HandoffPanel({
 }
 
 function ConversationTimeline({ turns }: { turns: ConversationTurn[] }) {
-  const recentTurns = turns.slice(-5).reverse();
+  const [showAll, setShowAll] = useState(false);
+  const recentTurns = (showAll ? turns : turns.slice(-5)).slice().reverse();
 
   return (
     <div className="turn-list">
@@ -485,19 +487,24 @@ function ConversationTimeline({ turns }: { turns: ConversationTurn[] }) {
           </header>
           <p>{turn.userMessage}</p>
           <div className="turn-facts">
-            <span>{turn.intent}</span>
-            <span>{turn.evidenceCount} 依据</span>
-            <span>{turn.productCount} 商品</span>
-            {turn.orderId && <span>订单 #{turn.orderId}</span>}
+            <span>商品 {turn.productCount}</span>
+            <span>订单 {turn.orderCount}</span>
           </div>
+          <TurnExecution details={turn.executionDetails} evidence={turn.evidence} />
         </article>
       ))}
+      {turns.length > 5 && <button type="button" className="ghost-button"
+        onClick={() => setShowAll((current) => !current)}>
+        {showAll ? "收起更早记录" : `查看更早的 ${turns.length - 5} 条记录`}
+      </button>}
     </div>
   );
 }
 
 function EvidenceCard({ evidence }: { evidence: EvidenceItem }) {
   const metadata = Object.entries(evidence.metadata).slice(0, 3);
+  const sourceUrl = evidence.source_type === "web_page" && /^https?:\/\//i.test(evidence.url ?? "")
+    ? evidence.url : null;
   return (
     <article className="evidence-card">
       <div className="evidence-card-head">
@@ -505,6 +512,7 @@ function EvidenceCard({ evidence }: { evidence: EvidenceItem }) {
         <span>{evidence.document_type}</span>
       </div>
       <p>{evidence.snippet}</p>
+      {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer">查看来源</a>}
       {metadata.length > 0 && (
         <div className="metadata-list">
           {metadata.map(([key, value]) => (
@@ -528,7 +536,9 @@ function ProductCardView({ product, highlighted }: { product: ProductCard; highl
   const displayTitle = isSeriesProduct && product.spu_title ? product.spu_title : product.title;
   const specLine = isSeriesProduct
     ? product.series_sku_count
-      ? `共 ${product.series_sku_count} 个在售版本`
+      ? product.match_kind
+        ? `本次候选含 ${product.series_sku_count} 个版本`
+        : `共 ${product.series_sku_count} 个在售版本`
       : "商品系列"
     : Object.entries(product.specs)
         .slice(0, 4)
@@ -544,7 +554,7 @@ function ProductCardView({ product, highlighted }: { product: ProductCard; highl
   const stockLabel =
     isSeriesProduct && product.series_total_stock !== null &&
     product.series_total_stock !== undefined
-      ? `系列库存 ${product.series_total_stock}`
+      ? `${product.match_kind ? "候选版本库存" : "系列库存"} ${product.series_total_stock}`
       : `库存 ${product.stock}`;
   return (
     <article className={`product-card${highlighted ? " highlighted" : ""}`}>
@@ -557,6 +567,8 @@ function ProductCardView({ product, highlighted }: { product: ProductCard; highl
       </div>
       <div>
         <h3>{displayTitle}</h3>
+        {product.match_kind === "alternative" && <small>替代候选，存在条件差异</small>}
+        {product.match_kind === "object_facts" && <small>对象资料，未确认满足全部要求</small>}
         <p>
           {product.brand} · {product.category}
         </p>

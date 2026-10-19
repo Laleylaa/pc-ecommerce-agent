@@ -1,0 +1,904 @@
+{
+  "model": "deepseek-flash",
+  "data_mode": "synthetic repositories; real tool services/planners; lexical fixture retrieval",
+  "results": [
+    {
+      "id": "office_layout",
+      "input": {
+        "id": "office_layout",
+        "message": "办公室用，白色蓝牙键盘300元以内，看看可选布局",
+        "dispositions": [
+          "tool_planning"
+        ],
+        "tools": [
+          "catalog_search",
+          "catalog_facets"
+        ],
+        "preserve": [
+          "办公室",
+          "白色",
+          "蓝牙",
+          "300",
+          "布局"
+        ]
+      },
+      "planning_failures": [
+        "tools: {} != {'catalog_search': 1, 'catalog_facets': 1}",
+        "llm2: search lost usage context",
+        "planning_error (see attempt outputs; no transport details recorded)"
+      ],
+      "information_issues": [],
+      "visited": [
+        "load_context",
+        "request_router",
+        "plan_tools"
+      ],
+      "llm1": {
+        "rewritten_query": "办公室用白色蓝牙键盘，300元以内，查看可选布局",
+        "goals": [
+          {
+            "id": "goal_1",
+            "query": "办公室用白色蓝牙键盘，预算300元以内，查看可选布局（键盘布局选项）",
+            "source_text": "办公室用，白色蓝牙键盘300元以内，看看可选布局",
+            "disposition": "tool_planning",
+            "context_refs": [],
+            "missing_information": []
+          }
+        ]
+      },
+      "llm2": null,
+      "llm_attempts": [
+        {
+          "tool_calls": [
+            {
+              "name": "route_request",
+              "args": {
+                "rewritten_query": "办公室用白色蓝牙键盘，300元以内，查看可选布局",
+                "goals": [
+                  {
+                    "id": "goal_1",
+                    "query": "办公室用白色蓝牙键盘，预算300元以内，查看可选布局（键盘布局选项）",
+                    "source_text": "办公室用，白色蓝牙键盘300元以内，看看可选布局",
+                    "disposition": "tool_planning",
+                    "context_refs": [],
+                    "missing_information": []
+                  }
+                ]
+              },
+              "id": "call_00_U6R4HtmDFzPDkyZ0BGFa7453",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "content": ""
+        },
+        {
+          "tool_calls": [],
+          "invalid_tool_calls": [
+            {
+              "type": "invalid_tool_call",
+              "id": "call_00_hQniOFYt5672DWATK7uG3824",
+              "name": "submit_execution_plan",
+              "args": "{\"goals\": [{\"goal_id\": \"goal_1\", \"tasks\": [{\"id\": \"task_1\", \"tool_name\": \"catalog_search\", \"arguments\": {\"query\": \"办公室用白色蓝牙键盘，预算300元以内\", \"category_hint\": \"键盘\", \"limit\": 5}, \"answer_role\": \"user_facing\"}, {\"id\": \"task_2\", \"tool_name\": \"catalog_facets\", \"arguments\": {\"query\": \"键盘布局选项 白色蓝牙键盘 300元以内\", \"limit\": 20}, \"depends_on\": [\"task_1\"], \"bindings\": [{\"source\": \"task_output\", \"ref\": \"task_1\", \"kind\": \"product\", \"selection\": \"object\"}], \"answer_role\": \"user_facing\"}]}]}}",
+              "error": "Function submit_execution_plan arguments:\n\n{\"goals\": [{\"goal_id\": \"goal_1\", \"tasks\": [{\"id\": \"task_1\", \"tool_name\": \"catalog_search\", \"arguments\": {\"query\": \"办公室用白色蓝牙键盘，预算300元以内\", \"category_hint\": \"键盘\", \"limit\": 5}, \"answer_role\": \"user_facing\"}, {\"id\": \"task_2\", \"tool_name\": \"catalog_facets\", \"arguments\": {\"query\": \"键盘布局选项 白色蓝牙键盘 300元以内\", \"limit\": 20}, \"depends_on\": [\"task_1\"], \"bindings\": [{\"source\": \"task_output\", \"ref\": \"task_1\", \"kind\": \"product\", \"selection\": \"object\"}], \"answer_role\": \"user_facing\"}]}]}}\n\nare not valid JSON. Received JSONDecodeError Extra data: line 1 column 473 (char 472)\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE "
+            }
+          ],
+          "content": ""
+        },
+        {
+          "tool_calls": [],
+          "invalid_tool_calls": [
+            {
+              "type": "invalid_tool_call",
+              "id": "call_00_C9sXKVy6iPlmKJAW0HSQ1754",
+              "name": "submit_execution_plan",
+              "args": "{\"goals\": [{\"goal_id\": \"goal_1\", \"tasks\": [{\"id\": \"task_1\", \"tool_name\": \"catalog_search\", \"arguments\": {\"query\": \"办公室用白色蓝牙键盘，预算300元以内\", \"category_hint\": \"键盘\", \"limit\": 5}, \"answer_role\": \"user_facing\"}, {\"id\": \"task_2\", \"tool_name\": \"catalog_facets\", \"arguments\": {\"query\": \"键盘布局选项 白色蓝牙键盘 300元以内\", \"limit\": 20}, \"depends_on\": [\"task_1\"], \"bindings\": [{\"source\": \"task_output\", \"ref\": \"task_1\", \"kind\": \"product\", \"selection\": \"object\"}], \"answer_role\": \"user_facing\"}]}]}}",
+              "error": "Function submit_execution_plan arguments:\n\n{\"goals\": [{\"goal_id\": \"goal_1\", \"tasks\": [{\"id\": \"task_1\", \"tool_name\": \"catalog_search\", \"arguments\": {\"query\": \"办公室用白色蓝牙键盘，预算300元以内\", \"category_hint\": \"键盘\", \"limit\": 5}, \"answer_role\": \"user_facing\"}, {\"id\": \"task_2\", \"tool_name\": \"catalog_facets\", \"arguments\": {\"query\": \"键盘布局选项 白色蓝牙键盘 300元以内\", \"limit\": 20}, \"depends_on\": [\"task_1\"], \"bindings\": [{\"source\": \"task_output\", \"ref\": \"task_1\", \"kind\": \"product\", \"selection\": \"object\"}], \"answer_role\": \"user_facing\"}]}]}}\n\nare not valid JSON. Received JSONDecodeError Extra data: line 1 column 473 (char 472)\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langchain/errors/OUTPUT_PARSING_FAILURE "
+            }
+          ],
+          "content": ""
+        }
+      ],
+      "tool_planner_outputs": [],
+      "tool_calls": [],
+      "tool_results": [],
+      "normalized": [],
+      "answer_context": {
+        "goals": [
+          {
+            "id": "goal_1",
+            "query": "办公室用白色蓝牙键盘，预算300元以内，查看可选布局（键盘布局选项）",
+            "disposition": "tool_planning",
+            "reason_code": "goal_router",
+            "missing_information": [],
+            "clarification_question": "",
+            "planning_pending": true,
+            "context_refs": []
+          }
+        ],
+        "blocked_tool_goals": [],
+        "goal_response_policy": "覆盖所有目标。澄清目标在查询后统一提出必要问题，不声称已完成待确认需求。直接回复目标也必须回答；安全与人工目标遵守边界，不承诺业务操作已执行。",
+        "rewritten_query": "办公室用白色蓝牙键盘，300元以内，查看可选布局",
+        "aggregation_contract": {
+          "coverage_target": "办公室用白色蓝牙键盘，300元以内，查看可选布局",
+          "required": [
+            "用 rewritten_query 检查聚合后的回复是否覆盖用户这一轮的完整目标",
+            "用各 Task 的 question、semantic_outcome 和 artifact.facts 决定具体回答内容"
+          ],
+          "forbidden": [
+            "把 rewritten_query 当成业务事实来源",
+            "用 rewritten_query 覆盖、补写或改变 Task 与 Tool Result"
+          ]
+        },
+        "completion": "none",
+        "tasks": [],
+        "resolved_task_ids": [],
+        "unresolved_task_ids": [],
+        "answerable_source_tool_call_ids": [],
+        "unavailable_parts": [
+          "办公室用白色蓝牙键盘，预算300元以内，查看可选布局（键盘布局选项）"
+        ],
+        "outcome_counts": {},
+        "recommended_control_action": "finish_unavailable",
+        "late_handoff_policy": "Answer 阶段不得自行决定是否转人工。Runtime 会把 unsupported_capability 确定性地转换为人工确认入口；其他未完成结果不得转人工。response 不得自行写确认问句或声称已经转接、提交、记录或办理，固定问句由 Runtime 渲染。"
+      },
+      "memory": {
+        "schema_version": 2,
+        "catalog": {
+          "query_plan": {},
+          "search_page": null,
+          "comparison": {
+            "query": null,
+            "comparison_level": "sku",
+            "sku_ids": [],
+            "spu_ids": [],
+            "comparison_fields": []
+          },
+          "candidate_spu_ids": [],
+          "candidate_sku_ids": [],
+          "candidate_display": [],
+          "referenced_spu_id": null,
+          "referenced_sku_id": null
+        },
+        "order": {
+          "last_order_id": null,
+          "candidate_order_ids": [],
+          "total_match_count": 0,
+          "returned_count": 0,
+          "is_exhaustive": true,
+          "next_offset": null
+        },
+        "policy": {
+          "last_query": null,
+          "evidence_refs": []
+        },
+        "handoff": {
+          "order_id": null,
+          "request_type": null,
+          "reason": null
+        }
+      }
+    },
+    {
+      "id": "recent_orders",
+      "input": {
+        "id": "recent_orders",
+        "message": "查一下我最近的订单和物流状态",
+        "dispositions": [
+          "tool_planning"
+        ],
+        "tools": [
+          "order_lookup"
+        ],
+        "flex_goal_count": true,
+        "tool_alternatives": [
+          [
+            "order_lookup",
+            "order_lookup"
+          ]
+        ],
+        "expectation_note": "用户确认订单与物流拆成多个目标可接受；任务ID仍须全局唯一。"
+      },
+      "planning_failures": [],
+      "information_issues": [],
+      "visited": [
+        "load_context",
+        "request_router",
+        "plan_tools",
+        "orchestrate",
+        "execute_tool_wave",
+        "normalize_tool_results",
+        "extract_task_artifacts",
+        "update_subquery_ledger"
+      ],
+      "llm1": {
+        "rewritten_query": "查询我最近的订单及这些订单的物流状态",
+        "goals": [
+          {
+            "id": "goal_1",
+            "query": "查询我最近的订单列表",
+            "source_text": "查一下我最近的订单和物流状态",
+            "disposition": "tool_planning",
+            "context_refs": [],
+            "missing_information": []
+          },
+          {
+            "id": "goal_2",
+            "query": "查询我最近订单的物流状态",
+            "source_text": "查一下我最近的订单和物流状态",
+            "disposition": "tool_planning",
+            "context_refs": [],
+            "missing_information": []
+          }
+        ]
+      },
+      "llm2": {
+        "goals": [
+          {
+            "goal_id": "goal_1",
+            "tasks": [
+              {
+                "id": "task_1",
+                "tool_name": "order_lookup",
+                "arguments": {
+                  "query": "查询我最近的订单列表",
+                  "limit": 5,
+                  "offset": 0
+                },
+                "depends_on": [],
+                "bindings": [],
+                "page_from": null,
+                "require_exact_dependencies": true,
+                "answer_role": "user_facing"
+              }
+            ],
+            "blocked_reason": null
+          },
+          {
+            "goal_id": "goal_2",
+            "tasks": [
+              {
+                "id": "task_2",
+                "tool_name": "order_lookup",
+                "arguments": {
+                  "query": "查询我最近订单的物流状态",
+                  "limit": 5,
+                  "offset": 0
+                },
+                "depends_on": [],
+                "bindings": [],
+                "page_from": null,
+                "require_exact_dependencies": true,
+                "answer_role": "user_facing"
+              }
+            ],
+            "blocked_reason": null
+          }
+        ]
+      },
+      "llm_attempts": [
+        {
+          "tool_calls": [
+            {
+              "name": "route_request",
+              "args": {
+                "rewritten_query": "查询我最近的订单及这些订单的物流状态",
+                "goals": [
+                  {
+                    "id": "goal_1",
+                    "query": "查询我最近的订单列表",
+                    "source_text": "查一下我最近的订单和物流状态",
+                    "disposition": "tool_planning"
+                  },
+                  {
+                    "id": "goal_2",
+                    "query": "查询我最近订单的物流状态",
+                    "source_text": "查一下我最近的订单和物流状态",
+                    "disposition": "tool_planning"
+                  }
+                ]
+              },
+              "id": "call_00_5VG0BllkKWkpXdOVXxiP9627",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "content": ""
+        },
+        {
+          "tool_calls": [
+            {
+              "name": "submit_execution_plan",
+              "args": {
+                "goals": [
+                  {
+                    "goal_id": "goal_1",
+                    "tasks": [
+                      {
+                        "id": "task_1",
+                        "tool_name": "order_lookup",
+                        "arguments": {
+                          "query": "查询我最近的订单列表",
+                          "limit": 5,
+                          "offset": 0
+                        },
+                        "answer_role": "user_facing"
+                      }
+                    ]
+                  },
+                  {
+                    "goal_id": "goal_2",
+                    "tasks": [
+                      {
+                        "id": "task_1",
+                        "tool_name": "order_lookup",
+                        "arguments": {
+                          "query": "查询我最近订单的物流状态",
+                          "limit": 5,
+                          "offset": 0
+                        },
+                        "answer_role": "user_facing"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "id": "call_00_RpkJa0pC7HTpREjeTjBd3808",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "content": ""
+        },
+        {
+          "tool_calls": [
+            {
+              "name": "submit_execution_plan",
+              "args": {
+                "goals": [
+                  {
+                    "goal_id": "goal_1",
+                    "tasks": [
+                      {
+                        "id": "task_1",
+                        "tool_name": "order_lookup",
+                        "arguments": {
+                          "query": "查询我最近的订单列表",
+                          "limit": 5,
+                          "offset": 0
+                        },
+                        "answer_role": "user_facing"
+                      }
+                    ]
+                  },
+                  {
+                    "goal_id": "goal_2",
+                    "tasks": [
+                      {
+                        "id": "task_2",
+                        "tool_name": "order_lookup",
+                        "arguments": {
+                          "query": "查询我最近订单的物流状态",
+                          "limit": 5,
+                          "offset": 0
+                        },
+                        "answer_role": "user_facing"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "id": "call_00_33rEdEWIGcONAlhj98GQ1619",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "content": ""
+        }
+      ],
+      "tool_planner_outputs": [],
+      "tool_calls": [
+        {
+          "name": "order_lookup",
+          "arguments": {
+            "query": "查询我最近的订单列表",
+            "limit": 5,
+            "offset": 0
+          },
+          "runtime_context": {
+            "user_id": 1
+          }
+        },
+        {
+          "name": "order_lookup",
+          "arguments": {
+            "query": "查询我最近订单的物流状态",
+            "limit": 5,
+            "offset": 0
+          },
+          "runtime_context": {
+            "user_id": 1
+          }
+        }
+      ],
+      "tool_results": [
+        {
+          "tool_call_id": "planned_task_1",
+          "name": "order_lookup",
+          "execution": {
+            "tool_name": "order_lookup",
+            "ok": true,
+            "output": {
+              "result_type": "order_candidates",
+              "order": null,
+              "candidates": [
+                {
+                  "id": 7001,
+                  "status": 3,
+                  "status_label": "已发货",
+                  "total_amount": "199",
+                  "pay_amount": "199",
+                  "created_at": "2026-09-28T12:00:00",
+                  "item_count": 1,
+                  "first_item_name": "测试订单中的K380",
+                  "express_company": "测试物流",
+                  "logistic_no": "TEST-ONLY-001",
+                  "latest_logistics_event": {
+                    "time": "2026-09-29 12:00",
+                    "description": "测试包裹运输中"
+                  }
+                }
+              ],
+              "analysis_orders": [],
+              "focus_order_ids": [
+                7001
+              ],
+              "query_mode": "recent",
+              "total_match_count": 1,
+              "returned_count": 1,
+              "is_exhaustive": true,
+              "offset": 0,
+              "next_offset": null,
+              "query_plan": {
+                "query": "查询我最近的订单列表",
+                "selection": "recent",
+                "operation": "list",
+                "requested_fields": [
+                  "order_summary"
+                ],
+                "limit": 5,
+                "offset": 0,
+                "planner": "deterministic",
+                "fallback_reason": null,
+                "order_id": null,
+                "result_shape": "summary",
+                "query_mode": "recent",
+                "supported_fields": [
+                  "created_at",
+                  "express_company",
+                  "first_item_name",
+                  "item_count",
+                  "latest_logistics_event",
+                  "logistic_no",
+                  "order_id",
+                  "order_status",
+                  "pay_amount",
+                  "total_amount"
+                ],
+                "unsupported_fields": [],
+                "supported": true,
+                "fully_supported": true
+              },
+              "diagnostics": []
+            },
+            "error": null
+          }
+        },
+        {
+          "tool_call_id": "planned_task_2",
+          "name": "order_lookup",
+          "execution": {
+            "tool_name": "order_lookup",
+            "ok": true,
+            "output": {
+              "result_type": "order_candidates",
+              "order": null,
+              "candidates": [
+                {
+                  "id": 7001,
+                  "status": 3,
+                  "status_label": "已发货",
+                  "total_amount": "199",
+                  "pay_amount": "199",
+                  "created_at": "2026-09-28T12:00:00",
+                  "item_count": 1,
+                  "first_item_name": "测试订单中的K380",
+                  "express_company": "测试物流",
+                  "logistic_no": "TEST-ONLY-001",
+                  "latest_logistics_event": {
+                    "time": "2026-09-29 12:00",
+                    "description": "测试包裹运输中"
+                  }
+                }
+              ],
+              "analysis_orders": [],
+              "focus_order_ids": [
+                7001
+              ],
+              "query_mode": "recent",
+              "total_match_count": 1,
+              "returned_count": 1,
+              "is_exhaustive": true,
+              "offset": 0,
+              "next_offset": null,
+              "query_plan": {
+                "query": "查询我最近订单的物流状态",
+                "selection": "recent",
+                "operation": "list",
+                "requested_fields": [
+                  "order_status",
+                  "order_shipping_info"
+                ],
+                "limit": 5,
+                "offset": 0,
+                "planner": "deterministic",
+                "fallback_reason": null,
+                "order_id": null,
+                "result_shape": "summary",
+                "query_mode": "recent",
+                "supported_fields": [
+                  "express_company",
+                  "latest_logistics_event",
+                  "logistic_no",
+                  "order_status"
+                ],
+                "unsupported_fields": [],
+                "supported": true,
+                "fully_supported": true
+              },
+              "diagnostics": []
+            },
+            "error": null
+          }
+        }
+      ],
+      "normalized": [
+        {
+          "tool_call_id": "planned_task_1",
+          "tool_name": "order_lookup",
+          "outcome": "usable",
+          "result_type": "order_candidates",
+          "has_usable_information": true,
+          "reason": "order_candidates_found"
+        },
+        {
+          "tool_call_id": "planned_task_2",
+          "tool_name": "order_lookup",
+          "outcome": "usable",
+          "result_type": "order_candidates",
+          "has_usable_information": true,
+          "reason": "order_candidates_found"
+        }
+      ],
+      "answer_context": {
+        "goals": [
+          {
+            "id": "goal_1",
+            "query": "查询我最近的订单列表",
+            "disposition": "tool_planning",
+            "reason_code": "goal_router",
+            "missing_information": [],
+            "clarification_question": "",
+            "planning_pending": false,
+            "context_refs": []
+          },
+          {
+            "id": "goal_2",
+            "query": "查询我最近订单的物流状态",
+            "disposition": "tool_planning",
+            "reason_code": "goal_router",
+            "missing_information": [],
+            "clarification_question": "",
+            "planning_pending": false,
+            "context_refs": []
+          }
+        ],
+        "blocked_tool_goals": [],
+        "goal_response_policy": "覆盖所有目标。澄清目标在查询后统一提出必要问题，不声称已完成待确认需求。直接回复目标也必须回答；安全与人工目标遵守边界，不承诺业务操作已执行。",
+        "rewritten_query": "查询我最近的订单及这些订单的物流状态",
+        "aggregation_contract": {
+          "coverage_target": "查询我最近的订单及这些订单的物流状态",
+          "required": [
+            "用 rewritten_query 检查聚合后的回复是否覆盖用户这一轮的完整目标",
+            "用各 Task 的 question、semantic_outcome 和 artifact.facts 决定具体回答内容"
+          ],
+          "forbidden": [
+            "把 rewritten_query 当成业务事实来源",
+            "用 rewritten_query 覆盖、补写或改变 Task 与 Tool Result"
+          ]
+        },
+        "completion": "full",
+        "tasks": [
+          {
+            "task_id": "task_1",
+            "goal_id": "goal_1",
+            "question": "查询我最近的订单列表",
+            "status": "succeeded",
+            "semantic_outcome": "answered_with_facts",
+            "resolved": true,
+            "artifact": {
+              "type": "order",
+              "facts": {
+                "order": null,
+                "candidates": [
+                  {
+                    "id": 7001,
+                    "status": 3,
+                    "status_label": "已发货",
+                    "total_amount": "199",
+                    "pay_amount": "199",
+                    "created_at": "2026-09-28T12:00:00",
+                    "item_count": 1,
+                    "first_item_name": "测试订单中的K380",
+                    "express_company": "测试物流",
+                    "logistic_no": "TEST-ONLY-001",
+                    "latest_logistics_event": {
+                      "time": "2026-09-29 12:00",
+                      "description": "测试包裹运输中"
+                    }
+                  }
+                ],
+                "analysis_orders": [],
+                "focus_order_ids": [
+                  7001
+                ],
+                "result_type": "order_candidates",
+                "query_mode": "recent",
+                "total_match_count": 1,
+                "returned_count": 1,
+                "is_exhaustive": true,
+                "offset": 0,
+                "next_offset": null,
+                "query_plan": {
+                  "query": "查询我最近的订单列表",
+                  "selection": "recent",
+                  "operation": "list",
+                  "requested_fields": [
+                    "order_summary"
+                  ],
+                  "limit": 5,
+                  "offset": 0,
+                  "planner": "deterministic",
+                  "fallback_reason": null,
+                  "order_id": null,
+                  "result_shape": "summary",
+                  "query_mode": "recent",
+                  "supported_fields": [
+                    "created_at",
+                    "express_company",
+                    "first_item_name",
+                    "item_count",
+                    "latest_logistics_event",
+                    "logistic_no",
+                    "order_id",
+                    "order_status",
+                    "pay_amount",
+                    "total_amount"
+                  ],
+                  "unsupported_fields": [],
+                  "supported": true,
+                  "fully_supported": true
+                },
+                "diagnostics": []
+              },
+              "source_tool_call_id": "planned_task_1",
+              "source_tool_name": "order_lookup"
+            },
+            "response_contract": {
+              "coverage_gate": {
+                "provided_fields": [
+                  "订单号",
+                  "订单状态",
+                  "订单总金额",
+                  "实付金额",
+                  "下单时间",
+                  "商品数量",
+                  "首个商品名称",
+                  "物流单号",
+                  "商品明细（仅单笔订单或 analysis_orders）",
+                  "运费、支付/发货时间（仅单笔订单或 analysis_orders）",
+                  "物流公司、状态和轨迹（仅单笔订单或 analysis_orders）"
+                ],
+                "not_provided_fields": [
+                  "收件人姓名",
+                  "收件人手机号",
+                  "收货地址",
+                  "支付方式",
+                  "预计送达时间或还需多久到货",
+                  "批量地址表或导出文件"
+                ],
+                "priority": "在 semantic_outcome、completion、recommended_control_action 和 required 之前执行",
+                "on_missing_core_field": "如果 Task question 的核心目标属于 not_provided_fields，忽略后续订单摘要展示要求；调用 finish_unavailable，设置 observation_coverage_failure=true，used_tool_call_ids 留空，且不要把 provided_fields 当作部分答案。"
+              },
+              "required": [
+                "明确说明用户共有 1 个订单",
+                "列出本次返回的 1 个订单摘要，不自动选择第一单",
+                "只使用订单摘要实际提供的订单号、状态、订单总金额、实付金额、下单时间、商品数量、首个商品名称、物流公司、物流单号和最新物流事件"
+              ],
+              "forbidden": [
+                "把本次返回数量说成总订单数",
+                "Observation 未提供收件人姓名、手机号或收货地址时声称已经回答这些字段",
+                "把物流轨迹事件时间解释成预计送达时间",
+                "声称修改、取消、催促或办理了订单操作"
+              ]
+            },
+            "explanation": "Tool 返回了可直接支持当前 Task 的结构化事实。"
+          },
+          {
+            "task_id": "task_2",
+            "goal_id": "goal_2",
+            "question": "查询我最近订单的物流状态",
+            "status": "succeeded",
+            "semantic_outcome": "answered_with_facts",
+            "resolved": true,
+            "artifact": {
+              "type": "order",
+              "facts": {
+                "order": null,
+                "candidates": [
+                  {
+                    "id": 7001,
+                    "status": 3,
+                    "status_label": "已发货",
+                    "total_amount": "199",
+                    "pay_amount": "199",
+                    "created_at": "2026-09-28T12:00:00",
+                    "item_count": 1,
+                    "first_item_name": "测试订单中的K380",
+                    "express_company": "测试物流",
+                    "logistic_no": "TEST-ONLY-001",
+                    "latest_logistics_event": {
+                      "time": "2026-09-29 12:00",
+                      "description": "测试包裹运输中"
+                    }
+                  }
+                ],
+                "analysis_orders": [],
+                "focus_order_ids": [
+                  7001
+                ],
+                "result_type": "order_candidates",
+                "query_mode": "recent",
+                "total_match_count": 1,
+                "returned_count": 1,
+                "is_exhaustive": true,
+                "offset": 0,
+                "next_offset": null,
+                "query_plan": {
+                  "query": "查询我最近订单的物流状态",
+                  "selection": "recent",
+                  "operation": "list",
+                  "requested_fields": [
+                    "order_status",
+                    "order_shipping_info"
+                  ],
+                  "limit": 5,
+                  "offset": 0,
+                  "planner": "deterministic",
+                  "fallback_reason": null,
+                  "order_id": null,
+                  "result_shape": "summary",
+                  "query_mode": "recent",
+                  "supported_fields": [
+                    "express_company",
+                    "latest_logistics_event",
+                    "logistic_no",
+                    "order_status"
+                  ],
+                  "unsupported_fields": [],
+                  "supported": true,
+                  "fully_supported": true
+                },
+                "diagnostics": []
+              },
+              "source_tool_call_id": "planned_task_2",
+              "source_tool_name": "order_lookup"
+            },
+            "response_contract": {
+              "coverage_gate": {
+                "provided_fields": [
+                  "订单号",
+                  "订单状态",
+                  "订单总金额",
+                  "实付金额",
+                  "下单时间",
+                  "商品数量",
+                  "首个商品名称",
+                  "物流单号",
+                  "商品明细（仅单笔订单或 analysis_orders）",
+                  "运费、支付/发货时间（仅单笔订单或 analysis_orders）",
+                  "物流公司、状态和轨迹（仅单笔订单或 analysis_orders）"
+                ],
+                "not_provided_fields": [
+                  "收件人姓名",
+                  "收件人手机号",
+                  "收货地址",
+                  "支付方式",
+                  "预计送达时间或还需多久到货",
+                  "批量地址表或导出文件"
+                ],
+                "priority": "在 semantic_outcome、completion、recommended_control_action 和 required 之前执行",
+                "on_missing_core_field": "如果 Task question 的核心目标属于 not_provided_fields，忽略后续订单摘要展示要求；调用 finish_unavailable，设置 observation_coverage_failure=true，used_tool_call_ids 留空，且不要把 provided_fields 当作部分答案。"
+              },
+              "required": [
+                "明确说明用户共有 1 个订单",
+                "列出本次返回的 1 个订单摘要，不自动选择第一单",
+                "只使用订单摘要实际提供的订单号、状态、订单总金额、实付金额、下单时间、商品数量、首个商品名称、物流公司、物流单号和最新物流事件"
+              ],
+              "forbidden": [
+                "把本次返回数量说成总订单数",
+                "Observation 未提供收件人姓名、手机号或收货地址时声称已经回答这些字段",
+                "把物流轨迹事件时间解释成预计送达时间",
+                "声称修改、取消、催促或办理了订单操作"
+              ]
+            },
+            "explanation": "Tool 返回了可直接支持当前 Task 的结构化事实。"
+          }
+        ],
+        "resolved_task_ids": [
+          "task_1",
+          "task_2"
+        ],
+        "unresolved_task_ids": [],
+        "answerable_source_tool_call_ids": [
+          "planned_task_1",
+          "planned_task_2"
+        ],
+        "unavailable_parts": [],
+        "outcome_counts": {
+          "answered_with_facts": 2
+        },
+        "recommended_control_action": "finish_answer",
+        "late_handoff_policy": "Answer 阶段不得自行决定是否转人工。Runtime 会把 unsupported_capability 确定性地转换为人工确认入口；其他未完成结果不得转人工。response 不得自行写确认问句或声称已经转接、提交、记录或办理，固定问句由 Runtime 渲染。"
+      },
+      "memory": {
+        "schema_version": 2,
+        "catalog": {
+          "query_plan": {},
+          "search_page": null,
+          "comparison": {
+            "query": null,
+            "comparison_level": "sku",
+            "sku_ids": [],
+            "spu_ids": [],
+            "comparison_fields": []
+          },
+          "candidate_spu_ids": [],
+          "candidate_sku_ids": [],
+          "candidate_display": [],
+          "referenced_spu_id": null,
+          "referenced_sku_id": null
+        },
+        "order": {
+          "last_order_id": 7001,
+          "candidate_order_ids": [
+            7001
+          ],
+          "total_match_count": 1,
+          "returned_count": 1,
+          "is_exhaustive": true,
+          "next_offset": null
+        },
+        "policy": {
+          "last_query": null,
+          "evidence_refs": []
+        },
+        "handoff": {
+          "order_id": null,
+          "request_type": null,
+          "reason": null
+        }
+      }
+    }
+  ]
+}

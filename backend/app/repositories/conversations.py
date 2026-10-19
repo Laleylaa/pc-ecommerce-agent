@@ -200,7 +200,7 @@ class ConversationRepository:
         self, run_id: int, intent: str | None, state: dict, error: dict[str, str]
     ) -> None:
         run = await self.session.get(AgentRun, run_id)
-        if not run:
+        if not run or run.status != "running":
             return
         run.status = "failed"
         run.intent = intent

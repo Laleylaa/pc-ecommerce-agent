@@ -12,7 +12,7 @@ def main() -> None:
     index = _load_vector_index(DEFAULT_KNOWLEDGE_VECTOR_INDEX_PATH, DEFAULT_KNOWLEDGE_DOCUMENT_PATH)
     if index is None:
         raise SystemExit("Knowledge index missing or stale. Run make knowledge-index first.")
-    provider = SentenceTransformerEmbeddingProvider()
+    provider = SentenceTransformerEmbeddingProvider(allow_download=True)
     if index.embedding_model != provider.model_name:
         raise SystemExit("Knowledge index uses a different model. Run make knowledge-index.")
     embedding = provider.embed_query("本地知识检索模型检查")

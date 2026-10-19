@@ -10,7 +10,6 @@ from app.core.config import Settings, get_settings
 from app.models import AgentRun
 from app.repositories.conversations import ConversationRepository
 from app.schemas.context import (
-    CatalogComparisonMemory,
     CatalogDisplayIdentity,
     CatalogMemory,
     ContextMessage,
@@ -131,7 +130,7 @@ class ConversationContextService:
         memories = await self.repository.list_memory(user_id)
         user_message = await self.repository.add_message(conversation.id, "user", message)
         run = await self.repository.start_run(conversation.id)
-        return PreparedTurn(
+        prepared = PreparedTurn(
             user_id=user_id,
             conversation_id=conversation.id,
             user_message_id=user_message.id,
@@ -155,6 +154,9 @@ class ConversationContextService:
             retained_turns=history.retained_turns,
             dropped_turns=history.dropped_turns,
         )
+        # The accepted request survives a later answer/memory transaction rollback.
+        await self.session.commit()
+        return prepared
 
     async def complete_turn(
         self, prepared_turn: PreparedTurn, outcome: Mapping[str, Any] | BaseModel
@@ -229,18 +231,13 @@ class ConversationContextService:
 
 
 def _next_working_memory(previous: WorkingMemoryV2, state: dict[str, Any]) -> WorkingMemoryV2:
-    supplied = state.get("working_memory")
-    if isinstance(supplied, dict):
-        return upgrade_working_memory(supplied)
-
+    # The service owns memory writes. Model plans/text and caller-supplied memory are not facts;
+    # only runtime projections of tool results may refresh object identities below.
     catalog = previous.catalog.model_copy(deep=True)
     parsed = state.get("parsed") if isinstance(state.get("parsed"), dict) else {}
     query_plan = parsed.get("product_search")
     if isinstance(query_plan, dict):
         catalog.query_plan = CatalogMemory(query_plan=query_plan).query_plan
-    comparison = parsed.get("catalog_comparison")
-    if isinstance(comparison, dict):
-        catalog.comparison = CatalogComparisonMemory.model_validate(comparison)
     products = state.get("products") if isinstance(state.get("products"), list) else []
     if products or state.get("catalog_tool_succeeded") is True:
         catalog.candidate_spu_ids = _object_ids(products, "spu_id")
@@ -260,6 +257,12 @@ def _next_working_memory(previous: WorkingMemoryV2, state: dict[str, Any]) -> Wo
     order_context_ids = parsed.get("order_context_ids")
     order_query = parsed.get("order_query")
     if isinstance(order_query, dict):
+        order_memory.pending_suggestions = type(order_memory).model_validate({
+            "pending_suggestions": order_query.get("pending_suggestions", []),
+        }).pending_suggestions
+        if order_query.get("result_type") == "order_suggestions":
+            order = None
+            order_context_ids = []
         current_order_id = _optional_object_int(order, "id") if order is not None else None
         if current_order_id is not None:
             context_order_ids = [current_order_id]
@@ -283,8 +286,6 @@ def _next_working_memory(previous: WorkingMemoryV2, state: dict[str, Any]) -> Wo
         order_memory.total_match_count = int(order_query.get("total_match_count") or 0)
         order_memory.returned_count = int(order_query.get("returned_count") or 0)
         order_memory.is_exhaustive = bool(order_query.get("is_exhaustive", True))
-        next_offset = order_query.get("next_offset")
-        order_memory.next_offset = next_offset if isinstance(next_offset, int) else None
 
     policy = previous.policy.model_copy(deep=True)
     evidence = state.get("evidence") if isinstance(state.get("evidence"), list) else []
@@ -369,12 +370,12 @@ def _catalog_display_identities(items: list[Any]) -> list[CatalogDisplayIdentity
                 spu_id=spu_id,
                 sku_id=sku_id,
                 title=str(title),
-                entity_scope=(
-                    entity_scope if entity_scope in {"sku", "spu"} else "sku"
-                ),
+                entity_scope=(entity_scope if entity_scope in {"sku", "spu"} else "sku"),
                 brand=_optional_string(_message_value(item, "brand")),
                 category=_optional_string(_message_value(item, "category")),
                 image_url=_optional_string(_message_value(item, "image_url")),
+                candidate_sku_ids=_message_value(item, "candidate_sku_ids") or [],
+                match_kind=_message_value(item, "match_kind"),
             )
         )
     return identities

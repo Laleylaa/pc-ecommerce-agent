@@ -4,6 +4,8 @@ from typing import Any, Literal
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.catalog_search import SearchScope
+
 RouteDisposition = Literal[
     "tool_planning",
     "direct_response",
@@ -15,7 +17,6 @@ RouteDisposition = Literal[
 ]
 RouteCapability = Literal[
     "catalog_search",
-    "catalog_compare",
     "catalog_facets",
     "order_lookup",
     "policy_search",
@@ -26,7 +27,6 @@ TaskArtifact = Literal[
     "result",
     "products",
     "ranked_product",
-    "comparison",
     "facets",
     "order",
     "documents",
@@ -46,7 +46,6 @@ class TaskInputRequirement(BaseModel):
     source: Literal[
         "context_product",
         "context_order",
-        "comparison_context",
         "catalog_candidates",
         "order_candidates",
         "task_output",
@@ -84,16 +83,15 @@ class RoutedTask(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=_TASK_ID_PATTERN, max_length=24)
-    goal_id: str = Field(pattern=_GOAL_ID_PATTERN, max_length=24)
-    canonical_query: str = Field(min_length=1, max_length=1000)
+    id: str = Field(pattern=_TASK_ID_PATTERN)
+    goal_id: str = Field(pattern=_GOAL_ID_PATTERN)
+    canonical_query: str = Field(min_length=1)
     depends_on: list[str] = Field(default_factory=list, max_length=7)
     input_requirements: list[TaskInputRequirement] = Field(default_factory=list, max_length=8)
     produces: TaskArtifact
     answer_role: TaskAnswerRole
     capability: RouteCapability = "planner_required"
     result_selector: TaskResultSelector | None = None
-    comparison_level: Literal["sku", "spu"] | None = None
 
     @property
     def query(self) -> str:
@@ -111,13 +109,8 @@ class RoutedTask(BaseModel):
                 raise ValueError("task_output input must reference a declared dependency")
         if self.result_selector is not None and self.produces != "ranked_product":
             raise ValueError("result_selector requires produces=ranked_product")
-        if self.comparison_level is not None and self.capability != "catalog_compare":
-            raise ValueError("comparison_level is only valid for catalog_compare")
         sources = {requirement.source for requirement in self.input_requirements}
-        if "catalog_candidates" in sources and self.capability not in {
-            "catalog_search",
-            "catalog_compare",
-        }:
+        if "catalog_candidates" in sources and self.capability != "catalog_search":
             raise ValueError("catalog_candidates require a catalog capability")
         if "order_candidates" in sources and self.capability != "order_lookup":
             raise ValueError("order_candidates require order_lookup")
@@ -126,19 +119,16 @@ class RoutedTask(BaseModel):
         if self.capability == "order_lookup":
             for requirement in self.input_requirements:
                 if requirement.source == "order_candidates" and len(requirement.positions) != 1:
-                    raise ValueError(
-                        "each order candidate lookup must select exactly one position"
-                    )
+                    raise ValueError("each order candidate lookup must select exactly one position")
         expected_artifacts: dict[str, set[TaskArtifact]] = {
             "catalog_search": {"products", "ranked_product"},
-            "catalog_compare": {"comparison"},
             "catalog_facets": {"facets"},
             "order_lookup": {"order"},
             "policy_search": {"documents"},
             "knowledge_search": {"documents"},
         }
         allowed = expected_artifacts.get(self.capability)
-        if allowed is not None and self.produces not in allowed:
+        if allowed is not None and self.produces not in allowed | {"result"}:
             raise ValueError("task produces is incompatible with its concrete capability")
         return self
 
@@ -153,13 +143,17 @@ class RoutedSubquery(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=_GOAL_ID_PATTERN, max_length=24)
-    query: str = Field(min_length=1, max_length=1000)
+    id: str = Field(pattern=_GOAL_ID_PATTERN)
+    query: str = Field(min_length=1, max_length=2000)
     disposition: RouteDisposition
     reason_code: str = Field(min_length=1, max_length=100)
+    source_text: str = Field(default="", max_length=2000)
     missing_information: list[str] = Field(default_factory=list, max_length=5)
     clarification_question: str = Field(default="", max_length=500)
     tasks: list[RoutedTask] = Field(default_factory=list, max_length=8)
+    planning_pending: bool = False
+    context_refs: list[str] = Field(default_factory=list, max_length=20)
+    scope: SearchScope | None = None
 
     @property
     def capability(self) -> RouteCapability | None:
@@ -193,7 +187,6 @@ class RoutedSubquery(BaseModel):
             "input_requirements",
             "produces",
             "result_selector",
-            "comparison_level",
             "answer_role",
             "canonical_query",
             "goal_id",
@@ -203,7 +196,11 @@ class RoutedSubquery(BaseModel):
             # Do not silently discard executable metadata from a denied Goal. Leaving the
             # legacy fields in place lets extra="forbid" reject capability smuggling.
             return data
-        if data.get("disposition") == "tool_planning" and not data.get("tasks"):
+        if (
+            data.get("disposition") == "tool_planning"
+            and not data.get("tasks")
+            and not data.get("planning_pending")
+        ):
             produces = data.get("produces") or _default_artifact_for_capability(
                 data.get("capability")
             )
@@ -218,7 +215,6 @@ class RoutedSubquery(BaseModel):
                     "answer_role": data.get("answer_role") or "user_facing",
                     "capability": data.get("capability") or "planner_required",
                     "result_selector": data.get("result_selector"),
-                    "comparison_level": data.get("comparison_level"),
                 }
             ]
         if has_legacy_task:
@@ -228,9 +224,11 @@ class RoutedSubquery(BaseModel):
 
     @model_validator(mode="after")
     def validate_goal(self) -> "RoutedSubquery":
-        if self.disposition == "clarification" and not self.clarification_question.strip():
+        if self.disposition == "clarification" and not (
+            self.clarification_question.strip() or self.missing_information
+        ):
             raise ValueError("clarification subquery requires clarification_question")
-        if self.disposition == "tool_planning" and not self.tasks:
+        if self.disposition == "tool_planning" and not self.tasks and not self.planning_pending:
             raise ValueError("tool_planning goal requires at least one executable task")
         if self.tasks and not any(task.answer_role == "user_facing" for task in self.tasks):
             raise ValueError("every admitted goal requires at least one user_facing task")
@@ -252,12 +250,6 @@ class RequestRoutePlan(BaseModel):
         goal_ids = [item.id for item in self.subqueries]
         if len(goal_ids) != len(set(goal_ids)):
             raise ValueError("goal ids must be unique")
-        session_grounded = [
-            item for item in self.subqueries if item.disposition == "session_grounded_response"
-        ]
-        if session_grounded and len(self.subqueries) != 1:
-            raise ValueError("session_grounded_response requires exactly one routed goal")
-
         flattened = [task for goal in self.subqueries for task in goal.tasks]
         if len(flattened) > 8:
             raise ValueError("route plan supports at most 8 executable tasks")
@@ -292,7 +284,6 @@ class RequestRoutePlan(BaseModel):
 def _default_artifact_for_capability(capability: Any) -> TaskArtifact:
     defaults: dict[str, TaskArtifact] = {
         "catalog_search": "products",
-        "catalog_compare": "comparison",
         "catalog_facets": "facets",
         "order_lookup": "order",
         "policy_search": "documents",

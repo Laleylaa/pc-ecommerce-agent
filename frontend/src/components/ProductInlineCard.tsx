@@ -13,7 +13,9 @@ export function ProductInlineCard({ product, onClick }: ProductInlineCardProps) 
   const displayTitle = isSeriesProduct && product.spu_title ? product.spu_title : product.title;
   const specLine = isSeriesProduct
     ? product.series_sku_count
-      ? `共 ${product.series_sku_count} 个在售版本`
+      ? product.match_kind
+        ? `本次候选含 ${product.series_sku_count} 个版本`
+        : `共 ${product.series_sku_count} 个在售版本`
       : "商品系列"
     : Object.entries(product.specs)
         .slice(0, 3)
@@ -29,7 +31,7 @@ export function ProductInlineCard({ product, onClick }: ProductInlineCardProps) 
   const stockLabel =
     isSeriesProduct && product.series_total_stock !== null &&
     product.series_total_stock !== undefined
-      ? `系列库存 ${product.series_total_stock}`
+      ? `${product.match_kind ? "候选版本库存" : "系列库存"} ${product.series_total_stock}`
       : product.stock > 0
         ? `库存 ${product.stock}`
         : "缺货";
@@ -58,6 +60,8 @@ export function ProductInlineCard({ product, onClick }: ProductInlineCardProps) 
       </div>
       <div className="product-inline-info">
         <h4>{displayTitle}</h4>
+        {product.match_kind === "alternative" && <small>替代候选，存在条件差异</small>}
+        {product.match_kind === "object_facts" && <small>对象资料，未确认满足全部要求</small>}
         <small>{product.brand} · {product.category}</small>
         {specLine && <small className="specs">{specLine}</small>}
       </div>

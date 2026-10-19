@@ -8,7 +8,7 @@ from app.agent.intent import classify_intent, extract_order_id
 from app.agent.responses import (
     _fallback_catalog_facets_arguments,
 )
-from app.agent.route_runtime import _resolve_compare_sku_ids, _resolve_order_id
+from app.agent.route_runtime import _resolve_order_id
 from app.agent.routing import RoutedTask
 from app.agent.state import AgentState
 from app.agent.tool_loop import (
@@ -53,9 +53,6 @@ def fallback_routed_tool_decision(
         if capability == "catalog_search":
             name = capability
             arguments = {"query": query, "limit": 3}
-        elif capability == "catalog_compare":
-            name = capability
-            arguments = {"query": query, "limit": 5}
         elif capability == "catalog_facets":
             name = capability
             arguments = _fallback_catalog_facets_arguments(query) or {
@@ -80,19 +77,8 @@ def fallback_routed_tool_decision(
             else:
                 intent = classify_intent(query)
                 if intent == "product_recommendation":
-                    compare_sku_ids = _resolve_compare_sku_ids(
-                        state["message"], state.get("working_memory_snapshot", {})
-                    )
-                    is_compare_request = any(
-                        marker in state["message"].casefold()
-                        for marker in ("对比", "比较", "区别", "哪个好", "vs")
-                    )
-                    if is_compare_request and compare_sku_ids:
-                        name = "catalog_compare"
-                        arguments = {"query": query, "limit": 5}
-                    else:
-                        name = "catalog_search"
-                        arguments = {"query": query, "limit": 3}
+                    name = "catalog_search"
+                    arguments = {"query": query, "limit": 3}
                 elif intent == "order_status":
                     name = "order_lookup"
                     arguments = {

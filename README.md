@@ -31,7 +31,7 @@
 | **商品选购** | 按预算、类别和规格检索商品，比较候选商品 | “推荐一款 500 元以内的机械键盘” |
 | **连续对话** | 承接本轮上下文，管理用户明确表达的长期偏好 | “有没有更便宜的？” |
 | **订单查询** | 查询当前登录用户的订单与物流信息 | “查看我的最近一笔订单” |
-| **知识问答** | 结合本地知识与政策检索结果回答问题 | “退货需要满足什么条件？” |
+| **知识问答** | 结合本店政策资料与外设知识网页检索结果回答问题 | “退货需要满足什么条件？” |
 | **人工请求** | 记录需要人工确认的售后诉求，查询请求状态 | 在页面提交退货或维修诉求 |
 | **用户隔离** | 登录认证，并校验会话、记忆与订单的归属 | 不同用户访问各自的业务数据 |
 
@@ -49,7 +49,8 @@ flowchart LR
     Agent --> Tools["商品 / 订单 / 知识工具"]
     API --> DB[(PostgreSQL)]
     Tools --> DB
-    Tools --> Index["本地知识索引<br/>BM25 + 向量检索"]
+    Tools --> Index["本店政策索引<br/>BM25 + 向量检索"]
+    Tools --> Web["Tavily · 外设知识网页检索"]
     DB -. 知识同步 .-> Chroma[(ChromaDB)]
 
     classDef entry fill:#eff6ff,stroke:#3b82f6,color:#1e3a8a
@@ -65,11 +66,11 @@ flowchart LR
 | 前端 | React 19 · TypeScript · Vite，提供聊天与业务信息展示 |
 | API 与编排 | Python 3.11 · FastAPI · LangGraph，负责认证、任务执行和回答生成 |
 | 数据存储 | PostgreSQL · SQLAlchemy · Alembic，保存业务数据、会话与运行记录 |
-| 知识检索 | 本地 JSON 索引 · BM25 · SentenceTransformer，支撑正式知识与政策工具 |
+| 知识检索 | 本店政策：本地 JSON · BM25 + SentenceTransformer；外设知识：Tavily Web Search |
 | 本地基础设施 | Podman 管理 PostgreSQL、Redis 和 ChromaDB |
 | 依赖管理 | uv 与 npm，分别通过锁文件安装后端和前端依赖 |
 
-正式知识工具使用本地索引；ChromaDB 保留知识同步路径，Redis 当前用于健康检查。页面通过同步 `/api/chat` 获取回答；后端另提供 SSE 进度接口。
+政策工具使用本地索引，外设知识工具使用 Tavily；ChromaDB 保留知识同步路径，Redis 当前用于健康检查。页面通过 `/api/chat` 一次性获取完整回答及执行详情。
 
 <a id="quick-start"></a>
 ## 快速开始
@@ -112,11 +113,12 @@ make doctor
 cp .env.example .env
 ```
 
-编辑 `.env`，完成以下两项：
+编辑 `.env`，核对以下配置：
 
 | 配置 | 填写方式 |
 | --- | --- |
 | `LLM_API_KEY` | 填入自己的模型 API key，默认使用 DeepSeek |
+| `TAVILY_API_KEY` | 外设知识网页搜索：在 [Tavily](https://app.tavily.com) 注册后填入 key；留空时明确返回未配置，本店政策检索不受影响 |
 | `AUTH_TOKEN_SECRET` | 填入私有随机字符串，用于后端签发和验证登录凭证 |
 
 生成认证密钥：
@@ -126,6 +128,12 @@ openssl rand -hex 32
 ```
 
 将输出复制到 `AUTH_TOKEN_SECRET`，保留在本机。已有 `.env` 时直接核对配置，不要重新覆盖。前端默认通过 `/api` 代理访问后端，无需另配环境文件。
+
+Tavily 使用 basic 搜索，每次请求最多 10 条，8 秒总超时，不自动重试或请求生成式答案。官方目前提供每月 1,000 免费 credits，无需绑卡，basic 每次 1 credit；以 [官方额度说明](https://docs.tavily.com/documentation/api-credits) 为准。填好 key 后重启后端。key 仅放根目录 `.env`，不要放入 `VITE_*`。
+
+本店政策默认使用 BM25 + 本地向量混合检索，索引缺失或过期时退回 BM25 并标明实际策略。请求内不下载模型；缺少模型时运行已有的 `make model-prepare` 显式准备。政策超时为 8 秒；同步计算移到单个后台线程，超时或取消后运行中的计算仍占用名额直到完成，期间新请求返回忙碌状态。
+
+商品搜索、目录和订单的自然语言规划增加语义复核：程序校验后由模型对照原请求检查，再经程序校验才执行。规划与复核共用 60 秒预算、最多两次纠错和一次传输重试，正常两次模型调用；复核使用成对示例及程序派生的条件匹配解释。外层工具超时均为 75 秒。无法确认或耗尽预算返回失败，不作为“没有商品/订单”。明确编号等确定性路径仍按原规则执行。离线检查和真实模型对照入口见 [评测说明](backend/evals/README.md#正常购物工具评测)。
 
 > [!IMPORTANT]
 > 真实 `.env`、API key 和数据库备份不提交到 Git。模型 key 留空时只有有限 fallback，无法验证完整 AI 对话能力。
@@ -228,7 +236,7 @@ make frontend     # 终端 B：前端
 | `make model-prepare` | 下载或预热模型，校验本地索引 | 不重建业务数据 |
 | `make knowledge-index` | 重建本地知识向量索引 | 修改本地索引文件 |
 | `make knowledge-sync` | 将 PostgreSQL 知识表同步到 Chroma | 写入 Chroma |
-| `make check` | 后端测试与 Lint、前端构建 | 集成测试会连接配置中的数据库 |
+| `make check` | 后端测试与 Lint、前端构建 | 当前不含真实数据库测试；默认排除外部网络用例 |
 
 查看日志：`./scripts/podman-infra.sh logs postgres`，服务名也可替换为 `redis` 或 `chroma`。
 
@@ -315,11 +323,17 @@ make backend BACKEND_PORT=8002
 
 ## 测试与维护
 
+Agent 调试与技术评测 trace 使用 LangChain/LangSmith，并同步写入本地统一目录
+`backend/evals/results/agent_traces/`（默认忽略）。默认关闭普通聊天记录；离线冒烟、真实模型
+评测、上传配置及产物字段见 [Agent trace 使用说明](backend/evals/README.md)。
+离线检查不需要数据库或模型密钥：在 `backend/` 执行
+`.venv/bin/python -m scripts.eval_goal_tool_flow --scripted`。
+
 ```bash
 make check
 ```
 
-运行后端 pytest、Ruff 和前端 TypeScript / Vite 构建。数据库集成测试会连接配置目标，建议使用独立测试库；无法连接时部分测试会跳过，`skipped` 不代表验证通过。页面交互与真实模型效果需另做验证，完整从零复现还需使用独立新数据库执行初始化。
+运行后端 pytest、Ruff 和前端 TypeScript / Vite 构建。当前 pytest 集合不含真实数据库集成测试，默认排除 network 标记测试；数据库读写与持久化隔离不在这套自动化测试的验证范围内。模块、冒烟和依赖选择见 [后端测试入口](backend/tests/README.md)。页面交互与真实模型效果需另做验证，完整从零复现还需使用独立新数据库执行初始化。
 
 - **依赖更新**：后端修改 `pyproject.toml` 后在 `backend/` 执行 `uv lock`；前端通过 npm 更新并提交锁文件。普通安装保持锁定版本。
 - **知识更新**：修改 `backend/data/knowledge_documents.json` 后执行 `make knowledge-index` 并重启后端；`make knowledge-sync` 不会更新本地 JSON 索引。

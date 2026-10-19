@@ -36,23 +36,14 @@ REQUEST_ROUTER_SYSTEM_PROMPT = f"""
   `query_plan.selection_scope` 继承可信身份。若用户同时询问两个互不依赖的订单，创建两个可并行 Task。
 - 只有在 working memory 中不存在相关候选、位置越界、存在多个同样合理的领域（例如 Catalog 与
   Order 均可能被“这个”指代）且当前请求无法消歧时，才允许因对象不明确而 clarification。
-- 新计划固定 `produces=result`，`result_selector=null`、`comparison_level=null`。把用户表达的
+- 新计划固定 `produces=result`，`result_selector=null`。把用户表达的
   指标、名次、数量以及“SKU/版本/颜色/轴体”等限定完整保留在 `canonical_query`，由业务 Tool
   自己决定 retrieval purpose、SKU/SPU 口径和结果形状。
-- 对上一轮 Catalog 候选结果使用“第一款、第二款、这两款”等序号比较时仍将
-  原始指代表达保留在 query 中；Runtime 会继承上一轮已确认的 `selection_scope`，避免把具体 SKU
-  推荐错误地提升为整个 SPU 系列比较。
-- 用户直接点名两个或更多商品/型号/版本时，创建一个无依赖 Task，让后续 Tool Planner 与 Catalog
-  Tool 从 canonical_query 解析目标；不要先为每个名称创建冗余的发现 Task。只有“当前
-  商品与销量第 N/最便宜”等确实要先计算出目标的请求，才拆成发现 Task 与后续比较 Task。
-- 商品比较不要求用户提供精确 SKU 或完整型号。“A 和 B 哪个更好/更适合某场景”“A 相比 B
-  有什么区别”“选 A 还是 B”“A vs B”等显式或选择式表达都属于一个原子比较 Task；A、B 可以是
-  型号、品牌加品类、布局/尺寸加品牌、颜色/连接方式等版本描述，或 working memory 中可解析的
-  指代。必须在同一个 canonical_query 中保留全部比较对象、场景和比较维度，不得拆成分别搜索
-  A、B 的多个 Task。
+- 比较多个商品时，保留用户的对象、场景及比较维度；需要新事实时按对象分别查询。
+  不创建独立比较工具任务，不把多个明确对象合并为一次商品搜索。
 - “这个键盘哪个版本最便宜”“查看这款商品的其他版本”等请求只创建一个 Task。
   Runtime 会提供工作记忆；不要把
-  SKU/SPU ID、comparison_level 或 targets 写入 canonical_query 或 Tool 参数。
+  SKU/SPU ID 或 targets 写入 canonical_query 或 Tool 参数。
 - 每个 subquery 只允许一个 disposition：tool_planning、direct_response、
   session_grounded_response、clarification、human_handoff、out_of_scope、security_refusal。
 - 在创建任何 `tool_planning` Task 之前，必须先执行 session-grounding gate：检查最近一条
@@ -76,7 +67,7 @@ REQUEST_ROUTER_SYSTEM_PROMPT = f"""
   完整覆盖当前问题时，也必须保守进入 `tool_planning`；多调用一次 Tool 优于复用错误信息。
 - 新计划的每个 Task 一律声明 `capability=planner_required`，业务 Tool 的选择属于 Tool Planner，
   不属于 Router。旧计划中的具体 capability 只为兼容保留。非 tool_planning Goal 不得包含 Task。
-- 订单计数、最近订单列表、最近 N 笔、全部订单或继续查看剩余订单只创建一个 user_facing 的
+- 订单计数、最近订单列表、最近 N 笔或全部订单只创建一个 user_facing 的
   order_lookup Task，并在 canonical_query 中保留用户的数量词与“全部/最近/剩余”语义。
   order_lookup 会同时返回精确总数和有界列表；不得先查询候选再自动选择第一笔查询详情。
   只有用户明确给出订单号，或明确追问上一轮候选中的“第 N 个订单”时，才查询单笔详情。
@@ -129,17 +120,8 @@ REQUEST_ROUTER_SYSTEM_PROMPT = f"""
 不得由 Router 指定业务 Tool、SKU/SPU、purpose 或比较字段。
 
 商品比较：
-- “Logitech G502 和 Razer Basilisk V3 哪款更适合大型手掌？”：
-  一个 goal、一个无依赖 user_facing Task，canonical_query 保留两个型号、大型手掌场景和适配比较；
-  不要分别创建两个商品搜索 Task。
-- “华硕的 27 英寸电竞显示器和 LG 的 27 英寸办公显示器，色彩和刷新率差别大吗？”：
-  即使目标是品牌、尺寸和场景组成的描述而非精确型号，也创建一个原子比较 Task，并完整保留两侧
-  描述以及色彩、刷新率维度。
-- “白色无线版和黑色有线版选哪个更适合出差？”：
-  working memory 能唯一解析两款版本时创建一个比较 Task，保留原始指代和出差场景；不要要求用户
-  重新提供 ID，也不要按版本分别搜索。
-- “Sony INZONE H5 vs HyperX Cloud III”：
-  即使用户只写型号加 vs，也创建一个包含双方目标的比较 Task。
+- “Logitech G502 和 Razer Basilisk V3 哪款更适合大型手掌？”：一个goal保留比较意图，
+  两个无依赖user_facing任务分别获取两个对象的相关事实，随后基于事实回答差异。
 
 订单事实与保修政策：
 - “看一下订单 88001357 的物流状态，同时说明鼠标滚轮失灵需要准备哪些保修材料”：
@@ -156,19 +138,7 @@ REQUEST_ROUTER_SYSTEM_PROMPT = f"""
   合法的目录推荐 goal。
 </task_decomposition_examples>
 
-<task_graph_example>
-用户说“对比这个和销量第二的键盘，再推荐一个鼠标”时应先拆成两个 Goal，再展开三个 Task：
-1. task_1 查询当前商品以及键盘销量第二的商品，返回两项后续输入，goal_id=goal_1，
-   produces=result，capability=planner_required，answer_role=internal，无依赖；该 Task 可读取
-   working memory，并负责把当前商品和新排名商品一起物化；
-2. task_2 仅比较 task_1 返回的两个商品，goal_id=goal_1，depends_on=[task_1]，
-   answer_role=user_facing，capability=planner_required，produces=result；该 Task 不读取
-   working memory；
-3. task_3 推荐鼠标，goal_id=goal_2，无依赖，answer_role=user_facing，
-   capability=planner_required，produces=result。
-因此 task_1 与 task_3 可在同一 wave，task_2 只能在下一 wave。不要让 task_1 的 Catalog query 包含比较
-或鼠标推荐语义。
-</task_graph_example>
+
 """.strip()
 
 

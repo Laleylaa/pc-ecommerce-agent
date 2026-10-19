@@ -5,7 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agent.outcomes import normalize_tool_result
+from app.agent.outcomes import CLARIFICATION_REASONS, normalize_tool_result
+from app.agent.projections import without_pagination_controls
 from app.agent.routing import RoutedTask, tool_planning_subqueries
 
 TaskExecutionStatus = Literal[
@@ -71,17 +72,13 @@ def ensure_task_runtime(state: dict[str, Any]) -> None:
     refresh_task_status(state)
 
 
-def _extract_artifacts_for_wave(
-    state: dict[str, Any], wave: Mapping[str, Any]
-) -> None:
+def _extract_artifacts_for_wave(state: dict[str, Any], wave: Mapping[str, Any]) -> None:
     calls = {
         str(call.get("id") or ""): call
         for call in wave.get("calls", [])
         if isinstance(call, Mapping)
     }
-    tasks = {
-        task.id: task for task in tool_planning_subqueries(state.get("route_plan"))
-    }
+    tasks = {task.id: task for task in tool_planning_subqueries(state.get("route_plan"))}
     store = state.setdefault("task_artifacts", {})
     for result in wave.get("results", []):
         if not isinstance(result, Mapping):
@@ -113,6 +110,10 @@ def refresh_task_status(state: dict[str, Any]) -> None:
                 "answer_role": task.answer_role,
             },
         )
+        if task.id in state.get("recovery_batch", {}).get("blocked_task_ids", []):
+            existing.update(status="blocked", reason="recovery_invalidated_previous_result",
+                            user_can_supply=False)
+            continue
         artifact = artifacts.get(task.id) if isinstance(artifacts, Mapping) else None
         if isinstance(artifact, Mapping) and artifact.get("usable"):
             existing.update(status="succeeded", reason="artifact_usable")
@@ -162,13 +163,31 @@ def refresh_task_status(state: dict[str, Any]) -> None:
             existing.update(
                 status="blocked",
                 reason=f"dependency_artifact_unusable:{terminal_dependency}",
-                user_can_supply=False,
+                user_can_supply=(
+                    artifacts.get(terminal_dependency, {}).get("reason")
+                    == "order_confirmation_required"
+                ),
             )
             continue
         if any(status != "succeeded" for status in dependency_states.values()):
             existing.update(status="pending", reason="waiting_for_dependencies")
             continue
 
+        planned = next(
+            (t for t in state.get("execution_plan", {}).get("tasks", []) if t["id"] == task.id),
+            {},
+        )
+        if planned.get("require_exact_dependencies", True) and any(
+            _mapping(_mapping(artifacts.get(d)).get("value")).get("match_kind")
+            in {"alternative", "object_facts"}
+            for d in task.depends_on
+        ):
+            existing.update(
+                status="blocked",
+                reason="dependency_does_not_meet_exact_conditions",
+                user_can_supply=False,
+            )
+            continue
         missing, user_can_supply = _missing_input_requirements(state, task)
         if missing:
             existing.update(
@@ -208,14 +227,10 @@ def user_clarifiable_blockers(state: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def bound_task_sku_ids(state: Mapping[str, Any], task: RoutedTask) -> list[int]:
-    """Bind compare inputs from memory and direct dependency artifacts."""
+    """Bind product identities from memory and direct dependency artifacts."""
     resolved: list[int] = []
     for requirement in task.input_requirements:
-        if requirement.source == "comparison_context":
-            catalog = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
-            comparison = _mapping(_mapping(catalog.get("catalog")).get("comparison"))
-            _extend_positive_ints(resolved, comparison.get("sku_ids"))
-        elif requirement.source == "catalog_candidates":
+        if requirement.source == "catalog_candidates":
             catalog = _working_catalog_memory(state)
             values = _selected_candidate_values(
                 catalog.get("candidate_sku_ids"),
@@ -256,13 +271,7 @@ def bound_task_spu_ids(state: Mapping[str, Any], task: RoutedTask) -> list[int]:
     """Bind series inputs from memory and direct dependency artifacts."""
     resolved: list[int] = []
     for requirement in task.input_requirements:
-        if requirement.source == "comparison_context":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
-            comparison = _mapping(_mapping(snapshot.get("catalog")).get("comparison"))
-            _extend_positive_ints(resolved, comparison.get("spu_ids"))
-        elif requirement.source == "catalog_candidates":
+        if requirement.source == "catalog_candidates":
             catalog = _working_catalog_memory(state)
             values = _selected_candidate_values(
                 catalog.get("candidate_spu_ids"),
@@ -270,9 +279,7 @@ def bound_task_spu_ids(state: Mapping[str, Any], task: RoutedTask) -> list[int]:
             )
             _extend_positive_ints(resolved, values)
         elif requirement.source == "context_product":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
+            snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
             catalog = _mapping(snapshot.get("catalog"))
             value = catalog.get("referenced_spu_id")
             if value is None:
@@ -308,18 +315,7 @@ def bound_task_catalog_targets(
     """Bind trusted identities from memory and every direct dependency Artifact."""
     targets: list[dict[str, Any]] = []
     for requirement in task.input_requirements:
-        if requirement.source == "comparison_context":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
-            comparison = _mapping(_mapping(snapshot.get("catalog")).get("comparison"))
-            _append_identity_lists(
-                targets,
-                comparison.get("sku_ids"),
-                comparison.get("spu_ids"),
-                source="comparison_context",
-            )
-        elif requirement.source == "catalog_candidates":
+        if requirement.source == "catalog_candidates":
             catalog = _working_catalog_memory(state)
             displays = catalog.get("candidate_display")
             if isinstance(displays, list) and displays:
@@ -348,19 +344,13 @@ def bound_task_catalog_targets(
                     source="working_memory_reference",
                 )
         elif requirement.source == "context_product":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
+            snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
             catalog = _mapping(snapshot.get("catalog"))
             sku_id = _positive_int(catalog.get("referenced_sku_id"))
             spu_id = _positive_int(catalog.get("referenced_spu_id"))
             if sku_id is None and spu_id is None:
-                candidate_skus = _unique_positive_int_list(
-                    catalog.get("candidate_sku_ids")
-                )
-                candidate_spus = _unique_positive_int_list(
-                    catalog.get("candidate_spu_ids")
-                )
+                candidate_skus = _unique_positive_int_list(catalog.get("candidate_sku_ids"))
+                candidate_spus = _unique_positive_int_list(catalog.get("candidate_spu_ids"))
                 if len(candidate_spus) == 1:
                     spu_id = candidate_spus[0]
                     sku_id = candidate_skus[0] if len(candidate_skus) == 1 else None
@@ -460,11 +450,7 @@ def _append_catalog_target(
 def _positive_int_list(value: Any) -> list[int]:
     if not isinstance(value, list):
         return []
-    return [
-        normalized
-        for item in value
-        if (normalized := _positive_int(item)) is not None
-    ]
+    return [normalized for item in value if (normalized := _positive_int(item)) is not None]
 
 
 def _unique_positive_int_list(value: Any) -> list[int]:
@@ -477,16 +463,12 @@ def bound_task_order_id(state: Mapping[str, Any], task: RoutedTask) -> int | Non
     artifacts = _mapping(state.get("task_artifacts"))
     for requirement in task.input_requirements:
         if requirement.source == "context_order":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
+            snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
             order = _mapping(snapshot.get("order"))
             _extend_positive_ints(candidates, [order.get("last_order_id")])
             continue
         if requirement.source == "order_candidates":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
+            snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
             order = _mapping(snapshot.get("order"))
             _extend_positive_ints(
                 candidates,
@@ -520,6 +502,8 @@ def _extend_order_artifact_ids(
     candidates: list[int],
     value: Mapping[str, Any],
 ) -> None:
+    if value.get("result_type") == "order_suggestions":
+        return
     order = _mapping(value.get("order"))
     _extend_positive_ints(candidates, [order.get("id")])
     values = value.get("candidates")
@@ -583,7 +567,13 @@ def _extract_task_artifact(
     usable = outcome.has_usable_information
     reason = outcome.reason
 
-    if usable and name == "catalog_search":
+    if name == "catalog_search" and output.get("contract_version") == "3":
+        value = dict(output)
+        value["query_plan"] = {
+            **dict(output.get("query_plan") or {}),
+            "query": _mapping(call.get("arguments")).get("query"),
+        }
+    elif usable and name == "catalog_search":
         products = [dict(item) for item in output.get("products", []) if isinstance(item, Mapping)]
         if task.produces == "ranked_product":
             query_plan = _mapping(output.get("query_plan"))
@@ -610,67 +600,39 @@ def _extract_task_artifact(
                 ],
                 "selected_spu_ids": list(
                     dict.fromkeys(
-                        item["spu_id"]
-                        for item in products
-                        if _positive_int(item.get("spu_id"))
+                        item["spu_id"] for item in products if _positive_int(item.get("spu_id"))
                     )
                 ),
                 "query_plan": output.get("query_plan") or {},
                 **_catalog_search_window(output),
             }
-    elif usable and name == "catalog_compare":
-        products = [dict(item) for item in output.get("products", []) if isinstance(item, Mapping)]
-        series = [dict(item) for item in output.get("series", []) if isinstance(item, Mapping)]
-        value = {
-            "comparison_level": output.get("comparison_level") or "sku",
-            "products": products,
-            "series": series,
-            "series_differences": output.get("series_differences") or [],
-            "selected_sku_ids": [
-                item["sku_id"] for item in products if _positive_int(item.get("sku_id"))
-            ],
-            "selected_spu_ids": list(
-                dict.fromkeys(
-                    [
-                        item["spu_id"]
-                        for item in products
-                        if _positive_int(item.get("spu_id"))
-                    ]
-                    + [
-                        item["spu_id"]
-                        for item in series
-                        if _positive_int(item.get("spu_id"))
-                    ]
-                )
-            ),
-            "comparison_fields": output.get("comparison_fields") or [],
-            "query_plan": output.get("query_plan") or {},
-        }
-    elif usable and name == "catalog_facets":
-        value = {"items": output.get("items") or [], "facet": output.get("facet")}
-    elif usable and name == "order_lookup":
+    elif name == "catalog_facets":
+        # Keep scope, SKU-associated values, missing fields and completeness even
+        # for stopped/partial results. `usable` remains a separate scheduling decision.
+        value = dict(output)
+    elif name == "order_lookup":
         value = {
             "order": output.get("order"),
             "candidates": output.get("candidates") or [],
             "analysis_orders": output.get("analysis_orders") or [],
+            "suggestions": output.get("suggestions") or [],
+            "suggestion_filters": output.get("suggestion_filters"),
+            "suggestion_total_count": output.get("suggestion_total_count", 0),
+            "suggestion_is_exhaustive": output.get("suggestion_is_exhaustive", True),
             "focus_order_ids": output.get("focus_order_ids") or [],
             "result_type": output.get("result_type"),
             "query_mode": output.get("query_mode"),
             "total_match_count": output.get("total_match_count", 0),
             "returned_count": output.get("returned_count", 0),
             "is_exhaustive": output.get("is_exhaustive", True),
-            "offset": output.get("offset", 0),
-            "next_offset": output.get("next_offset"),
             "query_plan": output.get("query_plan") or {},
             "diagnostics": output.get("diagnostics") or [],
         }
-    elif usable and name in {"policy_search", "knowledge_search"}:
+    elif name in {"policy_search", "knowledge_search"}:
         documents = [
-            dict(item)
-            for item in output.get("documents", [])
-            if isinstance(item, Mapping)
+            dict(item) for item in output.get("documents", []) if isinstance(item, Mapping)
         ]
-        value = {"documents": documents}
+        value = {**dict(output), "documents": documents}
         evidence = [
             {
                 "source_tool_call_id": call_id,
@@ -678,16 +640,19 @@ def _extract_task_artifact(
                 "source_id": item.get("source_id"),
                 "title": item.get("title"),
                 "document_type": item.get("document_type"),
+                **({"url": item["url"]} if item.get("url") else {}),
             }
-            for item in documents
+            for item in documents if usable
         ]
+
+    if name in {"catalog_search", "order_lookup"} and isinstance(value, dict):
+        value = without_pagination_controls(value)
 
     if usable and not evidence:
         evidence = [{"source_tool_call_id": call_id, "source_tool_name": name}]
     artifact_type = (
         {
             "catalog_search": "products",
-            "catalog_compare": "comparison",
             "catalog_facets": "facets",
             "order_lookup": "order",
             "policy_search": "documents",
@@ -777,11 +742,6 @@ def _tool_clarification_request(
     state: Mapping[str, Any],
     task_id: str,
 ) -> dict[str, str] | None:
-    missing_by_code = {
-        "invalid_context_target": "可用的具体商品或型号",
-        "insufficient_spu_ids": "至少两个明确的商品系列",
-        "insufficient_active_series": "至少两个当前在售的商品系列",
-    }
     for wave in reversed(state.get("tool_waves", [])):
         if not isinstance(wave, Mapping):
             continue
@@ -796,14 +756,20 @@ def _tool_clarification_request(
             call = _mapping(calls.get(str(result.get("tool_call_id") or "")))
             if str(call.get("subquery") or "").strip() != task_id:
                 continue
-            output = _mapping(_mapping(result.get("execution")).get("output"))
+            execution = _mapping(result.get("execution"))
+            if not execution.get("ok"):
+                return None
+            output = _mapping(execution.get("output"))
+            reason = normalize_tool_result(result).reason
+            if reason in CLARIFICATION_REASONS:
+                return {"code": reason, "missing_information": CLARIFICATION_REASONS[reason]}
             diagnostics = output.get("diagnostics")
             if not isinstance(diagnostics, list):
                 return None
             for diagnostic in diagnostics:
                 item = _mapping(diagnostic)
                 code = str(item.get("code") or "")
-                missing_information = missing_by_code.get(code)
+                missing_information = CLARIFICATION_REASONS.get(code)
                 if missing_information is not None:
                     return {
                         "code": code,
@@ -828,9 +794,7 @@ def _missing_input_requirements(
                 missing.append(requirement.name)
                 user_can_supply = True
         elif requirement.source == "context_product":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
+            snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
             catalog = _mapping(snapshot.get("catalog"))
             referenced = [
                 _positive_int(catalog.get("referenced_sku_id")),
@@ -844,19 +808,9 @@ def _missing_input_requirements(
             if not has_product:
                 missing.append(requirement.name)
                 user_can_supply = True
-        elif requirement.source == "comparison_context":
-            snapshot = _mapping(
-                state.get("working_memory_snapshot") or state.get("working_memory")
-            )
-            comparison = _mapping(_mapping(snapshot.get("catalog")).get("comparison"))
-            sku_ids = _positive_int_list(comparison.get("sku_ids"))
-            spu_ids = _positive_int_list(comparison.get("spu_ids"))
-            if max(len(sku_ids), len(spu_ids)) < 2:
-                missing.append(requirement.name)
-                user_can_supply = True
         elif requirement.source == "catalog_candidates":
             selected = bound_task_catalog_targets(state, task)
-            required_count = 2 if task.capability == "catalog_compare" else 1
+            required_count = 1
             if len(selected) < required_count:
                 missing.append(requirement.name)
                 user_can_supply = True
@@ -868,13 +822,6 @@ def _missing_input_requirements(
             if bound_task_order_id(state, task) is None:
                 missing.append(requirement.name)
                 user_can_supply = True
-    if (
-        task.capability == "catalog_compare"
-        and task.input_requirements
-        and len(bound_task_catalog_targets(state, task)) < 2
-    ):
-        missing.append("至少两个可比较商品")
-        user_can_supply = True
     return list(dict.fromkeys(missing)), user_can_supply
 
 
@@ -900,9 +847,7 @@ def _direct_dependency_artifact_values(
 
 
 def _working_catalog_memory(state: Mapping[str, Any]) -> Mapping[str, Any]:
-    snapshot = _mapping(
-        state.get("working_memory_snapshot") or state.get("working_memory")
-    )
+    snapshot = _mapping(state.get("working_memory_snapshot") or state.get("working_memory"))
     return _mapping(snapshot.get("catalog"))
 
 
@@ -911,11 +856,7 @@ def _selected_candidate_values(value: Any, positions: list[int]) -> list[Any]:
         return []
     if not positions:
         return list(value)
-    return [
-        value[position - 1]
-        for position in positions
-        if position <= len(value)
-    ]
+    return [value[position - 1] for position in positions if position <= len(value)]
 
 
 def _extend_positive_ints(target: list[int], values: Any) -> None:

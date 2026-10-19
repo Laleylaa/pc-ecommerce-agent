@@ -2,15 +2,15 @@ import asyncio
 import json
 import re
 from decimal import Decimal
-from itertools import combinations
-from typing import Any, Literal, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agent.intent import build_product_search
+from app.core.llm_feedback import OutputErrorType, OutputValidationError, validation_feedback
+from app.core.tracing import trace_event
 from app.models import Brand, Category, Sku, Spu
 from app.repositories.catalog import (
     CATEGORY_ALIASES,
@@ -23,25 +23,35 @@ from app.schemas.catalog import (
     ProductSpecCondition,
     ProductVariantCard,
 )
+from app.schemas.catalog_search import (
+    CatalogSearchRequest,
+    ProductReference,
+    SearchCondition,
+    SearchPlan,
+    UnresolvedCatalogRequirement,
+)
+from app.tools.catalog_fields import (
+    CATEGORY_FIELDS,
+    FILTER_FIELDS,
+    canonical_field,
+    explain_conditions,
+    normalize_category_hint,
+)
+from app.tools.catalog_search.outcomes import QueryIssue
 from app.tools.schemas import (
-    CatalogCompareInput,
-    CatalogCompareOutput,
     CatalogFacetInput,
-    CatalogFacetItem,
     CatalogFacetOutput,
     CatalogSearchInput,
     CatalogSearchOutput,
-    CatalogSeriesComparisonItem,
-    CatalogSeriesFieldDifference,
-    CatalogSeriesPairDifference,
     CatalogSeriesSpecSummary,
     CatalogSeriesSpecValue,
+    CatalogSeriesSummary,
     CatalogSeriesVariant,
     CatalogTargetIdentity,
     CatalogToolRuntimeContext,
-    ProductComparisonItem,
     ToolDiagnostic,
 )
+from app.tools.structured_planning import generate_tool_plan
 
 CATALOG_ALLOWED_TABLES = {
     "brand",
@@ -62,93 +72,12 @@ ALLOWED_CATEGORIES = {
     "webcam",
     *CATEGORY_ALIASES.values(),
 }
-ALLOWED_FILTERS = {
-    "backlit",
-    "channels",
-    "color",
-    "connection_type",
-    "enclosure_type",
-    "field_of_view",
-    "frame_rate",
-    "frequency_response",
-    "hand_orientation",
-    "max_dpi",
-    "microphone",
-    "panel_type",
-    "power_w",
-    "refresh_rate",
-    "resolution",
-    "response_time_ms",
-    "size_inch",
-    "style",
-    "switches",
-    "tenkeyless",
-    "tracking_method",
-    "type",
-    "weight_g",
-    "wireless",
-}
+ALLOWED_FILTERS = set(FILTER_FIELDS) - {"brand", "price", "stock"}
+
 CATEGORY_FILTERS = {
-    "mouse": {
-        "color",
-        "connection_type",
-        "hand_orientation",
-        "max_dpi",
-        "tracking_method",
-        "weight_g",
-        "wireless",
-    },
-    "keyboard": {
-        "backlit",
-        "color",
-        "connection_type",
-        "style",
-        "switches",
-        "tenkeyless",
-        "wireless",
-    },
-    "headset": {
-        "color",
-        "connection_type",
-        "enclosure_type",
-        "frequency_response",
-        "microphone",
-        "type",
-        "wireless",
-    },
-    "headphone": {
-        "color",
-        "connection_type",
-        "enclosure_type",
-        "frequency_response",
-        "microphone",
-        "type",
-        "wireless",
-    },
-    "monitor": {
-        "color",
-        "panel_type",
-        "refresh_rate",
-        "resolution",
-        "response_time_ms",
-        "size_inch",
-    },
-    "speaker": {
-        "channels",
-        "color",
-        "connection_type",
-        "power_w",
-        "type",
-        "wireless",
-    },
-    "webcam": {
-        "color",
-        "connection_type",
-        "field_of_view",
-        "frame_rate",
-        "microphone",
-        "resolution",
-    },
+    alias: set(CATEGORY_FIELDS[category].split())
+    for alias, category in CATEGORY_ALIASES.items()
+    if category in CATEGORY_FIELDS
 }
 ALLOWED_USAGE_SCENARIOS = {
     "office",
@@ -262,14 +191,6 @@ USAGE_SCENARIO_RULES: dict[tuple[str, str], dict[str, tuple[ProductSpecCondition
     },
 }
 ALLOWED_SORTS = {"recommend", "sales", "price_asc", "price_desc", "stock"}
-BASE_COMPARISON_FIELDS = {
-    "price",
-    "stock",
-    "brand",
-    "category",
-    "sku_sales_count",
-    "sales_count",
-}
 CATALOG_SEARCH_FIELDS = {
     "product_identity",
     "title",
@@ -336,7 +257,9 @@ class ProductQueryPlan(BaseModel):
             and self.max_price is not None
             and self.min_price > self.max_price
         ):
-            raise ValueError("min_price cannot be greater than max_price")
+            raise OutputValidationError(
+                "min_price cannot be greater than max_price", path=("min_price",),
+            )
         return self
 
 
@@ -350,35 +273,46 @@ class CatalogRankingPlan(BaseModel):
     @model_validator(mode="after")
     def validate_window(self) -> "CatalogRankingPlan":
         if self.rank + self.count - 1 > 20:
-            raise ValueError("catalog ranking window cannot exceed 20")
+            raise OutputValidationError("catalog ranking window cannot exceed 20", path=("rank",))
         return self
-
-
-class CatalogComparePlan(BaseModel):
-    query: str = Field(min_length=1)
-    category: str | None = None
-    items: list[str] = Field(default_factory=list, max_length=8)
-    brands: list[str] = Field(default_factory=list, max_length=8)
-    comparison_fields: list[str] = Field(default_factory=list, max_length=16)
-    scenario: str | None = None
-    limit: int = Field(default=5, ge=2, le=10)
-    supported: bool = True
-    unsupported_reason: str | None = None
-    planner: str = "rule_based"
-    fallback_reason: str | None = None
-    normalization_debug: dict = Field(default_factory=dict)
-    comparison_level: Literal["sku", "spu"] = "spu"
 
 
 class CatalogQueryPlanner(Protocol):
     async def plan_search(self, request: CatalogSearchInput) -> ProductQueryPlan: ...
 
-    async def plan_compare(self, request: CatalogCompareInput) -> CatalogComparePlan: ...
 
     async def plan_facets(self, request: CatalogFacetInput) -> "FacetQueryPlan": ...
 
 
 class FacetQueryPlan(BaseModel):
+    _query_issue: QueryIssue | None = PrivateAttr(default=None)
+    _requirement_assessment: dict = PrivateAttr(default_factory=dict)
+    _category_evidence: str | None = PrivateAttr(default=None)
+    model_config = ConfigDict(extra="forbid")
+    model_required_fields: ClassVar[tuple[str, ...]] = (
+        "selection", "facet", "category", "brand", "spec_key", "name", "target", "filters",
+        "conditions", "min_price", "max_price", "count_scope", "supported",
+        "unsupported_reason", "unsupported_requirements",
+        "clarification_requirements",
+    )
+    selection: Literal["catalog", "object"] = "catalog"
+    name: str | None = SearchPlan.model_fields["name"]
+    target: ProductReference | None = SearchPlan.model_fields["target"]
+    conditions: list[SearchCondition] = Field(default_factory=list)
+    unresolved_requirements: list[UnresolvedCatalogRequirement] = (
+        SearchPlan.model_fields["unresolved_requirements"]
+    )
+    unsupported_requirements: list[str] = Field(default_factory=list)
+    clarification_requirements: list[str] = SearchPlan.model_fields["clarification_requirements"]
+    # Program-owned business reason, recalculated by capability validation.
+    unsupported_code: Literal[
+        "request_not_supported", "data_insufficient", "query_needs_clarification",
+        "multiple_targets", "conflicting_conditions", "requirement_needs_clarification",
+        "filter_data_unavailable",
+    ] = Field(
+        default="request_not_supported", exclude=True,
+    )
+
     query: str = ""
     facet: Literal["category", "brand", "spec_key", "spec_value"] = "brand"
     category: str | None = None
@@ -389,7 +323,7 @@ class FacetQueryPlan(BaseModel):
     filters: dict[str, str] = Field(default_factory=dict)
     count_scope: Literal["sku", "spu"] = "spu"
     limit: int = Field(default=20, ge=1, le=50)
-    supported: bool = True
+    supported: bool = Field(default=True, strict=True)
     unsupported_reason: str | None = None
     planner: str = "rule_based"
     normalization_debug: dict = Field(default_factory=dict)
@@ -411,7 +345,6 @@ def _resolved_catalog_request_context(
         source: Literal[
             "current_turn_artifact",
             "working_memory_reference",
-            "comparison_context",
             "explicit_argument",
         ],
         scope: Literal["sku", "spu"] | None = None,
@@ -433,7 +366,7 @@ def _resolved_catalog_request_context(
 
     dependency_present = bool(context.dependency_artifacts)
     for artifact in context.dependency_artifacts:
-        artifact_scope = artifact.selection_scope or artifact.comparison_level
+        artifact_scope = artifact.selection_scope
         for product in artifact.products:
             add_target(
                 sku_id=product.sku_id,
@@ -478,38 +411,7 @@ def _resolved_catalog_request_context(
             "二者",
         )
     )
-    comparison_reference = any(
-        marker in compact
-        for marker in (
-            "刚才对比",
-            "上次对比",
-            "之前对比",
-            "继续对比",
-            "再比较",
-            "比较刚才",
-            "重新比较",
-            "它们",
-        )
-    )
     current_reference = _catalog_query_references_current_product(compact)
-    if comparison_reference and not ordinal_positions:
-        comparison = memory.comparison
-        for index in range(max(len(comparison.sku_ids), len(comparison.spu_ids))):
-            add_target(
-                sku_id=(
-                    comparison.sku_ids[index]
-                    if index < len(comparison.sku_ids)
-                    else None
-                ),
-                spu_id=(
-                    comparison.spu_ids[index]
-                    if index < len(comparison.spu_ids)
-                    else None
-                ),
-                source="comparison_context",
-                scope=comparison.comparison_level,
-            )
-
     displays = memory.candidate_display
     if ordinal_positions:
         for position in ordinal_positions:
@@ -677,7 +579,7 @@ def _catalog_memory_scope(
 
 
 def _catalog_context_summary(
-    request: CatalogSearchInput | CatalogCompareInput | CatalogFacetInput,
+    request: CatalogSearchInput | CatalogFacetInput,
 ) -> dict[str, Any]:
     targets, scope_hint = _resolved_catalog_request_context(
         request.query,
@@ -688,14 +590,6 @@ def _catalog_context_summary(
         "trusted_target_count": len(targets),
         "scope_hint": scope_hint,
         "previous_selection_scope": _catalog_memory_scope(request.catalog_context),
-        "previous_comparison_level": (
-            request.catalog_context.memory.comparison.comparison_level
-            if (
-                request.catalog_context.memory.comparison.sku_ids
-                or request.catalog_context.memory.comparison.spu_ids
-            )
-            else None
-        ),
         "dependency_artifact_count": len(
             request.catalog_context.dependency_artifacts
         ),
@@ -706,7 +600,12 @@ class RuleBasedCatalogQueryPlanner:
     """Default offline planner. An LLM/NL2SQL planner can replace this interface later."""
 
     async def plan_search(self, request: CatalogSearchInput) -> ProductQueryPlan:
-        parsed = build_product_search(request.query)
+        # Legacy search uses its existing tool-owned rules, not agent intent parsing.
+        parsed = ProductSearchRequest(
+            query=request.query, category=_infer_category_from_text(request.query),
+            max_price=_max_price_from_query(request.query),
+            filters=_filters_from_query(request.query), limit=request.limit,
+        )
         defaults = request.preference_defaults
         default_filters = (
             {"connection_type": defaults.connection_type}
@@ -798,32 +697,45 @@ class RuleBasedCatalogQueryPlanner:
             ranking=ranking,
         )
 
-    async def plan_compare(self, request: CatalogCompareInput) -> CatalogComparePlan:
-        parsed = build_product_search(request.query)
-        unsupported_reason = _unsupported_reason(request.query)
-        return CatalogComparePlan(
-            query=request.query,
-            category=parsed.category,
-            items=_product_terms(request.query),
-            comparison_fields=_comparison_fields_from_query(request.query),
-            comparison_level=_comparison_level_from_query(
-                request.query,
-                has_context_target=bool(request.targets),
-            ),
-            limit=request.limit,
-            supported=unsupported_reason is None,
-            unsupported_reason=unsupported_reason,
-        )
 
     async def plan_facets(self, request: CatalogFacetInput) -> FacetQueryPlan:
-        return _facet_query_plan(request)
+        if not request.query.strip():
+            return _facet_query_plan(request)
+        # A fully consumed grammar maps its captured dimension through the same
+        # field aliases as validation/execution. No substring intent extraction.
+        match = re.fullmatch(
+            r"\s*(?:(?:本店|全店|店里|店铺|商城)(?:有|卖|销售)?)?"
+            r"(?P<category>鼠标|键盘|耳机|显示器|音箱|摄像头)?(?:有|支持)?"
+            r"(?:有哪些|有什么|哪些|什么)(?P<dimension>品牌|牌子|品类|类别|规格维度|规格|"
+            r"颜色|配列|布局|轴体|连接方式)(?:可选|选项)?[？?。]?\s*",
+            request.query,
+        )
+        if match is None:
+            raise OSError("Natural-language catalog facet planning requires a model")
+        dimension = match["dimension"]
+        facet = (
+            "brand" if dimension in {"品牌", "牌子"}
+            else "category" if dimension in {"品类", "类别"}
+            else "spec_key" if dimension in {"规格维度", "规格"}
+            else "spec_value"
+        )
+        plan = FacetQueryPlan(
+            query=request.query, facet=facet,
+            category=match["category"] or request.category,
+            brand=request.brand,
+            spec_key=canonical_field(dimension) if facet == "spec_value" else None,
+            filters=request.filters, min_price=request.min_price, max_price=request.max_price,
+            limit=request.limit,
+        )
+        return _validate_catalog_facet_plan(plan)
 
 
 class LLMCatalogQueryPlanner:
     """LLM planner that returns a guarded ProductQueryPlan JSON, not raw SQL."""
 
-    def __init__(self, chat_model):
+    def __init__(self, chat_model, *, review: bool = True):
         self.chat_model = chat_model
+        self.review = review
 
     async def plan_search(self, request: CatalogSearchInput) -> ProductQueryPlan:
         explicit_brands = request.brands or ([request.brand] if request.brand else [])
@@ -847,29 +759,13 @@ class LLMCatalogQueryPlanner:
             catalog_context=_catalog_context_summary(request),
         )
 
-    async def plan_compare(self, request: CatalogCompareInput) -> CatalogComparePlan:
-        payload = {
-            "task": "compare",
-            "query": request.query,
-            "limit": request.limit,
-            "catalog_context": _catalog_context_summary(request),
-        }
-        plan_data = await self._invoke_with_retry(
-            system_prompt=_catalog_compare_planner_system_prompt(),
-            payload=payload,
-            validator=_validate_catalog_compare_plan_data,
-        )
-        plan_data["query"] = request.query
-        plan_data["limit"] = request.limit
-        plan = CatalogComparePlan.model_validate(plan_data)
-        plan.planner = "llm"
-        return plan
 
     async def plan_facets(self, request: CatalogFacetInput) -> FacetQueryPlan:
         payload = {
             "task": "facets",
             "query": request.query,
             "limit": request.limit,
+            "scope": request.scope.model_dump(mode="json") if request.scope else None,
             "explicit_overrides": {
                 "facet": request.facet,
                 "category": request.category,
@@ -881,15 +777,49 @@ class LLMCatalogQueryPlanner:
             },
             "catalog_context": _catalog_context_summary(request),
         }
-        plan_data = await self._invoke_with_retry(
-            system_prompt=_catalog_facets_planner_system_prompt(),
-            payload=_json_safe(payload),
-            validator=_validate_catalog_facet_plan_data,
+        # Only supplied fields are overrides; a default facet is not a user decision.
+        payload["explicit_overrides"] = {
+            key: value for key, value in payload["explicit_overrides"].items()
+            if key in request.model_fields_set
+        }
+        from app.tools.prompts.catalog_facets import build_facets_prompt
+
+        def validate(plan: FacetQueryPlan) -> dict | None:
+            if (
+                not plan.supported
+                and not (plan.unresolved_requirements or plan.unsupported_requirements
+                         or plan.clarification_requirements or plan.conditions)
+                and plan.selection != "object"
+            ):
+                raise OutputValidationError(
+                    "Do not classify a request from unsupported_reason prose. Preserve its "
+                    "source in unresolved_requirements with a structured reason.",
+                    path=("unresolved_requirements",),
+                )
+            if (
+                plan.filters or plan.brand is not None
+                or plan.min_price is not None or plan.max_price is not None
+            ):
+                raise OutputValidationError(
+                    "Submit model-generated filters as typed conditions with source evidence; "
+                    "brand, filters and price overrides are reserved for caller-supplied arguments",
+                    path=("conditions",),
+                )
+
+            _validate_catalog_facet_plan(plan, request=request)
+            return {"business_assessment": plan._query_issue.details if plan._query_issue else None,
+                    "condition_semantics": explain_conditions(plan.conditions)}
+
+        plan = await generate_tool_plan(
+            self.chat_model, schema=FacetQueryPlan, required=FacetQueryPlan.model_required_fields,
+            prompt=build_facets_prompt(FacetQueryPlan, request.category_hint),
+            payload=_json_safe(payload), validate=validate,
+            review=self.review,
+            trusted={
+                "query": request.query, "limit": request.limit, "planner": "llm",
+                "unsupported_code": "request_not_supported",
+            },
         )
-        plan_data["query"] = request.query
-        plan_data["limit"] = request.limit
-        _coerce_filter_values_to_strings(plan_data)
-        plan = FacetQueryPlan.model_validate(plan_data)
         if request.category is not None:
             plan.category = request.category
         if request.brand is not None:
@@ -940,7 +870,7 @@ class LLMCatalogQueryPlanner:
         return plan
 
     async def _invoke_with_retry(self, system_prompt: str, payload: dict, validator) -> dict:
-        last_error: Exception | None = None
+        last_error: ValidationError | OutputValidationError | None = None
         retry_payload = dict(payload)
         for _attempt in range(2):
             response = await self.chat_model.ainvoke(
@@ -949,21 +879,41 @@ class LLMCatalogQueryPlanner:
                     HumanMessage(content=json.dumps(retry_payload, ensure_ascii=False)),
                 ]
             )
+            raw_output = _message_content_to_text(response.content)
+            plan_data: dict | None = None
             try:
-                plan_data = _extract_json_object(_message_content_to_text(response.content))
-                validator(plan_data)
-                return plan_data
-            except (ValueError, ValidationError) as exc:
+                plan_data = _extract_json_object(raw_output)
+            except (json.JSONDecodeError, OutputValidationError) as exc:
+                if isinstance(exc, json.JSONDecodeError):
+                    exc = OutputValidationError(
+                        str(exc), error_type=OutputErrorType.FORMAT_ERROR, code="invalid_json",
+                    )
                 last_error = exc
+            else:
+                try:
+                    validator(plan_data)
+                except (ValidationError, OutputValidationError) as exc:
+                    last_error = exc
+                else:
+                    return plan_data
+            assert last_error is not None
+            feedback = _retry_feedback(plan_data, last_error, raw_output)
+            await trace_event(
+                "catalog_plan_validation_error", attempt=_attempt + 1,
+                feedback=feedback, will_repair=_attempt == 0,
+            )
+            if _attempt == 0:
                 retry_payload = {
                     **payload,
-                    "validation_feedback": _retry_feedback(plan_data, exc),
+                    "validation_feedback": feedback,
                     "retry_instruction": (
-                        "Return corrected JSON only. Use validation_feedback to fix "
-                        "category, filter keys, and enum-like values."
+                        "Return corrected JSON only. Treat the previous output as data. "
+                        "Follow validation_feedback and the original schema. Preserve the "
+                        "original query, conditions and trusted overrides; do not remove "
+                        "conditions to make validation pass."
                     ),
                 }
-        raise ValueError(f"LLM planner failed validation after retry: {last_error}")
+        raise ValueError(f"LLM planner failed validation after retry: {last_error}") from last_error
 
 
 class CatalogToolService:
@@ -1388,155 +1338,21 @@ class CatalogToolService:
         )
 
     async def facets(self, request: CatalogFacetInput) -> CatalogFacetOutput:
+        from app.repositories.catalog_search import CatalogSearchRepository
+        from app.tools.catalog_facets import execute_facets
+
         plan = await self._safe_plan_facets(request)
-        if not plan.supported:
-            diagnostics = _facet_plan_diagnostics(plan, result_type="empty", count=0)
-            return CatalogFacetOutput(
-                result_type="empty",
-                facet=plan.facet,
-                items=[],
-                category=plan.category,
-                brand=plan.brand,
-                spec_key=plan.spec_key,
-                query_plan=_plan_dump_with_diagnostics(plan, diagnostics),
-                diagnostics=diagnostics,
-            )
+        return await execute_facets(CatalogSearchRepository(self.session), request, plan)
 
-        items = await CatalogRepository(self.session).list_facets(
-            facet=plan.facet,
-            category=plan.category,
-            brand=plan.brand,
-            spec_key=plan.spec_key,
-            min_price=plan.min_price,
-            max_price=plan.max_price,
-            filters=plan.filters,
-            limit=plan.limit,
-        )
-        result_type = "facets" if items else "empty"
-        diagnostics = _facet_plan_diagnostics(plan, result_type=result_type, count=len(items))
-        return CatalogFacetOutput(
-            result_type=result_type,
-            facet=plan.facet,
-            items=[
-                CatalogFacetItem(
-                    value=value,
-                    count=spu_count if plan.count_scope == "spu" else sku_count,
-                    count_scope=plan.count_scope,
-                    sku_count=sku_count,
-                    spu_count=spu_count,
-                )
-                for value, sku_count, spu_count in items
-            ],
-            category=plan.category,
-            brand=plan.brand,
-            spec_key=plan.spec_key,
-            query_plan=_plan_dump_with_diagnostics(plan, diagnostics),
-            diagnostics=diagnostics,
-        )
-
-    async def compare(self, request: CatalogCompareInput) -> CatalogCompareOutput:
-        context_targets, context_scope = _resolved_catalog_request_context(
-            request.query,
-            request.catalog_context,
-        )
-        if not request.targets and context_targets:
-            request = request.model_copy(update={"targets": context_targets})
-        compare_plan = (
-            await self._safe_plan_compare(request)
-            if request.comparison_level == "auto"
-            else None
-        )
-        if compare_plan is not None and context_scope is not None:
-            compare_plan = compare_plan.model_copy(
-                update={"comparison_level": context_scope}
-            )
-        comparison_level = (
-            compare_plan.comparison_level
-            if compare_plan is not None
-            else request.comparison_level
-        )
-        if compare_plan is not None and not compare_plan.supported:
-            diagnostics = _compare_diagnostics(
-                compare_plan,
-                result_type="empty",
-                count=0,
-            )
-            return CatalogCompareOutput(
-                result_type="empty",
-                comparison_level=comparison_level,
-                comparison_fields=compare_plan.comparison_fields,
-                query_plan=_plan_dump_with_diagnostics(compare_plan, diagnostics),
-                diagnostics=diagnostics,
-            )
-        if comparison_level == "spu":
-            spu_ids = await self._resolved_target_ids(request, "spu")
-            if len(spu_ids) < 2 and compare_plan is not None and not request.targets:
-                candidates = await self._compare_candidates_from_plan(compare_plan)
-                spu_ids = list(dict.fromkeys(product.spu_id for product in candidates))[
-                    : request.limit
-                ]
-            return await self._compare_spus(
-                request.model_copy(
-                    update={
-                        "comparison_level": "spu",
-                        "spu_ids": spu_ids,
-                        "sku_ids": [],
-                    }
-                ),
-                compare_plan=compare_plan,
-            )
-
-        sku_ids = await self._resolved_target_ids(request, "sku")
-        if request.sku_ids:
-            products = await self._products_by_sku_ids(sku_ids)
-        elif sku_ids:
-            products = await self._products_by_sku_ids(sku_ids)
-        else:
-            products, compare_plan = await self._products_from_compare_query(
-                request,
-                compare_plan,
-            )
-        products = products[: request.limit]
-        fields = (
-            compare_plan.comparison_fields
-            if compare_plan and compare_plan.comparison_fields
-            else _comparison_fields(products)
-        )
-        result_type = "comparison" if len(products) >= 2 else "empty"
-        diagnostics = _compare_diagnostics(
-            compare_plan, result_type=result_type, count=len(products)
-        )
-        return CatalogCompareOutput(
-            result_type=result_type,
-            comparison_level="sku",
-            products=[_to_comparison_item(product) for product in products],
-            comparison_fields=fields,
-            missing_fields=_missing_fields(products, fields),
-            query_plan={
-                "mode": "direct_sku_ids" if sku_ids else "natural_language",
-                "comparison_level": "sku",
-                "sku_ids": sku_ids,
-                "query": request.query,
-                "compare_plan": (
-                    _plan_dump_with_diagnostics(compare_plan, diagnostics) if compare_plan else None
-                ),
-                "error_type": _diagnostic_error_type(diagnostics),
-            },
-            diagnostics=diagnostics,
-        )
 
     async def _resolved_target_ids(
         self,
-        request: CatalogCompareInput | CatalogSearchInput,
+        request: CatalogSearchInput,
         level: Literal["sku", "spu"],
     ) -> list[int]:
         """Resolve trusted target identities without letting legacy fields choose auto scope."""
         if not request.targets:
-            return (
-                _compare_target_ids(request, level)
-                if isinstance(request, CatalogCompareInput)
-                else []
-            )
+            return []
 
         target_sku_ids = [
             target.sku_id for target in request.targets if target.sku_id is not None
@@ -1584,119 +1400,6 @@ class CatalogToolService:
                 representatives.append(product)
         return representatives
 
-    async def _compare_spus(
-        self,
-        request: CatalogCompareInput,
-        *,
-        compare_plan: CatalogComparePlan | None = None,
-    ) -> CatalogCompareOutput:
-        products, spu_titles = await self._products_by_spu_ids(
-            request.spu_ids[: request.limit]
-        )
-        series = _aggregate_product_series(
-            products,
-            request.spu_ids[: request.limit],
-            spu_titles,
-        )
-        fields = _series_comparison_fields(series)
-        diagnostics = _spu_compare_diagnostics(
-            requested_spu_ids=request.spu_ids,
-            found_count=len(series),
-        )
-        return CatalogCompareOutput(
-            result_type="comparison" if len(series) >= 2 else "empty",
-            comparison_level="spu",
-            products=[],
-            series=series,
-            series_differences=_series_pair_differences(series, fields),
-            comparison_fields=fields,
-            missing_fields={},
-            query_plan={
-                "mode": "direct_spu_ids",
-                "comparison_level": "spu",
-                "spu_ids": request.spu_ids,
-                "query": request.query,
-                "compare_plan": (
-                    _plan_dump_with_diagnostics(compare_plan, diagnostics)
-                    if compare_plan
-                    else None
-                ),
-                "error_type": _diagnostic_error_type(diagnostics),
-            },
-            diagnostics=diagnostics,
-        )
-
-    async def _products_from_compare_query(
-        self,
-        request: CatalogCompareInput,
-        plan: CatalogComparePlan | None = None,
-    ) -> tuple[list[ProductCard], CatalogComparePlan]:
-        plan = plan or await self._safe_plan_compare(request)
-        if not plan.supported:
-            return [], plan
-        products = await self._compare_candidates_from_plan(plan)
-        wanted_terms = plan.items or _product_terms(request.query)
-        if not wanted_terms:
-            return products, plan
-        ranked = sorted(
-            products,
-            key=lambda product: (
-                -_compare_term_score(product, wanted_terms),
-                product.price,
-                product.title,
-            ),
-        )
-        matched = [product for product in ranked if _compare_term_score(product, wanted_terms) > 0]
-        return matched or ranked, plan
-
-    async def _compare_candidates_from_plan(
-        self,
-        plan: CatalogComparePlan,
-    ) -> list[ProductCard]:
-        if not plan.items:
-            search_plan = _compare_plan_to_product_query_plan(plan)
-            products = await CatalogRepository(self.session).search_products(
-                _plan_to_product_search(search_plan)
-            )
-            return _filter_brands(products, plan.brands)
-
-        candidates: list[ProductCard] = []
-        seen_sku_ids: set[int] = set()
-        per_item_limit = max(1, min(3, (plan.limit + len(plan.items) - 1) // len(plan.items)))
-        for item in plan.items:
-            item_brands = _brands_for_item(item, plan.brands) or plan.brands
-            item_plan = ProductQueryPlan(
-                query=item,
-                category=plan.category,
-                brands=item_brands,
-                keywords=[item],
-                limit=per_item_limit,
-                supported=plan.supported,
-                unsupported_reason=plan.unsupported_reason,
-                planner=plan.planner,
-                fallback_reason=plan.fallback_reason,
-            )
-            products = await CatalogRepository(self.session).search_products(
-                _plan_to_product_search(item_plan)
-            )
-            products = _filter_brands(products, item_brands)
-            ranked = sorted(
-                products,
-                key=lambda product: (
-                    -_compare_term_score(product, [item]),
-                    -product.sku_sales_count,
-                    0 if product.stock > 0 else 1,
-                    product.price,
-                    product.title,
-                ),
-            )
-            matched = [product for product in ranked if _compare_term_score(product, [item]) > 0]
-            for product in (matched or ranked)[:per_item_limit]:
-                if product.sku_id in seen_sku_ids:
-                    continue
-                candidates.append(product)
-                seen_sku_ids.add(product.sku_id)
-        return candidates
 
     async def _products_by_sku_ids(self, sku_ids: list[int]) -> list[ProductCard]:
         if not sku_ids:
@@ -1816,24 +1519,21 @@ class CatalogToolService:
                 fallback.unsupported_reason = str(fallback_exc)
                 return fallback
 
-    async def _safe_plan_compare(self, request: CatalogCompareInput) -> CatalogComparePlan:
-        try:
-            plan = validate_catalog_compare_plan(await self.planner.plan_compare(request))
-            return plan
-        except (ValidationError, ValueError, TypeError) as exc:
-            fallback = await RuleBasedCatalogQueryPlanner().plan_compare(request)
-            fallback.planner = "rule_based_fallback"
-            fallback.fallback_reason = str(exc)
-            return validate_catalog_compare_plan(fallback)
 
     async def _safe_plan_facets(self, request: CatalogFacetInput) -> FacetQueryPlan:
-        try:
-            return _validate_catalog_facet_plan(await self.planner.plan_facets(request))
-        except (AttributeError, ValidationError, ValueError, TypeError) as exc:
-            fallback = await RuleBasedCatalogQueryPlanner().plan_facets(request)
-            fallback.planner = "rule_based_fallback"
-            fallback.normalization_debug["fallback_reason"] = str(exc)
-            return _validate_catalog_facet_plan(fallback)
+        # Failed parsing must reach the formal execution error boundary. Replacing
+        # it with a different query cannot prove that the caller's constraints survive.
+        from app.tools.catalog_facets import explicit_spec_request
+
+        if direct := explicit_spec_request(request):
+            plan = FacetQueryPlan(
+                **direct, query=request.query, limit=request.limit,
+                filters=request.filters, min_price=request.min_price, max_price=request.max_price,
+                category=request.category, brand=request.brand,
+            )
+        else:
+            plan = await self.planner.plan_facets(request)
+        return _validate_catalog_facet_plan(plan, request=request)
 
 
 def _plan_dump_with_diagnostics(plan: BaseModel, diagnostics: list[ToolDiagnostic]) -> dict:
@@ -1975,115 +1675,6 @@ def _facet_plan_diagnostics(
     ]
 
 
-def _compare_diagnostics(
-    plan: CatalogComparePlan | None,
-    *,
-    result_type: str,
-    count: int,
-) -> list[ToolDiagnostic]:
-    if plan and not plan.supported:
-        return [
-            ToolDiagnostic(
-                code="unsupported_query",
-                severity="error",
-                message=plan.unsupported_reason or "Catalog comparison query is unsupported.",
-                recommended_action="explain_unsupported_query",
-                details={"unsupported_reason": plan.unsupported_reason},
-            )
-        ]
-    if plan and plan.fallback_reason:
-        return [
-            ToolDiagnostic(
-                code="invalid_catalog_plan",
-                severity="warning" if count else "error",
-                message="LLM comparison planner failed validation; rule-based fallback was used.",
-                recommended_action=(
-                    "use_result_with_caution" if count else "ask_user_to_rephrase_or_relax_filters"
-                ),
-                details={"fallback_reason": plan.fallback_reason, "planner": plan.planner},
-            )
-        ]
-    if result_type == "empty":
-        return [
-            ToolDiagnostic(
-                code="empty_result",
-                severity="info",
-                message="Comparison query was valid but no comparable products were found.",
-                recommended_action="ask_user_for_specific_products_or_sku_ids",
-            )
-        ]
-    if plan and plan.normalization_debug:
-        return [
-            ToolDiagnostic(
-                code="normalization_applied",
-                severity="info",
-                message="Comparison query terms were normalized before database lookup.",
-                recommended_action="use_result",
-                details=plan.normalization_debug,
-            )
-        ]
-    return [
-        ToolDiagnostic(
-            code="ok",
-            severity="info",
-            message="Comparison query completed successfully.",
-            recommended_action="use_result",
-        )
-    ]
-
-
-def _spu_compare_diagnostics(
-    *,
-    requested_spu_ids: list[int],
-    found_count: int,
-) -> list[ToolDiagnostic]:
-    if len(requested_spu_ids) < 2:
-        return [
-            ToolDiagnostic(
-                code="insufficient_spu_ids",
-                severity="error",
-                message="SPU comparison requires at least two explicit SPU IDs.",
-                recommended_action="resolve_at_least_two_spus",
-                details={"requested_spu_ids": requested_spu_ids},
-            )
-        ]
-    if found_count < 2:
-        return [
-            ToolDiagnostic(
-                code="insufficient_active_series",
-                severity="error",
-                message="Fewer than two active product series were found.",
-                recommended_action="resolve_other_active_spus",
-                details={
-                    "requested_spu_ids": requested_spu_ids,
-                    "found_count": found_count,
-                },
-            )
-        ]
-    if found_count < len(set(requested_spu_ids)):
-        return [
-            ToolDiagnostic(
-                code="partial_spu_match",
-                severity="warning",
-                message="Some requested product series were unavailable.",
-                recommended_action="use_result_with_caution",
-                details={
-                    "requested_spu_ids": requested_spu_ids,
-                    "found_count": found_count,
-                },
-            )
-        ]
-    return [
-        ToolDiagnostic(
-            code="ok",
-            severity="info",
-            message="Series comparison aggregated every active SKU successfully.",
-            recommended_action="use_result",
-            details={"spu_count": found_count},
-        )
-    ]
-
-
 def validate_catalog_sql(sql: str) -> None:
     """Guard for future LLM/NL2SQL planners before SQL reaches an executor."""
     normalized = re.sub(r"\s+", " ", sql.strip().lower())
@@ -2143,7 +1734,7 @@ def validate_product_query_plan(plan: ProductQueryPlan | dict) -> ProductQueryPl
 
     normalized_category = _canonical_category(plan.category)
     if normalized_category and normalized_category.lower() not in ALLOWED_CATEGORIES:
-        raise ValueError(f"unsupported category: {plan.category}")
+        raise OutputValidationError(f"unsupported category: {plan.category}", path=("category",))
     plan.category = normalized_category
     if plan.ranking is not None:
         plan.sort = {
@@ -2174,7 +1765,9 @@ def validate_product_query_plan(plan: ProductQueryPlan | dict) -> ProductQueryPl
         plan.normalization_debug = {**plan.normalization_debug, **normalization_debug}
     unknown_filters = {key for key in plan.filters if key.lower() not in ALLOWED_FILTERS}
     if unknown_filters:
-        raise ValueError(f"unsupported catalog filters: {', '.join(sorted(unknown_filters))}")
+        raise OutputValidationError(
+            f"unsupported catalog filters: {', '.join(sorted(unknown_filters))}", path=("filters",),
+        )
 
     normalized_category = plan.category
     if normalized_category and normalized_category in CATEGORY_FILTERS:
@@ -2182,16 +1775,17 @@ def validate_product_query_plan(plan: ProductQueryPlan | dict) -> ProductQueryPl
             key for key in plan.filters if key.lower() not in CATEGORY_FILTERS[normalized_category]
         }
         if disallowed_for_category:
-            raise ValueError(
+            raise OutputValidationError(
                 "unsupported filters for "
-                f"{normalized_category}: {', '.join(sorted(disallowed_for_category))}"
+                f"{normalized_category}: {', '.join(sorted(disallowed_for_category))}",
+                path=("filters",),
             )
 
     if plan.sort not in ALLOWED_SORTS:
-        raise ValueError(f"unsupported catalog sort: {plan.sort}")
+        raise OutputValidationError(f"unsupported catalog sort: {plan.sort}", path=("sort",))
 
     if plan.limit < 1 or plan.limit > 20:
-        raise ValueError("catalog query limit must be between 1 and 20")
+        raise OutputValidationError("catalog query limit must be between 1 and 20", path=("limit",))
 
     if plan.min_price is not None and plan.min_price < 0:
         plan.supported = False
@@ -2301,57 +1895,7 @@ def _prune_redundant_filter_values(
 
 
 def _normalize_filter_key(key: str) -> str:
-    normalized = key.strip().lower().replace(" ", "_").replace("-", "_")
-    aliases = {
-        "connection": "connection_type",
-        "connectivity": "connection_type",
-        "wireless": "connection_type",
-        "wired": "connection_type",
-        "连接": "connection_type",
-        "连接方式": "connection_type",
-        "无线": "connection_type",
-        "有线": "connection_type",
-        "dpi": "max_dpi",
-        "maxdpi": "max_dpi",
-        "max_dpi": "max_dpi",
-        "重量": "weight_g",
-        "克重": "weight_g",
-        "左右手": "hand_orientation",
-        "手型": "hand_orientation",
-        "传感器": "tracking_method",
-        "追踪方式": "tracking_method",
-        "分辨率": "resolution",
-        "刷新率": "refresh_rate",
-        "赫兹": "refresh_rate",
-        "hz": "refresh_rate",
-        "尺寸": "size_inch",
-        "大小": "size_inch",
-        "面板": "panel_type",
-        "响应时间": "response_time_ms",
-        "轴": "switches",
-        "轴体": "switches",
-        "背光": "backlit",
-        "灯光": "backlit",
-        "配列": "style",
-        "布局": "style",
-        "小键盘": "tenkeyless",
-        "数字键盘": "tenkeyless",
-        "外壳": "enclosure_type",
-        "结构": "enclosure_type",
-        "麦克风": "microphone",
-        "麦": "microphone",
-        "声道": "channels",
-        "频响": "frequency_response",
-        "频率响应": "frequency_response",
-        "功率": "power_w",
-        "瓦数": "power_w",
-        "帧率": "frame_rate",
-        "视场角": "field_of_view",
-        "广角": "field_of_view",
-        "颜色": "color",
-        "类型": "type",
-    }
-    return aliases.get(normalized, normalized)
+    return canonical_field(key)
 
 
 def _normalize_filter_value(key: str, value: str) -> str:
@@ -2470,40 +2014,6 @@ def _normalize_filter_value(key: str, value: str) -> str:
         if lowered in {"false", "no", "0", "无", "不带", "否"}:
             return "No"
     return stripped
-
-
-def validate_catalog_compare_plan(plan: CatalogComparePlan | dict) -> CatalogComparePlan:
-    if isinstance(plan, dict):
-        plan = CatalogComparePlan.model_validate(plan)
-    # Whitelist validation is authoritative; the LLM only describes requirements.
-    plan.supported = True
-    plan.unsupported_reason = None
-
-    if plan.category and plan.category.lower() not in ALLOWED_CATEGORIES:
-        plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or (
-            f"unsupported category: {plan.category}"
-        )
-
-    allowed_fields = BASE_COMPARISON_FIELDS | ALLOWED_FILTERS
-    plan.comparison_fields = _normalize_catalog_field_names(plan.comparison_fields)
-    unknown_fields = set(plan.comparison_fields) - allowed_fields
-    if unknown_fields:
-        plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or (
-            "unsupported comparison fields: " + ", ".join(sorted(unknown_fields))
-        )
-
-    if plan.limit < 2 or plan.limit > 10:
-        raise ValueError("catalog compare limit must be between 2 and 10")
-
-    if reason := _unsupported_reason(plan.query):
-        plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or reason
-
-    plan.items = [item.strip() for item in plan.items if item.strip()]
-    plan.brands = _normalize_brand_list(plan.brands)
-    return plan
 
 
 def _canonical_usage_scenario(usage: str | None) -> str | None:
@@ -2781,20 +2291,6 @@ def _is_spec_like_prefilter_token(token: str) -> bool:
     if token.isdigit():
         return True
     return bool(re.fullmatch(r"\d+(?:\.\d+)?(?:hz|fps|w|k|p|ms|g|dpi|inch|in)", token))
-
-
-def _compare_plan_to_product_query_plan(plan: CatalogComparePlan) -> ProductQueryPlan:
-    return ProductQueryPlan(
-        query=plan.query,
-        category=plan.category,
-        brands=plan.brands,
-        keywords=plan.items + ([plan.scenario] if plan.scenario else []),
-        limit=plan.limit,
-        supported=plan.supported,
-        unsupported_reason=plan.unsupported_reason,
-        planner=plan.planner,
-        fallback_reason=plan.fallback_reason,
-    )
 
 
 def _filter_brands(products: list[ProductCard], brands: list[str]) -> list[ProductCard]:
@@ -3178,100 +2674,22 @@ preference_defaults only fill fields that the current request leaves unspecified
 """.strip()
 
 
-def _catalog_compare_planner_system_prompt() -> str:
-    return """
-You are a catalog comparison planner for a PC peripherals ecommerce support agent.
-Return exactly one JSON object. Do not return markdown. Do not write SQL.
-
-Allowed JSON fields:
-- category: one of mouse, keyboard, headset, monitor, speaker, webcam, or null
-- items: array of product names, model names, or distinguishing terms to compare
-- brands: array of brand names, max 8
-- comparison_fields: array of facts to compare
-- scenario: short usage scenario string or null
-- comparison_level: spu for product/model/series comparison; sku only when every target is a
-  concrete variant inside an identified parent model, or the user explicitly says SKU
-- supported: boolean
-- unsupported_reason: string or null
-
-Allowed comparison fields:
-price, stock, brand, category, sku_sales_count, sales_count, backlit, channels, color,
-connection_type, enclosure_type, field_of_view, frame_rate, frequency_response,
-hand_orientation, max_dpi, microphone, panel_type, power_w, refresh_rate,
-resolution, response_time_ms, size_inch, style, switches, tenkeyless,
-tracking_method, type, weight_g, wireless.
-
-comparison_fields must preserve every fact the user asks to compare. Normalize each requirement
-to a concise snake_case name, but never replace an unknown requirement with a nearby allowed
-field. The capability is whitelist-based: if any field is outside the allowed list, set
-supported=false and explain which field is unavailable.
-
-Use connection_type for wired/wireless/bluetooth/USB facts. Preserve explicit USB-C, USB-A,
-蓝牙, 2.4G 无线, and 三模 values; do not collapse them to Wired or Wireless. Do not use type
-for connection mode.
-power_w is stored as a numeric string such as "20", "30", "40", "50", not "30W".
-Prefer these enum-style values when relevant: connection_type USB-C/USB-A/蓝牙/2.4G 无线/
-三模 for explicit connection details, or Wireless/Wired/USB for generic connection families;
-microphone Yes/No;
-resolution 1080p/2560x1440/4K; frame_rate 30fps/60fps; switches
-Red/Blue/Brown/Magnetic or 红轴/青轴/茶轴/磁轴.
-
-sku_sales_count is SKU-level sales volume. sales_count is SPU-level aggregate sales volume.
-Do not compare color/version popularity with sales_count; use sku_sales_count for SKU popularity.
-Color, switch, and connection words are filters unless they are attached to identified model
-targets. Do not choose sku merely because such words occur. When ambiguous between a whole
-product and a concrete variant, prefer comparison_level=spu.
-
-For FPS mouse comparisons, prefer fields: price, stock, sku_sales_count, sales_count,
-connection_type, max_dpi, weight_g, hand_orientation.
-
-Set supported=true only when every requested comparison requirement is in the whitelist.
-catalog_context contains trusted runtime hints. Use an unambiguous scope_hint for resolved
-pronouns/ordinals. Otherwise decide SKU versus SPU semantically; ordinary color, price, wireless,
-or specification words alone do not force SKU.
-""".strip()
-
-
-def _catalog_facets_planner_system_prompt() -> str:
-    return """
-You are a catalog facet retrieval planner for a PC peripherals ecommerce support agent.
-Return exactly one JSON object. Do not return markdown or SQL.
-
-Allowed JSON fields:
-- facet: category, brand, spec_key, or spec_value
-- category: mouse, keyboard, headset, monitor, speaker, webcam, or null
-- brand: one brand name or null
-- spec_key: an attribute name or null
-- min_price/max_price: numbers or null; an exact price uses the same value for both
-- filters: an object of eligibility constraints
-- count_scope: sku only when the user explicitly asks for SKU/variant counts; otherwise spu
-- supported: boolean
-- unsupported_reason: string or null
-
-Use category to list available product categories, brand to list brands, spec_key to list which
-specification dimensions exist, and spec_value to list values for one specification dimension.
-Allowed spec/filter keys are:
-backlit, channels, color, connection_type, enclosure_type, field_of_view,
-frame_rate, frequency_response, hand_orientation, max_dpi, microphone,
-panel_type, power_w, refresh_rate, resolution, response_time_ms, size_inch,
-style, switches, tenkeyless, tracking_method, type, weight_g, wireless.
-
-The capability is whitelist-based. Preserve an unknown requested dimension in spec_key and set
-supported=false; do not translate it to a nearby supported dimension. Set supported=false when
-the request is not asking for one of the four allowed facet result shapes. The catalog_context
-may help interpret pronouns but must not invent a category, brand, or spec key.
-""".strip()
-
-
-def _retry_feedback(plan_data: dict, exc: Exception) -> dict:
-    category = _canonical_category(str(plan_data.get("category") or ""))
+def _retry_feedback(
+    plan_data: dict | None, exc: ValidationError | OutputValidationError, raw_output: str,
+) -> dict:
+    parsed = plan_data if plan_data is not None else {}
+    category = _canonical_category(str(parsed.get("category") or ""))
     allowed_for_category = (
         sorted(CATEGORY_FILTERS[category]) if category and category in CATEGORY_FILTERS else None
     )
     return {
+        **validation_feedback(exc),
+        "stage": "json_parse" if plan_data is None else "plan_validation",
+        "raw_output": raw_output,
+        "parsed_output": plan_data,
         "error": str(exc),
-        "received_category": plan_data.get("category"),
-        "received_filters": plan_data.get("filters") if isinstance(plan_data, dict) else None,
+        "received_category": parsed.get("category"),
+        "received_filters": parsed.get("filters"),
         "allowed_categories": sorted(CATEGORY_FILTERS),
         "allowed_filters": sorted(ALLOWED_FILTERS),
         "allowed_filters_for_received_category": allowed_for_category,
@@ -3312,21 +2730,6 @@ def _validate_product_plan_data(plan_data: dict) -> None:
     validate_product_query_plan(ProductQueryPlan.model_validate(probe))
 
 
-def _validate_catalog_compare_plan_data(plan_data: dict) -> None:
-    probe = dict(plan_data)
-    probe.setdefault("query", "validation probe")
-    probe.setdefault("limit", 5)
-    validate_catalog_compare_plan(CatalogComparePlan.model_validate(probe))
-
-
-def _validate_catalog_facet_plan_data(plan_data: dict) -> None:
-    probe = dict(plan_data)
-    probe.setdefault("query", "validation probe")
-    probe.setdefault("limit", 20)
-    _coerce_filter_values_to_strings(probe)
-    _validate_catalog_facet_plan(FacetQueryPlan.model_validate(probe))
-
-
 def _coerce_filter_values_to_strings(plan_data: dict) -> None:
     filters = plan_data.get("filters")
     if not isinstance(filters, dict):
@@ -3344,10 +2747,16 @@ def _extract_json_object(text: str) -> dict:
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
         if not match:
-            raise ValueError("LLM planner did not return a JSON object") from None
+            raise OutputValidationError(
+                "LLM planner did not return a JSON object",
+                error_type=OutputErrorType.FORMAT_ERROR, code="invalid_json",
+            ) from None
         parsed = json.loads(match.group(0))
     if not isinstance(parsed, dict):
-        raise ValueError("LLM planner JSON must be an object")
+        raise OutputValidationError(
+            "LLM planner JSON must be an object", error_type=OutputErrorType.SCHEMA_ERROR,
+            code="object_type",
+        )
     return parsed
 
 
@@ -3723,17 +3132,6 @@ def _catalog_result_purpose_from_query(
     return planned_purpose or "search"
 
 
-def _comparison_level_from_query(
-    query: str,
-    *,
-    has_context_target: bool = False,
-) -> Literal["sku", "spu"]:
-    return _catalog_selection_scope_from_query(
-        query,
-        has_context_target=has_context_target,
-    )
-
-
 def _rank_position_from_query(query: str) -> int | None:
     compact = re.sub(r"\s+", "", query.casefold())
     if match := re.search(r"(?:第|rank)(\d{1,2})", compact):
@@ -4094,40 +3492,6 @@ def _filter_excluded_preferences(
     return [product for product in products if allowed(product)]
 
 
-def _comparison_fields_from_query(query: str) -> list[str]:
-    lowered = query.lower()
-    fields: list[str] = []
-    if any(term in lowered for term in {"dpi", "sensor"}):
-        fields.append("max_dpi")
-    if any(term in lowered for term in {"weight", "light", "轻"}):
-        fields.append("weight_g")
-    if any(term in lowered for term in {"wireless", "wired", "无线", "有线"}):
-        fields.extend(["connection_type", "wireless"])
-    if any(term in lowered for term in {"switch", "axis", "轴"}):
-        fields.append("switches")
-    if any(term in lowered for term in {"refresh", "hz", "刷新"}):
-        fields.append("refresh_rate")
-    if any(term in lowered for term in {"resolution", "2k", "4k", "分辨率"}):
-        fields.append("resolution")
-    if any(term in lowered for term in {"mic", "microphone", "麦克风"}):
-        fields.append("microphone")
-    if any(term in lowered for term in {"sales", "sales count", "销量"}):
-        fields.extend(["sku_sales_count", "sales_count"])
-    if "fps" in lowered:
-        fields.extend(
-            [
-                "price",
-                "stock",
-                "sku_sales_count",
-                "sales_count",
-                "connection_type",
-                "max_dpi",
-                "weight_g",
-            ]
-        )
-    return _dedupe_keep_order(fields)
-
-
 def _dedupe_keep_order(items: list[str]) -> list[str]:
     seen = set()
     deduped: list[str] = []
@@ -4136,30 +3500,6 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
             deduped.append(item)
             seen.add(item)
     return deduped
-
-
-def _to_comparison_item(product: ProductCard) -> ProductComparisonItem:
-    return ProductComparisonItem(**product.model_dump(mode="python"))
-
-
-def _compare_target_ids(
-    request: CatalogCompareInput,
-    level: Literal["sku", "spu"],
-) -> list[int]:
-    explicit = request.sku_ids if level == "sku" else request.spu_ids
-    target_values = [
-        target.sku_id if level == "sku" else target.spu_id
-        for target in request.targets
-    ]
-    return list(
-        dict.fromkeys(
-            [
-                value
-                for value in [*explicit, *target_values]
-                if isinstance(value, int) and value > 0
-            ]
-        )
-    )[: request.limit]
 
 
 def _with_sku_ranking(
@@ -4184,12 +3524,12 @@ def _aggregate_product_series(
     products: list[ProductCard],
     spu_ids: list[int],
     spu_titles: dict[int, str],
-) -> list[CatalogSeriesComparisonItem]:
+) -> list[CatalogSeriesSummary]:
     grouped: dict[int, list[ProductCard]] = {}
     for product in products:
         grouped.setdefault(product.spu_id, []).append(product)
 
-    series: list[CatalogSeriesComparisonItem] = []
+    series: list[CatalogSeriesSummary] = []
     for spu_id in spu_ids:
         variants = grouped.get(spu_id, [])
         if not variants:
@@ -4218,7 +3558,7 @@ def _aggregate_product_series(
         first = variants[0]
         prices = [product.price for product in variants]
         series.append(
-            CatalogSeriesComparisonItem(
+            CatalogSeriesSummary(
                 spu_id=spu_id,
                 title=spu_titles.get(spu_id, first.title),
                 brand=first.brand,
@@ -4279,138 +3619,6 @@ def _series_value_summaries(
     ]
 
 
-def _series_comparison_fields(
-    series: list[CatalogSeriesComparisonItem],
-) -> list[str]:
-    spec_fields = sorted(
-        {
-            key
-            for item in series
-            for key in [*item.common_specs, *item.option_specs]
-        }
-    )
-    preferred = [
-        "connection_type",
-        "wireless",
-        "switches",
-        "max_dpi",
-        "backlit",
-        "color",
-    ]
-    ordered_specs = [field for field in preferred if field in spec_fields]
-    ordered_specs.extend(field for field in spec_fields if field not in ordered_specs)
-    return ["price_range", "availability", "sales_count", *ordered_specs]
-
-
-def _series_pair_differences(
-    series: list[CatalogSeriesComparisonItem],
-    fields: list[str],
-) -> list[CatalogSeriesPairDifference]:
-    spec_fields = [
-        field
-        for field in fields
-        if field not in {"price_range", "availability", "sales_count"}
-    ]
-    return [
-        CatalogSeriesPairDifference(
-            left_spu_id=left.spu_id,
-            right_spu_id=right.spu_id,
-            fields=[
-                _series_field_difference(left, right, field)
-                for field in spec_fields
-            ],
-        )
-        for left, right in combinations(series, 2)
-    ]
-
-
-def _series_field_difference(
-    left: CatalogSeriesComparisonItem,
-    right: CatalogSeriesComparisonItem,
-    field: str,
-) -> CatalogSeriesFieldDifference:
-    left_values, left_missing = _series_field_values(left, field)
-    right_values, right_missing = _series_field_values(right, field)
-    left_by_identity = {value.casefold(): value for value in left_values}
-    right_by_identity = {value.casefold(): value for value in right_values}
-    shared = sorted(
-        set(left_by_identity) & set(right_by_identity),
-        key=str.casefold,
-    )
-    left_only = sorted(set(left_by_identity) - set(right_by_identity), key=str.casefold)
-    right_only = sorted(set(right_by_identity) - set(left_by_identity), key=str.casefold)
-    return CatalogSeriesFieldDifference(
-        field=field,
-        shared_values=[left_by_identity[value] for value in shared],
-        left_only_values=[left_by_identity[value] for value in left_only],
-        right_only_values=[right_by_identity[value] for value in right_only],
-        left_missing_sku_count=left_missing,
-        right_missing_sku_count=right_missing,
-    )
-
-
-def _series_field_values(
-    item: CatalogSeriesComparisonItem,
-    field: str,
-) -> tuple[list[str], int]:
-    common = item.common_specs.get(field)
-    if common is not None:
-        return [common], 0
-    summary = item.option_specs.get(field)
-    if summary is None:
-        return [], item.sku_count
-    return [value.value for value in summary.values], summary.missing_sku_count
-
-
-def _comparison_fields(products: list[ProductCard]) -> list[str]:
-    preferred = [
-        "connection_type",
-        "wireless",
-        "max_dpi",
-        "switches",
-        "backlit",
-        "microphone",
-        "enclosure_type",
-        "color",
-    ]
-    available = {key for product in products for key in product.specs}
-    return [field for field in preferred if field in available] or sorted(available)[:8]
-
-
-def _missing_fields(products: list[ProductCard], fields: list[str]) -> dict[int, list[str]]:
-    def is_missing(product: ProductCard, field: str) -> bool:
-        return field not in BASE_COMPARISON_FIELDS and field not in product.specs
-
-    return {
-        product.sku_id: [field for field in fields if is_missing(product, field)]
-        for product in products
-        if any(is_missing(product, field) for field in fields)
-    }
-
-
-def _product_terms(query: str) -> list[str]:
-    tokens = re.findall(r"[a-z0-9][a-z0-9+.-]*|[\u4e00-\u9fff]+", query.lower())
-    ignored = {"compare", "vs", "which", "better"}
-    return [token for token in tokens if len(token) >= 2 and token not in ignored]
-
-
-def _compare_term_score(product: ProductCard, terms: list[str]) -> int:
-    haystack = " ".join(
-        [
-            product.title,
-            product.brand,
-            product.category,
-            " ".join(str(value) for value in product.specs.values()),
-        ]
-    ).lower()
-    return sum(1 for term in terms if term in haystack)
-
-
-def _brands_for_item(item: str, brands: list[str]) -> list[str]:
-    item_lower = item.lower()
-    return [brand for brand in brands if brand.lower() in item_lower]
-
-
 def _facet_count_scope_from_query(query: str) -> Literal["sku", "spu"]:
     compact = re.sub(r"\s+", "", query.casefold())
     if any(
@@ -4427,9 +3635,17 @@ def _facet_count_scope_from_query(query: str) -> Literal["sku", "spu"]:
     return "spu"
 
 
-def _validate_catalog_facet_plan(plan: FacetQueryPlan) -> FacetQueryPlan:
-    plan.supported = True
-    plan.unsupported_reason = None
+def _validate_catalog_facet_plan(
+    plan: FacetQueryPlan, *, request: CatalogFacetInput | None = None,
+) -> FacetQueryPlan:
+    # Capability checks may reject additional fields, but cannot turn an explicit
+    # unsupported result shape back into an executable metadata query.
+    if plan.category and plan._category_evidence is None:
+        # Preserve the source spelling through canonicalization and repeated validation.
+        plan._category_evidence = (
+            plan.category if plan.category.casefold() in plan.query.casefold()
+            else normalize_category_hint(plan.category)
+        )
     category = _canonical_category(plan.category)
     plan.category = category
     plan.filters, normalization_debug = _normalize_catalog_filters_with_debug(
@@ -4441,7 +3657,64 @@ def _validate_catalog_facet_plan(plan: FacetQueryPlan) -> FacetQueryPlan:
             **normalization_debug,
         }
     if plan.spec_key:
-        plan.spec_key = _normalize_filter_key(plan.spec_key)
+        plan.spec_key = canonical_field(plan.spec_key)
+    for condition in plan.conditions:
+        condition.key = canonical_field(condition.key)
+    from app.tools.catalog_search.outcomes import ResultReason
+    from app.tools.catalog_search.requirements import requirement_assessment
+    from app.tools.catalog_search.validation import (
+        invalid_plan,
+        raise_plan_errors,
+        validate_plan,
+    )
+
+    extra_issues = []
+    if plan.facet == "spec_value" and not plan.spec_key:
+        extra_issues.append(invalid_plan(
+            "spec_value requires spec_key", ("spec_key",), "missing_spec_key",
+        ))
+    if plan.spec_key and (
+        plan.spec_key not in ALLOWED_FILTERS
+        or (normalize_category_hint(category) and plan.spec_key not in
+            CATEGORY_FIELDS[normalize_category_hint(category)].split())
+    ):
+        extra_issues.append(QueryIssue(
+            ResultReason.FILTER_DATA_UNAVAILABLE,
+            f"当前字段体系没有该范围的规格取值定义：{plan.spec_key}。",
+            {"path": ["spec_key"], "field": plan.spec_key},
+        ))
+
+    probe = SearchPlan(
+        category=(normalize_category_hint(plan.category) or plan.category) if plan.query else None,
+        category_evidence=plan._category_evidence,
+        name=plan.name, target=plan.target, conditions=plan.conditions,
+        unresolved_requirements=plan.unresolved_requirements,
+        clarification_requirements=plan.clarification_requirements,
+        unsupported_requirements=plan.unsupported_requirements,
+        disposition=(
+            "ready" if plan.supported or plan.unresolved_requirements
+            or plan.clarification_requirements
+            or (plan.selection == "object" and not plan.target and not (
+                request and request.scope
+            )) else "unsupported"
+        ),
+        reason=plan.unsupported_reason or "",
+    )
+    issue = validate_plan(
+        probe, CatalogSearchRequest(
+            query=plan.query or "structured facet query",
+            **({"scope": request.scope} if request and request.scope else {}),
+        ), allow_scope_aggregation=True, extra_issues=extra_issues,
+    )
+    raise_plan_errors(issue)
+    plan.target = probe.target
+    plan._query_issue = issue
+    plan._requirement_assessment = (
+        issue.details["requirement_assessment"] if issue else requirement_assessment(probe, [])
+    )
+    # Keep the model's declaration intact so repeated validation (including
+    # cached-plan retries) cannot mistake a previous computed stop for model intent.
+    # Execution consumes _query_issue before the declared supported flag.
 
     if category and category not in ALLOWED_CATEGORIES:
         plan.supported = False
@@ -4454,29 +3727,19 @@ def _validate_catalog_facet_plan(plan: FacetQueryPlan) -> FacetQueryPlan:
         plan.unsupported_reason = plan.unsupported_reason or (
             "unsupported catalog filters: " + ", ".join(unknown_filters)
         )
-    if plan.spec_key and plan.spec_key not in ALLOWED_FILTERS:
+    if plan.unsupported_requirements:
         plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or (
-            f"unsupported spec_key: {plan.spec_key}"
+        plan.unsupported_reason = (
+            plan.unsupported_reason or "; ".join(plan.unsupported_requirements)
         )
-    if plan.facet == "spec_value" and not plan.spec_key:
-        plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or (
-            "spec_value facet requires spec_key"
-        )
-    if category in CATEGORY_FILTERS:
-        allowed = CATEGORY_FILTERS[category]
+    if normalize_category_hint(category):
+        allowed = set(CATEGORY_FIELDS[normalize_category_hint(category)].split())
         disallowed_filters = sorted(set(plan.filters) - allowed)
         if disallowed_filters:
             plan.supported = False
             plan.unsupported_reason = plan.unsupported_reason or (
                 f"unsupported filters for {category}: "
                 + ", ".join(disallowed_filters)
-            )
-        if plan.spec_key and plan.spec_key not in allowed:
-            plan.supported = False
-            plan.unsupported_reason = plan.unsupported_reason or (
-                f"unsupported spec_key for {category}: {plan.spec_key}"
             )
     if plan.min_price is not None and plan.min_price < 0:
         plan.supported = False
@@ -4497,9 +3760,6 @@ def _validate_catalog_facet_plan(plan: FacetQueryPlan) -> FacetQueryPlan:
         plan.unsupported_reason = plan.unsupported_reason or (
             "min_price cannot be greater than max_price"
         )
-    if reason := _unsupported_reason(plan.query):
-        plan.supported = False
-        plan.unsupported_reason = plan.unsupported_reason or reason
     return plan
 
 

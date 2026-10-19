@@ -725,21 +725,19 @@ def _normal_guard_cases() -> list[dict[str, Any]]:
         },
     ]
     comparison_state = _single_usable_state(
-        message="SwiftMouse 和 ErgoMouse Pro 有什么区别？",
-        rewritten_query="比较 SwiftMouse 与 ErgoMouse Pro 的价格、连接方式和重量",
-        question="比较两款无线鼠标的价格、连接方式和重量",
-        produces="comparison",
-        capability="catalog_compare",
-        tool_name="catalog_compare",
+        message="推荐两款无线鼠标并比较价格、连接方式和重量",
+        rewritten_query="推荐两款无线鼠标并比较价格、连接方式和重量",
+        question="查询两款无线鼠标的价格、连接方式和重量",
+        produces="products",
+        capability="catalog_search",
+        tool_name="catalog_search",
         call_id="compare-normal-1",
         artifact_value={
             "products": comparison_products,
-            "comparison_fields": ["price", "connection_type", "weight_g"],
         },
         tool_output={
-            "result_type": "comparison",
+            "result_type": "products",
             "products": comparison_products,
-            "comparison_fields": ["price", "connection_type", "weight_g"],
         },
     )
 

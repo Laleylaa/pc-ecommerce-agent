@@ -9,8 +9,10 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from app.agent.outcomes import is_active_ledger_entry
-from app.agent.routing import user_facing_tasks
+from app.agent.limits import MAX_TOOL_WAVES
+from app.agent.outcomes import CLARIFICATION_REASONS, is_active_ledger_entry
+from app.agent.projections import without_pagination_controls
+from app.agent.routing import RequestRoutePlan, tool_planning_subqueries, user_facing_tasks
 
 TaskSemanticOutcome = Literal[
     "answered_with_facts",
@@ -18,11 +20,13 @@ TaskSemanticOutcome = Literal[
     "needs_clarification",
     "unsupported_capability",
     "temporarily_unavailable",
+    "execution_failed",
     "insufficient_evidence",
     "blocked_dependency",
     "incomplete",
 ]
 TurnCompletion = Literal["full", "partial", "none"]
+AnswerHandling = Literal["answer", "clarify", "suggest_recovery"]
 
 _RESOLVED_OUTCOMES = {"answered_with_facts", "answered_no_match"}
 
@@ -41,16 +45,18 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
         ledger_entry = ledger_by_task.get(task.id, {})
         semantic_outcome = _semantic_outcome(status, artifact, ledger_entry, state)
         source_tool_call_id = str(
-            artifact.get("source_tool_call_id")
-            or ledger_entry.get("tool_call_id")
-            or ""
+            artifact.get("source_tool_call_id") or ledger_entry.get("tool_call_id") or ""
         )
         source_tool_name = str(
-            artifact.get("source_tool_name")
-            or ledger_entry.get("tool_name")
-            or ""
+            artifact.get("source_tool_name") or ledger_entry.get("tool_name") or ""
         )
-        facts = artifact.get("value") if artifact.get("usable") else None
+        facts = artifact.get("value")
+        result = _result_details(state, source_tool_call_id, facts, ledger_entry)
+        handling = _task_handling(semantic_outcome, result, state)
+        if source_tool_name in {"catalog_search", "order_lookup"} and isinstance(
+            facts, Mapping
+        ):
+            facts = without_pagination_controls(facts)
         tasks.append(
             {
                 "task_id": task.id,
@@ -58,6 +64,22 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
                 "question": task.canonical_query,
                 "status": str(status.get("status") or "pending"),
                 "semantic_outcome": semantic_outcome,
+                "handling": handling,
+                "result": result,
+                "call_arguments": dict(ledger_entry.get("arguments") or {}),
+                "recovery": (
+                    {"target_stage": "llm2", "reason_code": result["reason_code"],
+                     "execution_enabled": False}
+                    if handling == "suggest_recovery" else None
+                ),
+                "missing_information": list(status.get("missing_information") or []),
+                "dependencies": [
+                    {"task_id": dependency,
+                     "status": _mapping(statuses.get(dependency)).get("status", "pending"),
+                     "reason": _mapping(statuses.get(dependency)).get("reason", ""),
+                     "result_reason": ledger_by_task.get(dependency, {}).get("reason", "")}
+                    for dependency in task.depends_on
+                ],
                 "resolved": semantic_outcome in _RESOLVED_OUTCOMES,
                 "artifact": (
                     {
@@ -74,7 +96,7 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
                     str(artifact.get("artifact_type") or task.produces),
                     facts,
                     source_tool_name,
-                    outcome_reason=str(ledger_entry.get("reason") or ""),
+                    outcome_reason=result["reason_code"],
                 ),
                 "explanation": _outcome_explanation(
                     semantic_outcome,
@@ -104,7 +126,45 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
         )
     )
     unavailable_parts = [str(task["question"]) for task in unresolved]
+    goals = RequestRoutePlan.model_validate(state["route_plan"]).subqueries
+    pending_goals = [g for g in goals if g.disposition == "clarification" or g.planning_pending]
+    if pending_goals:
+        completion = "partial" if resolved else "none"
+        unavailable_parts += [g.query for g in pending_goals]
+    blocked_goals = {
+        g["goal_id"]: g["blocked_reason"]
+        for g in state.get("execution_plan", {}).get("blocked_goals", [])
+    }
+    supporting = _supporting_task_records(state, unresolved, artifacts, statuses, ledger_by_task)
+    supporting_source_ids = [
+        task["artifact"]["source_tool_call_id"]
+        for task in supporting if task["partial_answer_goal_ids"]
+    ]
     return {
+        "original_message": state.get("message", ""),
+        "execution_plan": state.get("execution_plan", {}),
+        "supporting_tasks": supporting,
+        "supporting_source_tool_call_ids": supporting_source_ids,
+        "recovery_policy": _recovery_policy(state),
+        "goals": [
+            {
+                **g.model_dump(mode="json", exclude={"tasks"}),
+                "task_ids": [t["task_id"] for t in tasks if t["goal_id"] == g.id],
+                # Tool goals are handled per task, so one goal can contain both
+                # an answer and a clarification. Blocked plans must not invent tasks.
+                "handling": (
+                    None if any(t["goal_id"] == g.id for t in tasks)
+                    else "clarify" if g.disposition == "clarification" else "answer"
+                ),
+                "blocked_reason": blocked_goals.get(g.id),
+            }
+            for g in goals
+        ],
+        "history": list(state.get("history") or []),
+        "blocked_tool_goals": [g for g in state.get("execution_plan", {}).get("blocked_goals", [])],
+        "goal_response_policy": "覆盖所有目标。澄清目标在查询后统一提出必要问题，"
+        "不声称已完成待确认需求。"
+        "直接回复目标也必须回答；安全与人工目标遵守边界，不承诺业务操作已执行。",
         "rewritten_query": rewritten_query,
         "aggregation_contract": {
             "coverage_target": rewritten_query,
@@ -118,21 +178,103 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
             ],
         },
         "completion": completion,
+        "completion_scope": "tool_evidence_and_pending_goals; not proof of response coverage",
+        # A request may be admitted; per-task hints alone never authorize execution.
+        "recovery_execution_enabled": _recovery_policy(state)["enabled"],
         "tasks": tasks,
         "resolved_task_ids": [str(task["task_id"]) for task in resolved],
         "unresolved_task_ids": [str(task["task_id"]) for task in unresolved],
         "answerable_source_tool_call_ids": answerable_source_ids,
         "unavailable_parts": unavailable_parts,
         "outcome_counts": dict(Counter(str(task["semantic_outcome"]) for task in tasks)),
-        "recommended_control_action": _recommended_control_action(
-            completion,
-            unresolved,
+        "recommended_control_action": (
+            "finish_partial"
+            if supporting_source_ids or (pending_goals and resolved)
+            else "ask_clarification"
+            if completion == "none" and (pending_goals or unresolved)
+            and all(g.disposition == "clarification" for g in pending_goals)
+            and all(t["handling"] == "clarify" for t in unresolved)
+            else _recommended_control_action(completion, unresolved)
         ),
         "late_handoff_policy": (
             "Answer 阶段不得自行决定是否转人工。Runtime 会把 unsupported_capability 确定性地"
             "转换为人工确认入口；其他未完成结果不得转人工。response 不得自行写确认问句或声称"
             "已经转接、提交、记录或办理，固定问句由 Runtime 渲染。"
         ),
+    }
+
+
+def _supporting_task_records(
+    state: Mapping[str, Any],
+    unresolved: list[dict[str, Any]],
+    artifacts: Mapping[str, Any],
+    statuses: Mapping[str, Any],
+    ledger_by_task: Mapping[str, Mapping[str, Any]],
+) -> list[dict]:
+    """Expose current prerequisites as optional partial evidence, never completed goals."""
+    routed = {t.id: t for t in tool_planning_subqueries(state.get("route_plan"))}
+    dependent_goals: dict[str, set[str]] = {}
+    for task in unresolved:
+        if task["status"] not in {"failed", "unavailable", "blocked"}:
+            continue
+        pending = list(routed[task["task_id"]].depends_on)
+        visited = set()
+        while pending:
+            identity = pending.pop()
+            if identity in visited or identity not in routed:
+                continue
+            visited.add(identity)
+            dependent_goals.setdefault(identity, set()).add(task["goal_id"])
+            pending.extend(routed[identity].depends_on)
+    records = []
+    for task in routed.values():
+        if task.answer_role != "internal":
+            continue
+        artifact = _mapping(artifacts.get(task.id))
+        status = _mapping(statuses.get(task.id))
+        entry = ledger_by_task.get(task.id, {})
+        source = artifact.get("source_tool_call_id")
+        semantic = _semantic_outcome(status, artifact, entry, state)
+        eligible = (
+            status.get("status") == "succeeded" and artifact.get("usable")
+            and semantic == "answered_with_facts"
+            and source and source == entry.get("tool_call_id")
+        )
+        facts = artifact.get("value")
+        if artifact.get("source_tool_name") in {"catalog_search", "order_lookup"} and isinstance(
+            facts, Mapping,
+        ):
+            facts = without_pagination_controls(facts)
+        result = _result_details(state, str(source or ""), facts, entry)
+        records.append({
+            "task_id": task.id, "goal_id": task.goal_id, "question": task.canonical_query,
+            "status": status.get("status", "pending"), "semantic_outcome": semantic,
+            "partial_answer_goal_ids": sorted(dependent_goals.get(task.id, ())) if eligible else [],
+            "clarification_goal_ids": (
+                sorted(dependent_goals.get(task.id, ()))
+                if artifact.get("reason") == "order_confirmation_required"
+                and source and source == entry.get("tool_call_id") else []
+            ),
+            "artifact": {"facts": facts, "source_tool_call_id": source,
+                         "source_tool_name": artifact.get("source_tool_name")},
+            "call_arguments": entry.get("arguments", {}), "result": result,
+            "response_contract": _response_contract(
+                semantic, str(artifact.get("artifact_type") or task.produces), facts,
+                str(artifact.get("source_tool_name") or ""), outcome_reason=result["reason_code"],
+            ),
+        })
+    return records
+
+
+def _recovery_policy(state: Mapping[str, Any]) -> dict:
+    from app.agent.recovery import recovery_enabled
+
+    batch = state.get("recovery_batch", {})
+    return {
+        "enabled": recovery_enabled(state),
+        "max_batches": 1,
+        "items": batch.get("items", []),
+        "instruction": "只可提出有证据的局部修正，由程序审核；不自动重试原调用。",
     }
 
 
@@ -150,9 +292,6 @@ def _semantic_outcome(
     ledger_entry: Mapping[str, Any],
     state: Mapping[str, Any],
 ) -> TaskSemanticOutcome:
-    if artifact.get("usable"):
-        return "answered_with_facts"
-
     task_status = str(status.get("status") or "")
     if task_status == "blocked" and status.get("user_can_supply") is True:
         return "needs_clarification"
@@ -162,16 +301,21 @@ def _semantic_outcome(
         status_reason = str(status.get("reason") or "")
         if status_reason.startswith("tool_outcome:"):
             outcome = status_reason.partition(":")[2]
+    reason = str(ledger_entry.get("reason") or artifact.get("reason") or "")
+    if reason in CLARIFICATION_REASONS:
+        return "needs_clarification"
+    if outcome == "error":
+        code = _tool_error_code(state, str(ledger_entry.get("tool_call_id") or ""))
+        if code in {"timeout", "dependency_unavailable", "retrieval_busy"}:
+            return "temporarily_unavailable"
+        return "execution_failed"
+    if artifact.get("usable"):
+        return "answered_with_facts"
     if outcome in {"empty", "not_found"}:
         return "answered_no_match"
     if outcome == "unsupported":
         return "unsupported_capability"
     if outcome == "insufficient":
-        return "insufficient_evidence"
-    if outcome == "error":
-        code = _tool_error_code(state, str(ledger_entry.get("tool_call_id") or ""))
-        if code in {"timeout", "dependency_unavailable", "unauthorized"}:
-            return "temporarily_unavailable"
         return "insufficient_evidence"
 
     if task_status == "blocked":
@@ -194,12 +338,80 @@ def _response_contract(
     *,
     outcome_reason: str = "",
 ) -> dict[str, Any]:
+    if outcome == "execution_failed":
+        return {
+            "required": ["说明本次未能完成查询；按 result.reason_code 区分规划、服务或权限错误"],
+            "forbidden": ["声称查无结果、商品资料不足或商品不支持", "泄露错误详情或他人订单信息"],
+        }
+    if _mapping(facts).get("result_type") == "order_suggestions":
+        return {
+            "required": ["说明原条件下未找到订单，suggestions只是待确认候选",
+                         "按返回顺序展示必要的候选信息及differences，区分不符与无法确认",
+                         "询问用户是否指这些订单；suggestion_is_exhaustive=false时说明仅展示部分候选"],
+            "forbidden": ["把候选称为完全匹配或已选订单", "擅自继续候选订单的依赖任务",
+                          "把候选数量当成严格匹配数量", "将unknown说成不满足条件"],
+        }
+    if outcome == "needs_clarification":
+        return {
+            "required": ["围绕缺失信息或冲突条件提出必要问题，保留同轮其他可答结果"],
+            "forbidden": ["假设用户未提供的信息", "自行放宽条件"],
+        }
+    if outcome_reason in {"target_inactive", "target_outside_scope"}:
+        return {
+            "required": ["说明对象当前不可用或不在指定范围内，依据具体原因区分"],
+            "forbidden": ["说成对象不存在或规格资料缺失", "擅自扩大范围"],
+        }
+    if outcome_reason == "no_retrieval_evidence":
+        return {
+            "required": ["说明本次没有检索到能支持结论的资料"],
+            "forbidden": ["断言本店没有该政策或商品不存在该能力", "用常识补写本店承诺"],
+        }
+    if source_tool_name == "catalog_search" and _mapping(facts).get("contract_version") == "3":
+        data = _mapping(facts)
+        kind = data.get("match_kind")
+        required = ["按 status/reason_code 说明结果；资料缺失不等于不支持，未执行不等于无匹配。"]
+        if kind == "alternative":
+            required += [
+                "先说明严格无匹配，再按每个SKU的condition_checks说明差异；不代用户接受差异。"
+            ]
+        elif kind == "object_facts":
+            required += ["只说明对象已有事实，逐项指出未满足和未知要求，不声称满足筛选。"]
+        elif kind == "exact":
+            required += ["严格匹配结果可按其实际事实回答；本次返回为空不等于全店无匹配。"]
+        if data.get("result_purpose") == "recommendation" and kind in {"exact", "alternative"}:
+            required[-1] = (
+                "先说明严格无匹配并按SKU说明差异，不代用户接受；"
+                if kind == "alternative" else "只推荐已确认匹配的候选；"
+            ) + "沿用products顺序，以ranking_strategy解释排序，不自行重排或把版本销量当型号销量。"
+        required += [
+            "total_match_count只计严格匹配，candidate_count是候选池，returned_count是本次返回数量；"
+            "返回候选少于候选池时说明本次只展示部分结果，不把返回数量当作全部匹配数量。",
+            "series_*的数量/价格/库存/共有规格须在对应句、紧邻引言或表头限定为本次候选版本；"
+            "model_*仅为全型号数量/价格背景，不证明其他版本满足条件；不得跨SKU拼配置。",
+            "缺失或冲突字段依据field_issues解释，不补造用途、静音或兼容性结论。",
+        ]
+        return {
+            "required": required,
+            "forbidden": [
+                "把替代或对象事实当严格匹配",
+                "把候选数量写成该型号有N个版本，或将候选共有规格无范围限定地描述为型号属性",
+                "承诺商品翻页、跳页、接着上批往后查或自动排除已展示商品",
+            ],
+            "result_window": {
+                k: data.get(k)
+                for k in (
+                    "match_kind",
+                    "total_match_count",
+                    "candidate_count",
+                    "returned_count",
+                    "matching_complete",
+                )
+            },
+        }
     if outcome == "answered_no_match":
         if outcome_reason == "usage_mapping_unavailable":
             return {
-                "required": [
-                    "明确说明当前目录没有找到能够依据现有规格确认匹配该场景的商品"
-                ],
+                "required": ["明确说明当前目录没有找到能够依据现有规格确认匹配该场景的商品"],
                 "forbidden": [
                     "声称商城没有该品类商品或没有库存",
                     "把结果描述为系统故障、能力不支持或需要人工处理",
@@ -215,11 +427,6 @@ def _response_contract(
             "required": ["说明当前工具或数据能力不支持该问题"],
             "forbidden": ["用现有字段推断不受支持的结论"],
         }
-    if outcome == "needs_clarification":
-        return {
-            "required": ["只提出一个能够补齐必要信息的具体问题"],
-            "forbidden": ["假设用户未提供的信息"],
-        }
     if outcome == "temporarily_unavailable":
         return {
             "required": ["说明对应信息暂时无法查询"],
@@ -233,14 +440,10 @@ def _response_contract(
 
     fact_mapping = _mapping(facts)
     if artifact_type == "facets":
-        items = [
-            item for item in fact_mapping.get("items", []) if isinstance(item, Mapping)
-        ]
+        items = [item for item in fact_mapping.get("items", []) if isinstance(item, Mapping)]
         values = [str(item.get("value")) for item in items if item.get("value")]
         count_scopes = {
-            str(item.get("count_scope") or "sku")
-            for item in items
-            if item.get("count") is not None
+            str(item.get("count_scope") or "sku") for item in items if item.get("count") is not None
         }
         return {
             "required": [
@@ -253,9 +456,15 @@ def _response_contract(
                 "sku 表示具体版本数。sku_count 和 spu_count 是两个可核对的明确口径。"
             ),
             "count_scopes": sorted(count_scopes),
+            "result_window": {
+                key: fact_mapping.get(key)
+                for key in ("scope", "total_value_count", "returned_count", "is_exhaustive",
+                            "matching_complete", "field_issues")
+            },
             "forbidden": [
                 "只汇总 count 而省略 value",
                 "把 count 总和称为商品系列数或品牌数",
+                "忽略缺失或冲突字段，把部分选项当全集或跨SKU拼接规格",
             ],
         }
     if artifact_type in {"products", "ranked_product"}:
@@ -266,11 +475,7 @@ def _response_contract(
             ],
             "forbidden": ["补写未返回的规格、用途认证或适配保证"],
         }
-        products = [
-            item
-            for item in fact_mapping.get("products", [])
-            if isinstance(item, Mapping)
-        ]
+        products = [item for item in fact_mapping.get("products", []) if isinstance(item, Mapping)]
         result_purpose = str(fact_mapping.get("result_purpose") or "search")
         selection_scope = str(fact_mapping.get("selection_scope") or "spu")
         query_plan = _mapping(fact_mapping.get("query_plan"))
@@ -292,9 +497,7 @@ def _response_contract(
                     f"明确共匹配 {total_match_count} 个{scope_label}，本次返回 "
                     f"{returned_count} 个候选，不得把候选数写成全部数量"
                 )
-            contract["forbidden"].append(
-                f"声称商城只有本次返回的 {returned_count} 个结果"
-            )
+            contract["forbidden"].append(f"声称商城只有本次返回的 {returned_count} 个结果")
         if relaxation.get("applied"):
             contract["near_match"] = {
                 "mode": relaxation.get("mode"),
@@ -328,17 +531,13 @@ def _response_contract(
                 "products 已按推荐顺序排列；直接把第一项作为首选，其余项只作为备选"
             )
         elif result_purpose == "search":
-            contract["required"].append(
-                "把 products 表达为搜索结果，不得把第一项自动称为最推荐"
-            )
+            contract["required"].append("把 products 表达为搜索结果，不得把第一项自动称为最推荐")
         elif result_purpose == "lookup":
             contract["required"].append(
                 "围绕已识别商品回答事实或版本信息，不得把返回窗口误称为完整商品集合"
             )
         elif result_purpose == "ranking":
-            contract["required"].append(
-                "按 query_plan.ranking 与商品 ranking_value 回答确定性名次"
-            )
+            contract["required"].append("按 query_plan.ranking 与商品 ranking_value 回答确定性名次")
         if any(
             item.get("entity_scope") == "spu" or item.get("ranking_scope") == "spu"
             for item in products
@@ -362,24 +561,6 @@ def _response_contract(
                 ]
             )
         return contract
-    if artifact_type == "comparison":
-        if fact_mapping.get("comparison_level") == "spu":
-            return {
-                "required": [
-                    "按系列逐项比较至少两个 SPU 的价格区间、库存覆盖和规格选项",
-                    "区分全系列共同规格与仅部分 SKU 提供的可选规格",
-                    "只把 variants 中真实存在的 SKU 规格组合描述为可购买版本",
-                ],
-                "forbidden": [
-                    "用单个代表 SKU 的规格概括整个系列",
-                    "把不同可选规格自由组合成不存在的 SKU",
-                    "把缺失字段补写成确定事实",
-                ],
-            }
-        return {
-            "required": ["围绕用户要求的比较维度逐项比较至少两款商品"],
-            "forbidden": ["把缺失字段补写成确定事实"],
-        }
     if artifact_type == "order":
         facts = fact_mapping
         query_mode = str(facts.get("query_mode") or "")
@@ -408,13 +589,14 @@ def _response_contract(
                 "批量地址表或导出文件",
             ],
             "priority": (
-                "在 semantic_outcome、completion、recommended_control_action 和 required "
-                "之前执行"
+                "先判断该任务的字段覆盖；不得据此丢弃其他目标的有效答案"
             ),
             "on_missing_core_field": (
                 "如果 Task question 的核心目标属于 not_provided_fields，忽略后续订单摘要展示要求；"
-                "调用 finish_unavailable，设置 observation_coverage_failure=true，"
-                "used_tool_call_ids 留空，且不要把 provided_fields 当作部分答案。"
+                "说明该任务的核心信息未提供，不把其他字段当作它的答案。仅当全部工具任务都是"
+                "订单且都无法回答时，调用 finish_unavailable 并设置"
+                " observation_coverage_failure=true；"
+                "混合请求仍保留其他任务和非工具目标的回答。"
             ),
         }
 
@@ -455,14 +637,6 @@ def _response_contract(
                     "声称修改、取消、催促或办理了订单操作",
                 ],
             )
-        if query_mode in {"page", "remaining"} and returned == 0 and total:
-            return order_contract(
-                [f"明确说明已经列完全部 {total} 个订单，没有其他订单"],
-                [
-                    "声称用户没有任何订单",
-                    "声称修改、取消、催促或办理了订单操作",
-                ],
-            )
         if facts.get("candidates"):
             required = [
                 f"明确说明用户共有 {total or 0} 个订单",
@@ -473,7 +647,7 @@ def _response_contract(
                 ),
             ]
             if not facts.get("is_exhaustive", True):
-                required.append("明确说明这只是部分结果，并提示用户可以继续查看")
+                required.append("明确说明这只是部分结果，不承诺继续返回未展示的订单")
             return order_contract(
                 required,
                 [
@@ -489,8 +663,8 @@ def _response_contract(
         )
     if artifact_type == "documents":
         return {
-            "required": ["只根据返回文档内容归纳答案"],
-            "forbidden": ["用模型常识补写政策、时限或承诺"],
+            "required": ["判断返回片段是否回答问题，再据来源归纳；相关性分数不证明结论正确"],
+            "forbidden": ["用模型常识补写政策、时限或承诺", "把外部网页当作本店政策或订单事实"],
         }
     return {
         "required": ["直接回答当前 Task 的 question"],
@@ -505,31 +679,87 @@ def _outcome_explanation(
     state: Mapping[str, Any],
 ) -> str:
     explanations = {
-        "answered_with_facts": "Tool 返回了可直接支持当前 Task 的结构化事实。",
+        "answered_with_facts": "已取得可用材料；仍需检查是否覆盖所问内容及其限制。",
         "answered_no_match": "Tool 正常完成查询，但没有找到匹配结果；这是可靠的否定结论。",
         "needs_clarification": "缺少用户能够补充的必要信息。",
         "unsupported_capability": "Tool 已确认当前数据或查询能力不能支持该问题。",
         "temporarily_unavailable": "Tool 或其依赖暂时不可用。",
+        "execution_failed": "本次规划或执行失败，不能据此判断商品、订单或政策事实。",
         "insufficient_evidence": "当前 Observation 不足以支持可靠结论。",
         "blocked_dependency": "前置 Task 没有产生可用 Artifact，后续 Task 无法执行。",
         "incomplete": "Task 尚未形成可用于回答的终态。",
     }
     base = explanations[outcome]
+    reason = str(ledger_entry.get("reason") or "")
+    if reason in {"target_inactive", "target_outside_scope"}:
+        return "指定对象当前不可用于查询或不在本次范围内，按具体原因解释，不改变范围。"
+    if reason == "no_retrieval_evidence":
+        return "本次检索没有取得依据，不代表政策或商品能力不存在。"
     if (
         outcome == "answered_no_match"
         and str(ledger_entry.get("reason") or "") == "usage_mapping_unavailable"
     ):
         return (
-            "当前目录没有能依据现有规格确认匹配该场景的商品；"
-            "这是限定于场景证明条件的可靠否定结论。"
+            "当前目录没有能依据现有规格确认匹配该场景的商品；这是限定于场景证明条件的可靠否定结论。"
         )
     missing = status.get("missing_information")
     if outcome == "needs_clarification" and isinstance(missing, list) and missing:
         return f"{base} 需要补充：{'、'.join(str(item) for item in missing)}。"
-    if outcome == "temporarily_unavailable":
+    if outcome in {"temporarily_unavailable", "execution_failed"}:
         code = _tool_error_code(state, str(ledger_entry.get("tool_call_id") or ""))
-        return f"{base} 错误类型：{code or 'execution_error'}。"
+        return f"{base} 错误类型：{code or reason or 'execution_error'}。"
     return base
+
+
+def _result_details(
+    state: Mapping[str, Any], call_id: str, facts: Any, ledger: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = next(
+        (r for r in reversed(state.get("tool_results", []))
+         if isinstance(r, Mapping) and r.get("tool_call_id") == call_id),
+        {},
+    )
+    execution = _mapping(result.get("execution"))
+    output = _mapping(execution.get("output")) or _mapping(facts)
+    error = _mapping(execution.get("error"))
+    reason = str(error.get("code") or ledger.get("reason") or output.get("reason_code") or "")
+    diagnostic = next(
+        (d for d in output.get("diagnostics", [])
+         if isinstance(d, Mapping) and d.get("code") == reason),
+        {},
+    )
+    return {
+        "reason_code": reason.removeprefix("tool_execution_failed:"),
+        "execution_ok": execution.get("ok"),
+        "query_state": output.get("query_state", "unknown"),
+        "tool_status": output.get("status", output.get("result_type")),
+        "recommended_action": error.get("recommended_action") or output.get("recommended_action")
+        or diagnostic.get("recommended_action"),
+        "retryable": error.get("retryable", output.get("retryable", False)),
+        "phase": error.get("phase") or _mapping(diagnostic.get("details")).get("phase"),
+        "error_details": dict(_mapping(error.get("details"))),
+        "diagnostics": list(output.get("diagnostics") or []),
+        "field_issues": list(output.get("field_issues") or []),
+    }
+
+
+def _task_handling(
+    outcome: TaskSemanticOutcome, result: Mapping[str, Any], state: Mapping[str, Any],
+) -> AnswerHandling:
+    if outcome == "needs_clarification":
+        return "clarify"
+    # This is an advisory classification, not an execution permission. Never turn
+    # exhausted internal planning or timeout retries into a fresh planning budget.
+    if state.get("tool_wave_count", 0) < MAX_TOOL_WAVES and (
+        (result["reason_code"] == "multiple_targets"
+         and result["recommended_action"] == "split_tasks")
+        or (result["reason_code"] == "product_identity_required"
+            and result["recommended_action"] == "resolve_product_with_catalog_search")
+        or (result["reason_code"] == "invalid_input" and result["retryable"]
+            and result["recommended_action"] == "replan_arguments")
+    ):
+        return "suggest_recovery"
+    return "answer"
 
 
 def _recommended_control_action(
@@ -540,9 +770,7 @@ def _recommended_control_action(
         return "finish_answer"
     if completion == "partial":
         return "finish_partial"
-    if unresolved and all(
-        task["semantic_outcome"] == "needs_clarification" for task in unresolved
-    ):
+    if unresolved and all(task["semantic_outcome"] == "needs_clarification" for task in unresolved):
         return "ask_clarification"
     return "finish_unavailable"
 

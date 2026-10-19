@@ -269,76 +269,6 @@
     }
   },
   {
-    "id": "compare_logitech_razer_wireless_mouse",
-    "tool": "catalog_compare",
-    "query": "帮我比较一下 Logitech 和 Razer 的无线鼠标",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "min_product_count": 2,
-      "contains_brands_any": [
-        "Logitech",
-        "Razer"
-      ]
-    }
-  },
-  {
-    "id": "compare_bose_jbl_bluetooth_speaker",
-    "tool": "catalog_compare",
-    "query": "Bose 和 JBL 的蓝牙音箱有什么区别",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "min_product_count": 2,
-      "contains_brands_any": [
-        "Bose",
-        "JBL"
-      ]
-    }
-  },
-  {
-    "id": "compare_aoc_asus_2k_monitor",
-    "tool": "catalog_compare",
-    "query": "AOC 和 ASUS 的 2K 显示器帮我对比一下",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "min_product_count": 2,
-      "contains_brands_any": [
-        "AOC",
-        "ASUS"
-      ]
-    }
-  },
-  {
-    "id": "compare_keychron_akko_keyboard",
-    "tool": "catalog_compare",
-    "query": "Keychron 和 Akko 的机械键盘哪个更适合游戏",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "min_product_count": 2,
-      "contains_brands_any": [
-        "Keychron",
-        "Akko"
-      ]
-    }
-  },
-  {
-    "id": "compare_sony_hyperx_wireless_headset",
-    "tool": "catalog_compare",
-    "query": "Sony 和 HyperX 的无线耳机对比一下",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "min_product_count": 2,
-      "contains_brands_any": [
-        "Sony",
-        "HyperX"
-      ]
-    }
-  },
-  {
     "id": "unsupported_sales_growth",
     "tool": "catalog_search",
     "query": "哪个鼠标最近销量增长最快",
@@ -493,39 +423,6 @@
       "min_product_count": 1,
       "product_brand": "Keychron",
       "product_title_contains": "K08"
-    }
-  },
-  {
-    "id": "compare_named_mouse_models_spu",
-    "tool": "catalog_compare",
-    "query": "比较 Logitech G502 Hero 和 Razer Viper V3 Pro 两个鼠标型号",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "comparison_level": "spu",
-      "min_product_count": 2
-    }
-  },
-  {
-    "id": "compare_mouse_models_specific_fields",
-    "tool": "catalog_compare",
-    "query": "对比 Logitech G502 Hero 和 Razer Viper V3 Pro 的价格、库存、DPI 和连接方式",
-    "limit": 5,
-    "expect": {
-      "result_type": "comparison",
-      "comparison_level": "spu",
-      "min_product_count": 2
-    }
-  },
-  {
-    "id": "unsupported_compare_repairability",
-    "tool": "catalog_compare",
-    "query": "比较 G502 和 Viper 的价格与可维修评分",
-    "limit": 5,
-    "expect": {
-      "result_type": "empty",
-      "error_type": "unsupported_query",
-      "diagnostic_code": "unsupported_query"
     }
   },
   {

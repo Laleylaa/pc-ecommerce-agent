@@ -6,6 +6,19 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agent.decisions import OrchestratorDecision, infer_tool_subquery
+from app.tools.catalog_search.outcomes import ResultReason, ResultStatus
+
+# A stopped query is not an empty query. Shared with task readiness and answer projection.
+CLARIFICATION_REASONS = {
+    "order_confirmation_required": "确认放宽条件找到的候选是否为要找的订单",
+    ResultReason.IDENTITY_MISMATCH.value: "相互一致的商品名称与编号",
+    ResultReason.QUERY_NEEDS_CLARIFICATION.value: "明确的查询对象或范围",
+    ResultReason.REQUIREMENT_NEEDS_CLARIFICATION.value: "将用途或主观要求具体化的必要参数",
+    ResultReason.CONFLICTING_CONDITIONS.value: "需要保留或调整的冲突条件",
+    "invalid_context_target": "可用的具体商品或型号",
+    "insufficient_spu_ids": "至少两个明确的商品系列",
+    "insufficient_active_series": "至少两个当前在售的商品系列",
+}
 
 OutcomeType = Literal[
     "usable",
@@ -70,11 +83,52 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
         return ToolOutcome(
             tool_call_id=call_id,
             tool_name=name,
-            outcome="insufficient",
+            outcome="error",
             reason="successful_execution_without_structured_output",
         )
 
     result_type = _optional_string(output.get("result_type"))
+    if name == "catalog_search" and output.get("contract_version") == "3":
+        status, reason = output.get("status"), str(output.get("reason_code") or "invalid_plan")
+        if status in {ResultStatus.SUCCESS, ResultStatus.PARTIAL}:
+            return _usable(call_id, name, result_type, reason)
+        kind = {
+            ResultStatus.NO_MATCH: "empty",
+            ResultStatus.NOT_FOUND: "not_found",
+            ResultStatus.CLARIFICATION_REQUIRED: "insufficient",
+            ResultStatus.INVALID_QUERY: "insufficient",
+            ResultStatus.UNSUPPORTED: "insufficient",
+            ResultStatus.SPLIT_REQUIRED: "error",
+            ResultStatus.PLANNER_ERROR: "error",
+        }.get(status, "error")
+        if status == ResultStatus.UNSUPPORTED and reason == ResultReason.REQUEST_NOT_SUPPORTED:
+            kind = "unsupported"
+        return ToolOutcome(tool_call_id=call_id, tool_name=name, result_type=result_type,
+                           outcome=kind, reason=reason)
+
+    # Facets/orders use diagnostics rather than the search status enum.
+    for reason in (
+        *CLARIFICATION_REASONS, "invalid_catalog_plan", "invalid_order_plan", "invalid_plan",
+        "multiple_targets", "product_identity_required", "data_insufficient",
+        "filter_data_unavailable",
+        "target_inactive", "target_outside_scope",
+        "request_not_supported",
+    ):
+        if _has_diagnostic(output, reason):
+            if reason == "data_insufficient" and name == "catalog_facets" and output.get("items"):
+                # Partial facets still carry facts; preserve missing-field limits in projection.
+                continue
+            kind = (
+                "error" if reason in {
+                    "invalid_catalog_plan", "invalid_order_plan", "invalid_plan",
+                    "multiple_targets", "product_identity_required",
+                } else "unsupported" if reason == "request_not_supported" else "insufficient"
+            )
+            return ToolOutcome(
+                tool_call_id=call_id, tool_name=name, result_type=result_type,
+                outcome=kind, reason=reason,
+            )
+
     # A missing scenario mapping is a qualified catalog no-match, even though the
     # Tool plan retains generic unsupported markers for its own diagnostics.
     if name == "catalog_search" and _has_diagnostic(
@@ -88,6 +142,13 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
             result_type=result_type,
             reason="usage_mapping_unavailable",
         )
+    if name == "order_lookup" and result_type in {"planning_failed", "invalid_query"}:
+        return ToolOutcome(
+            tool_call_id=call_id, tool_name=name, result_type=result_type,
+            outcome="error" if result_type == "planning_failed" else "insufficient",
+            reason="invalid_order_plan" if result_type == "planning_failed"
+            else "conflicting_conditions",
+        )
     if _is_unsupported(name, output):
         return ToolOutcome(
             tool_call_id=call_id,
@@ -99,14 +160,6 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
 
     if name == "catalog_search":
         products = output.get("products")
-        if _has_diagnostic(output, "invalid_catalog_plan") and not products:
-            return ToolOutcome(
-                tool_call_id=call_id,
-                tool_name=name,
-                outcome="insufficient",
-                result_type=result_type,
-                reason="catalog_planner_failed_without_products",
-            )
         return _collection_outcome(
             call_id,
             name,
@@ -114,33 +167,17 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
             products,
             expected_result_type="products",
         )
-    if name == "catalog_compare":
-        comparison_level = output.get("comparison_level") or "sku"
-        compared = output.get("series") if comparison_level == "spu" else output.get("products")
-        count = len(compared) if isinstance(compared, list) else 0
-        if _has_diagnostic(output, "invalid_catalog_plan") and not count:
-            return ToolOutcome(
-                tool_call_id=call_id,
-                tool_name=name,
-                outcome="insufficient",
-                result_type=result_type,
-                reason="catalog_planner_failed_without_comparison",
-            )
-        if result_type == "comparison" and count >= 2:
-            reason = (
-                "comparison_has_two_or_more_series"
-                if comparison_level == "spu"
-                else "comparison_has_two_or_more_products"
-            )
-            return _usable(call_id, name, result_type, reason)
-        return ToolOutcome(
-            tool_call_id=call_id,
-            tool_name=name,
-            outcome="insufficient" if count else "empty",
-            result_type=result_type,
-            reason=("comparison_requires_two_targets" if count else "no_matching_products"),
-        )
     if name == "catalog_facets":
+        if _has_diagnostic(output, "target_not_found"):
+            return ToolOutcome(
+                tool_call_id=call_id, tool_name=name, result_type=result_type,
+                outcome="not_found", reason="target_not_found",
+            )
+        if not output.get("items") and output.get("field_issues"):
+            return ToolOutcome(
+                tool_call_id=call_id, tool_name=name, result_type=result_type,
+                outcome="insufficient", reason="data_insufficient",
+            )
         return _collection_outcome(
             call_id,
             name,
@@ -149,14 +186,6 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
             expected_result_type="facets",
         )
     if name == "order_lookup":
-        if _has_diagnostic(output, "invalid_order_plan"):
-            return ToolOutcome(
-                tool_call_id=call_id,
-                tool_name=name,
-                outcome="insufficient",
-                result_type=result_type,
-                reason="order_planner_failed_without_safe_plan",
-            )
         if result_type == "single_order" and isinstance(output.get("order"), Mapping):
             return _usable(call_id, name, result_type, "order_found")
         if result_type == "order_count" and isinstance(output.get("total_match_count"), int):
@@ -172,10 +201,6 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
         if result_type == "order_candidates" and isinstance(candidates, list):
             if candidates:
                 return _usable(call_id, name, result_type, "order_candidates_found")
-            if output.get("query_mode") in {"page", "remaining"} and isinstance(
-                output.get("total_match_count"), int
-            ):
-                return _usable(call_id, name, result_type, "order_page_exhausted")
         return ToolOutcome(
             tool_call_id=call_id,
             tool_name=name,
@@ -184,6 +209,11 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
             reason="order_not_found",
         )
     if name in {"policy_search", "knowledge_search"}:
+        if not output.get("documents"):
+            return ToolOutcome(
+                tool_call_id=call_id, tool_name=name, result_type=result_type,
+                outcome="insufficient", reason="no_retrieval_evidence",
+            )
         return _collection_outcome(
             call_id,
             name,
@@ -195,7 +225,7 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
     return ToolOutcome(
         tool_call_id=call_id,
         tool_name=name,
-        outcome="insufficient",
+        outcome="error",
         result_type=result_type,
         reason="unknown_result_contract",
     )
@@ -369,11 +399,14 @@ def validate_terminal_decision(
     resolved_task_ids: Sequence[str] | None = None,
     usable_artifact_tool_call_ids: Sequence[str] | None = None,
     answerable_tool_call_ids: Sequence[str] | None = None,
+    supporting_tool_call_ids: Sequence[str] = (),
     boundary_consistent: bool = True,
     handoff_confirmation_allowed: bool = False,
     observation_coverage_failure_allowed: bool = False,
 ) -> TerminalValidation:
     action = decision.control_action
+    if not decision.response.strip() and decision.type != "invalid":
+        return TerminalValidation(valid=False, reason="blank_answer")
     if decision.type == "invalid" or action is None:
         return TerminalValidation(valid=False, reason="missing_or_invalid_control_action")
     if not boundary_consistent:
@@ -443,7 +476,7 @@ def validate_terminal_decision(
     if action == "finish_answer":
         valid = (
             bool(used_ids)
-            and used_ids <= answerable_ids
+            and used_ids == answerable_ids
             and all_initial_subqueries_resolved
         )
         return _terminal_validation(
@@ -455,9 +488,10 @@ def validate_terminal_decision(
             ),
         )
     if action == "finish_partial":
+        partial_ids = answerable_ids | (set(supporting_tool_call_ids) & active_ids & usable_ids)
         valid = (
             bool(used_ids)
-            and used_ids <= answerable_ids
+            and used_ids <= partial_ids
             and bool(decision.unavailable_parts)
         )
         return _terminal_validation(
@@ -532,8 +566,7 @@ def _is_unsupported(name: str, output: Mapping[str, Any]) -> bool:
         return False
     if query_plan.get("supported") is False:
         return True
-    compare_plan = query_plan.get("compare_plan")
-    return isinstance(compare_plan, Mapping) and compare_plan.get("supported") is False
+    return False
 
 
 def _has_diagnostic(output: Mapping[str, Any], code: str) -> bool:

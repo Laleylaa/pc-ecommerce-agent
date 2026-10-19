@@ -4,7 +4,6 @@ from app.agent.routing import RequestRoutePlan, RoutedTask, ready_tool_subquerie
 
 _DIRECT_CAPABILITIES = {
     "catalog_search",
-    "catalog_compare",
     "catalog_facets",
     "order_lookup",
     "policy_search",
@@ -49,40 +48,6 @@ def _direct_capability_is_safe(subquery: RoutedTask) -> bool:
     if capability not in _DIRECT_CAPABILITIES:
         return False
 
-    if capability == "catalog_compare":
-        requirements = subquery.input_requirements
-        sources = {item.source for item in requirements}
-        if not subquery.depends_on:
-            if not requirements:
-                if subquery.comparison_level is not None:
-                    return True
-                unresolved_reference_markers = (
-                    "这两",
-                    "这几个",
-                    "这些",
-                    "它们",
-                    "刚才",
-                    "上面",
-                    "前面",
-                )
-                return not any(
-                    marker in subquery.query
-                    for marker in unresolved_reference_markers
-                )
-            return len(requirements) == 1 and sources <= {
-                "comparison_context",
-                "catalog_candidates",
-            }
-        if not requirements:
-            return True
-        if len(requirements) < 2 or not sources <= {"context_product", "task_output"}:
-            return False
-        bound_dependencies = {
-            item.task_id
-            for item in requirements
-            if item.source == "task_output" and item.task_id is not None
-        }
-        return bound_dependencies == set(subquery.depends_on)
 
     if capability == "catalog_search" and subquery.input_requirements:
         return (
@@ -116,8 +81,6 @@ def _default_arguments(subquery: RoutedTask) -> dict[str, int | str]:
     capability = str(subquery.capability)
     if capability == "catalog_search":
         return {"limit": 3}
-    if capability == "catalog_compare":
-        return {"limit": 5}
     if capability == "catalog_facets":
         return {"limit": 20}
     if capability == "order_lookup":

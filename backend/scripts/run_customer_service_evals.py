@@ -48,7 +48,6 @@ RESULT_FIELDS = [
 
 TOOL_NAME_MAPPING = {
     "catalog_search": "catalog.search",
-    "catalog_compare": "catalog.compare",
     "catalog_facets": "catalog.facets",
     "order_lookup": "order.lookup",
     "policy_search": "policy.search",
@@ -73,11 +72,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--limit-per-file", type=int, default=None)
     parser.add_argument("--timeout", type=float, default=90.0)
-    parser.add_argument(
-        "--no-stream",
-        action="store_true",
-        help="Use /chat instead of /chat/stream. Tool-call checks become unavailable.",
-    )
     return parser.parse_args()
 
 
@@ -155,70 +149,10 @@ async def login(
     return str(response.json()["access_token"])
 
 
-def parse_sse_events(text: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    for block in text.strip().split("\n\n"):
-        data_lines = [
-            line.removeprefix("data: ").strip()
-            for line in block.splitlines()
-            if line.startswith("data:")
-        ]
-        if not data_lines:
-            continue
-        try:
-            events.append(json.loads("\n".join(data_lines)))
-        except json.JSONDecodeError:
-            events.append({"type": "parse_error", "raw": "\n".join(data_lines)})
-    return events
-
-
 def normalize_tool_name(name: str) -> str:
     if name in TOOL_NAME_MAPPING:
         return TOOL_NAME_MAPPING[name]
     return name
-
-
-def extract_tool_name(event: dict[str, Any]) -> str | None:
-    name = event.get("name") or event.get("tool_name")
-    if name:
-        return normalize_tool_name(str(name))
-
-    data = event.get("data")
-    if isinstance(data, dict):
-        nested_name = data.get("name") or data.get("tool_name")
-        if nested_name:
-            return normalize_tool_name(str(nested_name))
-    return None
-
-
-def extract_stream_result(events: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str], str]:
-    actual_tools: list[str] = []
-    final_response: dict[str, Any] = {}
-    actual_disposition = ""
-
-    for event in events:
-        event_type = str(event.get("type") or "")
-        if event_type == "tool_call":
-            name = extract_tool_name(event)
-            if name:
-                actual_tools.append(name)
-
-        if event_type == "boundary" and isinstance(event.get("boundary"), dict):
-            actual_disposition = str(event["boundary"].get("classification") or "")
-
-        if event_type == "done" and isinstance(event.get("response"), dict):
-            final_response = event["response"]
-            boundary = final_response.get("boundary") or {}
-            boundary_classification = None
-            if isinstance(boundary, dict):
-                boundary_classification = boundary.get("classification")
-            actual_disposition = normalize_actual_disposition(
-                final_response.get("intent"),
-                boundary_classification,
-                actual_tools,
-            )
-
-    return final_response, actual_tools, actual_disposition or "unknown"
 
 
 def normalize_actual_disposition(
@@ -286,7 +220,6 @@ async def run_case(
     case: EvalCase,
     tokens: dict[tuple[str, str], str],
     timeout: float,
-    use_stream: bool,
 ) -> dict[str, str]:
     row = case.row
     credentials = credentials_for_context(row.get("conversation_context", ""))
@@ -329,48 +262,32 @@ async def run_case(
         if conversation_id is not None:
             request_payload["conversation_id"] = conversation_id
 
-        if use_stream:
-            async with client.stream(
-                "POST",
-                f"{base_url}/chat/stream",
-                json=request_payload,
-                headers=headers,
-                timeout=timeout,
-            ) as response:
-                body = "".join([chunk async for chunk in response.aiter_text()])
-            response.raise_for_status()
-            events = parse_sse_events(body)
-            final_response, tools, actual_disposition = extract_stream_result(events)
-            raw = {
-                "prelude_messages": prelude_summaries,
-                "events": events,
-                "response": final_response,
-            }
-            answer = str(final_response.get("answer") or "")
-            grade_response = final_response
-        else:
-            response = await client.post(
-                f"{base_url}/chat",
-                json=request_payload,
-                headers=headers,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            raw = response.json()
-            if prelude_summaries:
-                raw = {"prelude_messages": prelude_summaries, "response": raw}
-            answer = str((raw.get("response") or raw).get("answer") or "")
-            final_response = raw.get("response") or raw
-            boundary = final_response.get("boundary") or {}
-            boundary_classification = None
-            if isinstance(boundary, dict):
-                boundary_classification = boundary.get("classification")
-            actual_disposition = normalize_actual_disposition(
-                final_response.get("intent"),
-                boundary_classification,
-                [],
-            )
-            grade_response = final_response
+        response = await client.post(
+            f"{base_url}/chat",
+            json=request_payload,
+            headers=headers,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        raw = response.json()
+        if prelude_summaries:
+            raw = {"prelude_messages": prelude_summaries, "response": raw}
+        answer = str((raw.get("response") or raw).get("answer") or "")
+        final_response = raw.get("response") or raw
+        details = final_response.get("execution_details")
+        if not isinstance(details, dict) or not isinstance(details.get("tool_calls"), list):
+            raise ValueError("Chat response lacks execution_details.tool_calls for grading")
+        tools = [normalize_tool_name(call["tool_name"]) for call in details["tool_calls"]]
+        boundary = final_response.get("boundary") or {}
+        boundary_classification = None
+        if isinstance(boundary, dict):
+            boundary_classification = boundary.get("classification")
+        actual_disposition = normalize_actual_disposition(
+            final_response.get("intent"),
+            boundary_classification,
+            tools,
+        )
+        grade_response = final_response
 
         pass_fail, failure_type, notes = grade(
             row,
@@ -430,7 +347,6 @@ async def main() -> None:
                         case,
                         tokens,
                         args.timeout,
-                        use_stream=not args.no_stream,
                     )
                     writer.writerow(result)
                     csv_file.flush()

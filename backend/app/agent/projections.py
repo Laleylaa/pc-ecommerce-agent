@@ -1,12 +1,35 @@
+from collections.abc import Mapping
 from typing import Any
 
 from app.agent.decisions import PlannedToolCall
 from app.agent.outcomes import is_active_ledger_entry
 from app.agent.state import AgentState
 from app.schemas.catalog import ProductCard
+from app.schemas.catalog_search import SearchProduct
 from app.schemas.chat import EvidenceItem
 from app.schemas.order import OrderCard
 from app.tools.schemas import ToolExecutionResult
+
+
+def without_pagination_controls(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """Project tool facts without exposing storage cursors as conversation capabilities."""
+    controls = {"offset", "next_offset", "page", "page_from", "search_page"}
+    projected = {k: v for k, v in facts.items() if k not in controls}
+    if isinstance(projected.get("query_plan"), Mapping):
+        projected["query_plan"] = without_pagination_controls(projected["query_plan"])
+    if projected.get("query_mode") in {"page", "remaining"}:
+        projected.pop("query_mode")
+    if projected.get("selection") == "remaining":
+        projected.pop("selection")
+    return projected
+
+
+def _product_card(value):
+    return (
+        SearchProduct.model_validate(value)
+        if value.get("match_kind")
+        else ProductCard.model_validate(value)
+    )
 
 
 def apply_tool_output(
@@ -14,39 +37,32 @@ def apply_tool_output(
     call: PlannedToolCall,
     execution: ToolExecutionResult,
 ) -> None:
-    if call.name in {"catalog_search", "catalog_compare"}:
+    if call.name == "catalog_search":
         state["catalog_tool_succeeded"] = _catalog_execution_completed(
             execution.model_dump(mode="python")
         )
     if not execution.ok or not execution.output:
         return
     output = execution.output
-    if call.name in {"catalog_search", "catalog_compare"}:
-        state["products"] = [
-            ProductCard.model_validate(product) for product in output.get("products", [])
-        ]
-        if call.name == "catalog_search":
-            state.setdefault("parsed", {})["product_search"] = _catalog_search_projection(
-                output
-            )
-        else:
-            state.setdefault("parsed", {})["catalog_comparison"] = {
-                "query": call.arguments.get("query"),
-                "comparison_level": output.get("comparison_level") or "sku",
-                "sku_ids": [product.sku_id for product in state["products"]],
-                "spu_ids": [
-                    item.get("spu_id")
-                    for item in output.get("series", [])
-                    if isinstance(item, dict)
-                ],
-                "comparison_fields": output.get("comparison_fields", []),
+    if call.name == "catalog_search":
+        state["products"] = [_product_card(product) for product in output.get("products", [])]
+        if call.name == "catalog_search" and output.get("query_state", "completed") == "completed":
+            output = {
+                **output,
+                "query_plan": {
+                    **output.get("query_plan", {}),
+                    "query": call.arguments.get("query"),
+                },
             }
+            state.setdefault("parsed", {})["product_search"] = _catalog_search_projection(output)
     elif call.name in {"policy_search", "knowledge_search"}:
         evidence = [
             EvidenceItem.model_validate(document) for document in output.get("documents", [])
         ]
         state["evidence"] = dedupe_evidence([*state.get("evidence", []), *evidence])
     elif call.name == "order_lookup":
+        if output.get("result_type") == "order_suggestions":
+            state["order"] = None
         if output.get("order"):
             state["order"] = OrderCard.model_validate(output["order"])
         parsed = state.setdefault("parsed", {})
@@ -76,7 +92,6 @@ def rebuild_tool_projections(state: AgentState) -> None:
     order_query: dict[str, Any] | None = None
     parsed = state.setdefault("parsed", {})
     parsed.pop("product_search", None)
-    parsed.pop("catalog_comparison", None)
     parsed.pop("order_candidates", None)
     parsed.pop("order_context_ids", None)
     parsed.pop("order_query", None)
@@ -92,39 +107,24 @@ def rebuild_tool_projections(state: AgentState) -> None:
         if not isinstance(execution, dict):
             continue
         output = execution.get("output")
-        if name in {"catalog_search", "catalog_compare"}:
+        if name == "catalog_search":
             saw_catalog_result = True
-            catalog_completed = catalog_completed or _catalog_execution_completed(
-                execution
-            )
+            catalog_completed = catalog_completed or _catalog_execution_completed(execution)
         if not execution.get("ok") or not isinstance(output, dict):
             continue
 
-        if name in {"catalog_search", "catalog_compare"}:
+        if name == "catalog_search":
             for item in output.get("products", []):
-                product = ProductCard.model_validate(item)
+                product = _product_card(item)
                 if product.sku_id in seen_sku_ids:
                     continue
                 seen_sku_ids.add(product.sku_id)
                 products.append(product)
             if name == "catalog_search":
                 parsed["product_search"] = _catalog_search_projection(output)
-            else:
-                parsed["catalog_comparison"] = {
-                    "query": tool_call_arguments(state, call_id).get("query"),
-                    "comparison_level": output.get("comparison_level") or "sku",
-                    "sku_ids": [item.get("sku_id") for item in output.get("products", [])],
-                    "spu_ids": [
-                        item.get("spu_id")
-                        for item in output.get("series", [])
-                        if isinstance(item, dict)
-                    ],
-                    "comparison_fields": output.get("comparison_fields", []),
-                }
         elif name in {"policy_search", "knowledge_search"}:
             evidence.extend(
-                EvidenceItem.model_validate(item)
-                for item in output.get("documents", [])
+                EvidenceItem.model_validate(item) for item in output.get("documents", [])
             )
         elif name == "order_lookup":
             if output.get("order"):
@@ -155,42 +155,36 @@ def _rebuild_from_task_artifacts(state: AgentState) -> None:
     order_query: dict[str, Any] | None = None
     parsed = state.setdefault("parsed", {})
     parsed.pop("product_search", None)
-    parsed.pop("catalog_comparison", None)
     parsed.pop("order_candidates", None)
     parsed.pop("order_context_ids", None)
     parsed.pop("order_query", None)
     saw_catalog = False
 
     for artifact in state.get("task_artifacts", {}).values():
-        if not isinstance(artifact, dict) or not artifact.get("usable"):
+        if not isinstance(artifact, dict):
             continue
         value = artifact.get("value")
         if not isinstance(value, dict):
             continue
         tool_name = str(artifact.get("source_tool_name") or "")
-        call_id = str(artifact.get("source_tool_call_id") or "")
-        if tool_name in {"catalog_search", "catalog_compare"}:
+        if not artifact.get("usable") and not (
+            (tool_name == "catalog_search" and value.get("query_state") == "completed")
+            or (tool_name == "order_lookup" and value.get("result_type") == "order_suggestions")
+        ):
+            continue
+        if tool_name == "catalog_search":
             saw_catalog = True
             for item in value.get("products", []):
-                product = ProductCard.model_validate(item)
+                product = _product_card(item)
                 if product.sku_id in seen_sku_ids:
                     continue
                 seen_sku_ids.add(product.sku_id)
                 products.append(product)
             if tool_name == "catalog_search":
                 parsed["product_search"] = _catalog_search_projection(value)
-            else:
-                parsed["catalog_comparison"] = {
-                    "query": tool_call_arguments(state, call_id).get("query"),
-                    "comparison_level": value.get("comparison_level") or "sku",
-                    "sku_ids": value.get("selected_sku_ids") or [],
-                    "spu_ids": value.get("selected_spu_ids") or [],
-                    "comparison_fields": value.get("comparison_fields") or [],
-                }
         elif tool_name in {"policy_search", "knowledge_search"}:
             evidence.extend(
-                EvidenceItem.model_validate(item)
-                for item in value.get("documents", [])
+                EvidenceItem.model_validate(item) for item in value.get("documents", [])
             )
         elif tool_name == "order_lookup":
             if value.get("order"):
@@ -217,25 +211,28 @@ def _catalog_execution_completed(execution: dict[str, Any]) -> bool:
     output = execution.get("output")
     if not isinstance(output, dict):
         return False
+    if output.get("contract_version") == "3":
+        return output.get("query_state") == "completed"
     diagnostics = output.get("diagnostics")
     if not isinstance(diagnostics, list):
         return True
     return not any(
-        isinstance(item, dict) and item.get("severity") == "error"
-        for item in diagnostics
+        isinstance(item, dict) and item.get("severity") == "error" for item in diagnostics
     )
 
 
 def _order_query_projection(output: dict[str, Any]) -> dict[str, Any]:
-    return {
+    return without_pagination_controls({
         "result_type": output.get("result_type"),
+        "pending_suggestions": [
+            {"id": item["order"]["id"], "differences": item["differences"]}
+            for item in output.get("suggestions", [])
+        ],
         "query_mode": output.get("query_mode") or "recent",
         "total_match_count": int(output.get("total_match_count") or 0),
         "returned_count": int(output.get("returned_count") or 0),
         "is_exhaustive": bool(output.get("is_exhaustive", True)),
-        "offset": int(output.get("offset") or 0),
-        "next_offset": output.get("next_offset"),
-    }
+    })
 
 
 def _catalog_search_projection(output: dict[str, Any]) -> dict[str, Any]:
@@ -250,7 +247,7 @@ def _catalog_search_projection(output: dict[str, Any]) -> dict[str, Any]:
     ):
         if key in output:
             projection[key] = output[key]
-    return projection
+    return without_pagination_controls(projection)
 
 
 def tool_call_arguments(state: AgentState, call_id: str) -> dict[str, Any]:

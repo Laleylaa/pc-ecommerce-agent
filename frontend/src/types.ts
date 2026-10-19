@@ -1,4 +1,6 @@
 export type ProductCard = {
+  match_kind?: "exact" | "alternative" | "object_facts";
+  candidate_sku_ids?: number[];
   spu_id: number;
   sku_id: number;
   title: string;
@@ -151,8 +153,9 @@ export type BoundaryClassification = {
 };
 
 export type EvidenceItem = {
-  source_type: "knowledge_document";
+  source_type: "knowledge_document" | "web_page";
   source_id: number;
+  url?: string | null;
   title: string;
   document_type: string;
   snippet: string;
@@ -160,7 +163,28 @@ export type EvidenceItem = {
   metadata: Record<string, unknown>;
 };
 
+export type ExecutionToolCall = {
+  id: string;
+  task_id: string;
+  tool_name: string;
+  query: string;
+  outcome: string;
+  reason: string;
+  used_in_answer: boolean;
+  superseded: boolean;
+  reused: boolean;
+  arguments: Record<string, unknown>;
+  result_summary: Record<string, unknown>;
+};
+
+export type ExecutionDetails = {
+  goals: Array<{ id: string; query: string; disposition: string; task_ids: string[] }>;
+  tool_calls: ExecutionToolCall[];
+  model_calls: Record<string, number> | null;
+};
+
 export type ChatResponse = {
+  execution_details?: ExecutionDetails | null;
   conversation_id: number;
   answer: string;
   intent: string;
@@ -179,8 +203,8 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
-  status?: "sent" | "failed" | "received" | "pending" | "streaming" | "cancelled";
-  streamStage?: string;
+  status?: "sent" | "failed" | "received" | "pending" | "cancelled";
+  requestStage?: string;
   boundary?: BoundaryClassification;
   intent?: string;
   evidenceCount?: number;
@@ -225,7 +249,6 @@ export type HandoffRequest = {
 export type ResponseStatus =
   | "ready"
   | "loading"
-  | "streaming"
   | "success"
   | "handoff"
   | "blocked"
@@ -280,67 +303,15 @@ export type ConversationDetail = {
   messages: ConversationMessageItem[];
 };
 
-export type ChatStreamEvent =
-  | {
-      type: "run_started";
-      conversation_id: number;
-      run_id: number;
-    }
-  | {
-      type: "boundary";
-      conversation_id: number;
-      run_id: number;
-      boundary: BoundaryClassification;
-    }
-  | {
-      type: "tool_call";
-      conversation_id: number;
-      run_id: number;
-      tool_name: string;
-      status: "started" | "completed" | "error";
-      input?: Record<string, unknown>;
-      output?: Record<string, unknown>;
-    }
-  | {
-      type: "context";
-      conversation_id: number;
-      run_id: number;
-      intent?: string;
-      boundary?: BoundaryClassification;
-      evidence: EvidenceItem[];
-      products: ProductCard[];
-      order?: OrderCard | null;
-    }
-  | {
-      type: "delta";
-      conversation_id: number;
-      run_id: number;
-      delta: string;
-    }
-  | {
-      type: "done";
-      conversation_id: number;
-      run_id: number;
-      response: ChatResponse;
-    }
-  | {
-      type: "error";
-      conversation_id?: number;
-      run_id?: number;
-      error_type?: string;
-      message: string;
-      retryable?: boolean;
-    };
-
 export type ConversationTurn = {
+  executionDetails?: ExecutionDetails | null;
   id: string;
   userMessage: string;
   assistantAnswer: string;
-  intent: string;
   boundary: BoundaryClassification;
-  evidenceCount: number;
+  evidence: EvidenceItem[];
   productCount: number;
-  orderId?: number;
+  orderCount: number;
   suggestedActions: SuggestedAction[];
   createdAt: string;
 };

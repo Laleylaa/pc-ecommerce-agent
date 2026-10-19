@@ -1,8 +1,5 @@
-import json
-from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.graph import AgentRuntime
@@ -22,27 +19,11 @@ async def chat(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
-    return await AgentRuntime(session, settings).run(request, current_user.id)
-
-
-@router.post("/stream")
-async def chat_stream(
-    request: ChatRequest,
-    current_user: AppUser = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-) -> StreamingResponse:
-    async def events() -> AsyncIterator[str]:
-        async for event in AgentRuntime(session, settings).run_stream(request, current_user.id):
-            event_type = event.get("type", "message")
-            payload = json.dumps(event, ensure_ascii=False, default=str)
-            yield f"event: {event_type}\ndata: {payload}\n\n"
-
-    return StreamingResponse(
-        events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    try:
+        return await AgentRuntime(session, settings).run(request, current_user.id)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="本次处理超时，请稍后重试。") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="AI 回复生成失败，请稍后重试。") from exc

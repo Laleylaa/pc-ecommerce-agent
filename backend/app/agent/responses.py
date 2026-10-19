@@ -3,6 +3,7 @@
 import re
 from typing import Any
 
+from app.agent.answer_context import build_answer_context
 from app.agent.boundary import BOUNDARY_POLICY
 from app.agent.intent import classify_intent, extract_order_id
 from app.agent.outcomes import (
@@ -41,6 +42,103 @@ CUSTOMER_SPEC_LABELS = {
 }
 
 
+def fallback_goal_response(state: AgentState) -> dict[str, Any]:
+    """Cover each current goal, preserving facts without claiming a complete synthesis."""
+    context = build_answer_context(state)
+    tasks = {t["task_id"]: t for t in context["tasks"]}
+    lines, used, unavailable = [], [], []
+    for goal in context["goals"]:
+        lines.append(f"关于“{goal['query'][:100]}”：")
+        for supporting in context["supporting_tasks"]:
+            if goal["id"] not in supporting["partial_answer_goal_ids"]:
+                continue
+            source = supporting["artifact"]["source_tool_call_id"]
+            if source not in used:
+                text, _ = _fallback_task_response(supporting)
+                lines.append(text)
+                used.append(source)
+        if goal["task_ids"]:
+            for task_id in goal["task_ids"]:
+                task = tasks[task_id]
+                text, complete = _fallback_task_response(task)
+                lines.append(text)
+                if task["resolved"] and task.get("artifact"):
+                    used.append(task["artifact"]["source_tool_call_id"])
+                if not complete:
+                    unavailable.append(task["question"])
+        elif goal["disposition"] == "tool_planning":
+            lines.append("本次未能完成这部分查询规划，尚未取得查询结果。")
+            unavailable.append(goal["query"])
+        elif goal["disposition"] == "session_grounded_response":
+            lines.append("暂时无法可靠整理前面的对话内容，请稍后重试。")
+            unavailable.append(goal["query"])
+        elif (
+            goal["disposition"] == "direct_response"
+            and not _is_safe_direct_request(goal["query"])
+        ):
+            lines.append("这部分说明暂时未能生成，请稍后重试。")
+            unavailable.append(goal["query"])
+        else:
+            routed = RoutedSubquery.model_validate({
+                k: v for k, v in goal.items()
+                if k not in {"task_ids", "handling", "blocked_reason"}
+            })
+            lines.append(_route_notice(routed) or "请补充这部分需求的具体信息。")
+            if goal["disposition"] == "clarification":
+                unavailable.append(goal["query"])
+    return {
+        "response": "\n\n".join(lines) or "本次回答未能生成，请稍后重试。",
+        "used_tool_call_ids": list(dict.fromkeys(used)),
+        "unavailable_parts": list(dict.fromkeys(unavailable)),
+        "covered_goal_ids": [g["id"] for g in context["goals"]],
+    }
+
+
+def _fallback_task_response(task: dict[str, Any]) -> tuple[str, bool]:
+    outcome = task["semantic_outcome"]
+    facts = (task.get("artifact") or {}).get("facts") or {}
+    reason = task["result"]["reason_code"]
+    if outcome == "needs_clarification":
+        missing = task.get("missing_information") or ["具体对象或查询条件"]
+        return "请补充或确认：" + "、".join(missing) + "。", False
+    if outcome == "answered_no_match":
+        return "已完成这项查询，在本次条件和范围内没有找到匹配结果。", True
+    if outcome != "answered_with_facts":
+        explanations = {
+            "execution_failed": "本次查询未能完成，不能据此判断商品或订单是否存在。",
+            "temporarily_unavailable": "查询服务暂时不可用，请稍后重试。",
+            "unsupported_capability": "当前查询能力暂不支持这部分要求。",
+            "blocked_dependency": "前置查询没有提供可用依据，这部分尚未执行。",
+            "insufficient_evidence": "现有资料不足以确认这部分结论。",
+            "incomplete": "这部分查询尚未完成。",
+        }
+        if reason == "target_outside_scope":
+            return "指定商品不在本次限定范围内，尚未扩大查询范围。", False
+        if reason == "target_inactive":
+            return "指定商品当前不可用于查询。", False
+        if reason == "no_retrieval_evidence":
+            return "本次没有检索到支持结论的资料，不代表相关政策或商品能力不存在。", False
+        return explanations[outcome], False
+    if facts.get("result_type") == "order_count":
+        return f"本次查询条件下共有 {facts['total_match_count']} 笔订单。", True
+    tool = task["artifact"]["source_tool_name"]
+    if tool == "catalog_search" and facts.get("contract_version") == "3":
+        material = _catalog_search_fallback(facts)
+    elif tool == "catalog_facets":
+        material = _catalog_facets_fallback_answer(facts)
+        if facts.get("field_issues") or not facts.get("is_exhaustive", True):
+            material += " 部分字段缺失、冲突或未完整展示，不能当作全部选项。"
+    elif tool == "order_lookup":
+        material = "已取得这部分订单资料。"
+        order = facts.get("order")
+        if order:
+            material += f"订单 {order['id']} 当前状态为{order.get('status_label', '待确认')}。"
+    else:
+        titles = [str(d.get("title") or "相关资料") for d in facts.get("documents", [])]
+        material = "已找到可能相关的资料：" + "、".join(titles[:3]) + "。"
+    return material + "\n暂时无法可靠生成这部分完整解答，以上仅保留已取得的材料。", False
+
+
 def _safe_non_negative_int(value: Any) -> int:
     try:
         return max(0, int(value))
@@ -49,21 +147,20 @@ def _safe_non_negative_int(value: Any) -> int:
 
 
 def _fallback_answer(state: AgentState) -> str:
+    catalog_output = _latest_successful_tool_output(state, "catalog_search")
+    if catalog_output and catalog_output.get("contract_version") == "3":
+        return _catalog_search_fallback(catalog_output)
     products = state.get("products", [])
     if products:
         product_search = state.get("parsed", {}).get("product_search", {})
         product_search = product_search if isinstance(product_search, dict) else {}
-        usage_mapping = (
-            product_search.get("usage_mapping", {})
-        )
+        usage_mapping = product_search.get("usage_mapping", {})
         usage_status = (
             str(usage_mapping.get("status") or "") if isinstance(usage_mapping, dict) else ""
         )
         result_purpose = str(product_search.get("result_purpose") or "search")
         selection_scope = str(product_search.get("selection_scope") or "spu")
-        total_match_count = _safe_non_negative_int(
-            product_search.get("total_match_count")
-        )
+        total_match_count = _safe_non_negative_int(product_search.get("total_match_count"))
         returned_count = _safe_non_negative_int(product_search.get("returned_count"))
         is_exhaustive = bool(product_search.get("is_exhaustive", True))
         scope_label = "具体版本" if selection_scope == "sku" else "商品系列"
@@ -80,11 +177,7 @@ def _fallback_answer(state: AgentState) -> str:
         else:
             intro = "我根据商品目录找到了这些候选："
         lines = [intro]
-        if (
-            result_purpose != "ranking"
-            and not is_exhaustive
-            and total_match_count > 0
-        ):
+        if result_purpose != "ranking" and not is_exhaustive and total_match_count > 0:
             lines.append(
                 f"共匹配 {total_match_count} 个{scope_label}，"
                 f"本次返回 {returned_count or len(products)} 个候选。"
@@ -94,9 +187,7 @@ def _fallback_answer(state: AgentState) -> str:
         )
         for index, product in enumerate(products[:3]):
             is_series = product.entity_scope == "spu" or product.ranking_scope == "spu"
-            source_specs = (
-                product.series_common_specs if is_series else product.specs
-            )
+            source_specs = product.series_common_specs if is_series else product.specs
             customer_specs = [
                 (CUSTOMER_SPEC_LABELS[key.casefold()], value)
                 for key, value in source_specs.items()
@@ -145,8 +236,7 @@ def _fallback_answer(state: AgentState) -> str:
                     else ""
                 )
                 lines.append(
-                    f"- {role}{product.title}：¥{product.price}，库存 "
-                    f"{product.stock}{suffix}。"
+                    f"- {role}{product.title}：¥{product.price}，库存 {product.stock}{suffix}。"
                 )
         if usage_status in {"applied", "expanded"}:
             lines.append(
@@ -174,29 +264,17 @@ def _fallback_answer(state: AgentState) -> str:
     if isinstance(order_query, dict) and order_query.get("query_mode") == "count":
         total = int(order_query.get("total_match_count") or 0)
         return f"你当前一共有 {total} 个订单。"
-    if (
-        isinstance(order_query, dict)
-        and order_query.get("query_mode") in {"page", "remaining"}
-        and int(order_query.get("returned_count") or 0) == 0
-        and int(order_query.get("total_match_count") or 0) > 0
-    ):
-        total = int(order_query["total_match_count"])
-        return f"已经列完全部 {total} 个订单，没有其他订单了。"
     if candidates:
         total = int(order_query.get("total_match_count") or len(candidates))
         returned = int(order_query.get("returned_count") or len(candidates))
-        offset = int(order_query.get("offset") or 0)
         is_exhaustive = bool(order_query.get("is_exhaustive", True))
-        if offset:
-            lines = [f"你一共有 {total} 个订单，下面是第 {offset + 1} 条起的 {returned} 个："]
-        else:
-            lines = [f"你一共有 {total} 个订单，下面列出最近的 {returned} 个："]
+        lines = [f"你一共有 {total} 个订单，本次列出 {returned} 个："]
         lines.extend(
             f"- 订单 {item['id']}：{item['status_label']}，实付 ¥{item['pay_amount']}。"
             for item in candidates
         )
         if not is_exhaustive:
-            lines.append("这只是部分结果；如果需要，我可以继续列出剩余订单。")
+            lines.append("这只是部分结果，不代表全部订单。")
         lines.append("告诉我订单号或“第几个”，我可以继续查看该订单明细。")
         return "\n".join(lines)
 
@@ -303,6 +381,8 @@ def _fallback_unavailable_answer(state: AgentState) -> str:
     kinds = {outcome.outcome for outcome in outcomes}
     tool_names = {outcome.tool_name for outcome in outcomes}
     catalog_output = _latest_successful_tool_output(state, "catalog_search")
+    if catalog_output and catalog_output.get("contract_version") == "3":
+        return _catalog_search_fallback(catalog_output)
     if catalog_output and _has_catalog_diagnostic(catalog_output, "usage_mapping_unavailable"):
         return (
             "当前目录没有找到能够依据现有规格确认适合这个使用场景的商品。"
@@ -310,20 +390,58 @@ def _fallback_unavailable_answer(state: AgentState) -> str:
         )
     if "unsupported" in kinds:
         return (
-            "这个请求属于 PC 外设相关，但当前商品查询能力不支持这类信息。"
+            "这类商品信息我暂时还查不了。"
             "你可以改问具体商品、价格、库存、规格或目录筛选。"
         )
     if "error" in kinds:
         return "业务信息查询暂时失败，请稍后重试。"
     if "not_found" in kinds and tool_names == {"order_lookup"}:
         return "当前账号下没有找到对应订单。请核对订单号，或让我查询最近订单。"
-    if "insufficient" in kinds and "catalog_compare" in tool_names:
-        return "当前只找到不足两款可比商品，暂时无法完成有效对比。请补充具体型号。"
     if tool_names <= {"policy_search", "knowledge_search"}:
         return "当前知识库没有找到足够依据，我不能凭模型常识补写答案。"
-    if tool_names <= {"catalog_search", "catalog_compare", "catalog_facets"}:
+    if tool_names <= {"catalog_search", "catalog_facets"}:
         return "当前商品目录没有找到匹配信息。你可以补充型号，或放宽一个筛选条件。"
     return "本次查询没有得到可用于回答的信息，请补充更具体的商品、订单或政策问题。"
+
+
+def _catalog_search_fallback(output: dict[str, Any]) -> str:
+    """Conservative v3 rendering when the answer model cannot summarize evidence."""
+    if output.get("query_state") != "completed":
+        if output.get("status") == "unsupported":
+            return "当前商品查询能力无法处理这项要求，尚未完成匹配，不能据此判断商品是否支持。"
+        return "本次商品查询未完成，暂时无法确认匹配结果；请稍后重试。"
+    if output.get("status") == "not_found":
+        return "当前目录中未定位到该商品，请核对商品名称或编号。"
+    if output.get("status") == "no_match":
+        return "当前目录中没有找到满足这些条件的商品。可以明确要调整的条件后再查询。"
+    if not output.get("products"):
+        return "本次未返回商品候选，不能据此判断整个查询没有匹配结果。"
+    kind = output.get("match_kind")
+    lines = [
+        {
+            "exact": "找到了满足条件的候选，以下信息仅针对本次返回的版本：",
+            "alternative": "未找到严格满足全部条件的商品，以下是存在条件差异的替代候选：",
+            "object_facts": "已找到对象资料，但不能确认它满足全部条件：",
+        }.get(kind, "查询得到以下商品资料：")
+    ]
+    for product in output["products"][:3]:
+        lines.append(f"- {product.get('spu_title') or product.get('title')}：")
+        for check in product.get("condition_checks", []):
+            condition = check["condition"]
+            if check["verdict"] != "match":
+                label = "未满足" if check["verdict"] == "mismatch" else "资料不足，无法确认"
+                field_label = CUSTOMER_SPEC_LABELS.get(condition["key"], "该项要求")
+                lines.append(
+                    f"  一个返回版本的{field_label}：{label}"
+                    f"（要求 {condition['values']}，记录值 {check.get('actual') or '缺失'}）。"
+                )
+        if product.get("field_issues"):
+            lines.append("  部分字段资料缺失或冲突，不能解释为商品不支持。")
+    if not output.get("matching_complete"):
+        lines.append("还有资料不足的版本，匹配结论不完整。")
+    if not output.get("is_exhaustive"):
+        lines.append("这里只展示本次返回的候选，不代表全部结果。")
+    return "\n".join(lines)
 
 
 LATE_HANDOFF_CONFIRMATION = (
@@ -366,17 +484,27 @@ def _catalog_facets_fallback_answer(output: dict[str, Any]) -> str:
         if not isinstance(item, dict) or not item.get("value"):
             continue
         count = item.get("count")
-        suffix = f"（{count} 条 SKU 记录）" if isinstance(count, int) else ""
-        rendered.append(f"{item['value']}{suffix}")
+        unit = {"sku": "个具体版本", "spu": "个商品系列"}.get(item.get("count_scope"))
+        suffix = f"（{count} {unit}）" if isinstance(count, int) and unit else ""
+        value = item["value"]
+        if output.get("facet") == "spec_key":
+            value = CUSTOMER_SPEC_LABELS.get(value, "规格项")
+            options = [str(v["value"]) for v in item.get("values", []) if v.get("value")]
+            if options:
+                value += "：" + "、".join(options)
+        rendered.append(f"{value}{suffix}")
     if not rendered:
         return f"当前目录中没有找到符合条件的{label}。"
-    return f"当前目录中可查到的{label}包括：" + "、".join(rendered) + "。"
+    return (
+        f"当前目录中已记录的{label}包括：" + "、".join(rendered)
+        + "。选项来自各个实际版本，不代表可以任意组合。"
+    )
 
 
 def _purchase_guidance_answer() -> str:
     return (
         "下单流程可以按这几步走：\n"
-        "1. 在商品页确认 SKU、价格、库存和关键规格。\n"
+        "1. 在商品页确认具体版本、价格、库存和关键规格。\n"
         "2. 选择规格并确认收货信息。\n"
         "3. 提交订单后按页面提示支付，再到订单页查看状态和物流。\n"
         "我不能在聊天中替你提交订单或完成支付。"
@@ -385,9 +513,8 @@ def _purchase_guidance_answer() -> str:
 
 def _store_philosophy_answer() -> str:
     return (
-        "我们的服务理念是：围绕 PC 外设，用清晰、克制、有依据的信息帮助你做选择。"
-        "商品建议尽量结合真实价格、库存、销量和规格；订单与政策问题尊重隐私和权限，"
-        "需要实际执行或人工确认的事项不会替你擅自承诺。"
+        "我这里没有店铺官方理念的介绍，不过可以根据你的预算和用途帮你选商品，"
+        "也能帮你查询订单、了解售后政策。"
     )
 
 
@@ -434,7 +561,9 @@ def _is_safe_direct_request(message: str) -> bool:
 
 def _route_notice(subquery: RoutedSubquery) -> str:
     if subquery.disposition == "clarification":
-        return subquery.clarification_question.strip()
+        return subquery.clarification_question.strip() or (
+            "请补充或确认：" + "、".join(subquery.missing_information) + "。"
+        )
     if subquery.disposition == "direct_response":
         if _is_store_philosophy_question(subquery.query):
             return _store_philosophy_answer()
@@ -442,14 +571,14 @@ def _route_notice(subquery: RoutedSubquery) -> str:
             return _purchase_guidance_answer()
         if _is_identity_or_capability_question(subquery.query):
             return (
-                "我是 PC 外设商城客服 AI，可以帮你推荐和对比外设、查询当前账号的订单物流，"
-                "以及说明商城政策和外设选购知识。"
+                "我是小帕瓦，这里的智能助手，可以帮你选键盘、鼠标等外设，查订单和物流，"
+                "也能解答选购和售后政策问题。"
             )
         if any(term in subquery.query.casefold() for term in ("谢谢", "thank")):
-            return "不客气，有外设、订单物流或商城政策问题都可以继续问我。"
+            return "不客气！"
         if any(term in subquery.query.casefold() for term in ("再见", "bye")):
-            return "再见，有外设、订单物流或商城政策问题时欢迎再来。"
-        return "你好，我可以帮你处理 PC 外设推荐、本人订单物流和商城政策咨询。"
+            return "再见，下次有需要再来找我。"
+        return "你好，有什么可以帮你？"
     classification_by_disposition = {
         "human_handoff": "human_handoff_required",
         "out_of_scope": "out_of_scope",
@@ -494,7 +623,7 @@ def _route_terminal_answer(state: AgentState, disposition: str) -> str:
             if item.get("role") == "assistant" and str(item.get("content") or "").strip():
                 return str(item["content"]).strip()
         return "我暂时无法确认刚才结果中的具体信息，需要重新查询后再回答。"
-    return "你好，我可以帮你处理 PC 外设推荐、本人订单物流和商城政策咨询。"
+    return "你好，有什么可以帮你？"
 
 
 def _append_blocked_route_notices(answer: str, state: AgentState) -> str:

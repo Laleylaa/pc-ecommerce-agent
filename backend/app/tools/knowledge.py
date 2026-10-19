@@ -1,12 +1,16 @@
+import asyncio
+import contextvars
 import json
 import math
 import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
+from threading import BoundedSemaphore
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
@@ -27,7 +31,18 @@ VECTOR_INDEX_VERSION = 1
 RRF_K = 10
 CHUNK_SIZE = 420
 CHUNK_OVERLAP = 80
-MIN_CHUNK_TOP_K = 2
+POLICY_TIMEOUT_SECONDS = 8.0
+# One process-wide slot, held until the actual synchronous work ends (not until
+# its awaiter is cancelled). No backlog of model work after timeout/retry.
+_RETRIEVAL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="policy-retrieval")
+_RETRIEVAL_SLOT = BoundedSemaphore(1)
+
+
+class RetrievalBusyError(Exception):
+    code = "retrieval_busy"
+
+    def __init__(self):
+        super().__init__("Local policy retrieval is still busy; try again later.")
 
 
 class EmbeddingProvider(Protocol):
@@ -90,14 +105,15 @@ class LocalKnowledgeChunk:
 
 
 @lru_cache(maxsize=4)
-def _load_sentence_transformer_model(model_name: str):
+def _load_sentence_transformer_model(model_name: str, allow_download: bool = False):
     from sentence_transformers import SentenceTransformer
 
     try:
         return SentenceTransformer(model_name, local_files_only=True)
     except OSError:
-        # A fresh environment may not have the model yet. Allow one normal Hub download;
-        # subsequent providers in this process reuse the cached model object.
+        if not allow_download:
+            raise
+        # Only explicit preparation/index-building commands may download models.
         return SentenceTransformer(model_name)
 
 
@@ -106,9 +122,12 @@ class SentenceTransformerEmbeddingProvider:
         self,
         model_name: str = DEFAULT_EMBEDDING_MODEL,
         query_instruction: str = BGE_QUERY_INSTRUCTION,
+        *,
+        allow_download: bool = False,
     ):
         self.model_name = model_name
         self.query_instruction = query_instruction
+        self.allow_download = allow_download
         self._model = None
 
     def embed_query(self, text: str) -> list[float]:
@@ -128,7 +147,7 @@ class SentenceTransformerEmbeddingProvider:
 
     def _get_model(self):
         if self._model is None:
-            self._model = _load_sentence_transformer_model(self.model_name)
+            self._model = _load_sentence_transformer_model(self.model_name, self.allow_download)
         return self._model
 
 
@@ -151,12 +170,31 @@ class KnowledgeRetrievalToolService:
         return await self._search(request, POLICY_DOCUMENT_TYPES)
 
     async def search_knowledge(self, request: DocumentSearchInput) -> DocumentSearchOutput:
+        """Local-library evaluation path; the public knowledge_search tool uses web search."""
         return await self._search(request, KNOWLEDGE_DOCUMENT_TYPES)
 
     async def _search(
         self, request: DocumentSearchInput, default_document_types: set[str]
     ) -> DocumentSearchOutput:
-        documents = self._documents or _load_local_documents(self.document_path)
+        if not _RETRIEVAL_SLOT.acquire(blocking=False):
+            raise RetrievalBusyError()
+        try:
+            future = _RETRIEVAL_EXECUTOR.submit(
+                contextvars.copy_context().run, self._search_sync, request, default_document_types,
+            )
+        except BaseException:
+            _RETRIEVAL_SLOT.release()
+            raise
+        future.add_done_callback(lambda _: _RETRIEVAL_SLOT.release())
+        return await asyncio.wrap_future(future)
+
+    def _search_sync(
+        self, request: DocumentSearchInput, default_document_types: set[str]
+    ) -> DocumentSearchOutput:
+        documents = (
+            self._documents if self._documents is not None
+            else _load_local_documents(self.document_path)
+        )
         allowed_types = (
             {request.document_type} & default_document_types
             if request.document_type
@@ -165,22 +203,31 @@ class KnowledgeRetrievalToolService:
         candidates = [
             document for document in documents if document.document_type in allowed_types
         ]
-        vector_index = self._vector_index or _load_vector_index(
-            self.vector_index_path,
-            self.document_path,
+        vector_index = None
+        strategy = request.retrieval_mode
+        if candidates and strategy != "bm25":
+            vector_index = self._vector_index or _load_vector_index(
+                self.vector_index_path, self.document_path,
+            )
+        candidate_ids = {d.id for d in candidates}
+        vector_available = (
+            vector_index is not None
+            and vector_index.embedding_model == self.embedding_provider.model_name
+            and any(c.document_id in candidate_ids for c in vector_index.chunks)
         )
-        effective_limit = max(MIN_CHUNK_TOP_K, request.limit)
+        if strategy == "hybrid" and not vector_available:
+            strategy = "bm25"
         hits = _rank_chunks(
             request.query,
             candidates,
-            request.retrieval_mode,
+            strategy,
             self.embedding_provider,
             vector_index,
-        )[:effective_limit]
+        )[:request.limit]
         return DocumentSearchOutput(
             result_type="documents" if hits else "empty",
             documents=hits,
-            search_strategy=request.retrieval_mode,
+            search_strategy=strategy,
         )
 
 
@@ -276,8 +323,10 @@ def _rank_by_vector(
     if vector_index.embedding_model != embedding_provider.model_name:
         return []
 
-    query_embedding = embedding_provider.embed_query(query)
     allowed_document_ids = {document.id for document in documents}
+    if not any(chunk.document_id in allowed_document_ids for chunk in vector_index.chunks):
+        return []
+    query_embedding = embedding_provider.embed_query(query)
     documents_by_id = {document.id: document for document in documents}
     ranked: list[RankedChunk] = []
     for chunk in _non_redundant_vector_chunks(vector_index.chunks):
@@ -445,7 +494,7 @@ def build_knowledge_vector_index(
     embedding_model: str = DEFAULT_EMBEDDING_MODEL,
 ) -> KnowledgeVectorIndex:
     documents = _load_local_documents(document_path)
-    provider = SentenceTransformerEmbeddingProvider(embedding_model)
+    provider = SentenceTransformerEmbeddingProvider(embedding_model, allow_download=True)
     chunks = [chunk for document in documents for chunk in _document_chunks(document)]
     embeddings = provider.embed_documents([chunk.text for chunk in chunks])
     index = KnowledgeVectorIndex(

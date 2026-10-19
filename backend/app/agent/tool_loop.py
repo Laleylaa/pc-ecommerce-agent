@@ -11,14 +11,13 @@ from app.agent.answer_context import (
     build_answer_context,
 )
 from app.agent.artifacts import (
-    bound_task_catalog_targets,
     bound_task_order_id,
     ensure_task_runtime,
     ready_tasks,
     user_clarifiable_blockers,
 )
 from app.agent.decisions import OrchestratorDecision, PlannedToolCall, infer_tool_subquery
-from app.agent.limits import MAX_TOOL_WAVES
+from app.agent.limits import TOOL_RETRY_POLICY
 from app.agent.outcomes import (
     build_subquery_ledger,
     is_active_ledger_entry,
@@ -30,6 +29,8 @@ from app.agent.prompts import (
     build_orchestrator_system_prompt,
     build_orchestrator_user_prompt,
 )
+from app.agent.prompts.observation import build_answer_prompt
+from app.agent.recovery import recovery_enabled, wave_limit
 from app.agent.responses import (
     _fallback_answer,
     _fallback_unavailable_answer,
@@ -59,6 +60,10 @@ def _orchestrator_messages(
         )
     ]
     planning_phase = _planner_requires_business_tools(state)
+    if not planning_phase:
+        messages[0] = SystemMessage(
+            content=build_answer_prompt(recovery_enabled=recovery_enabled(state)),
+        )
     routed_subqueries = [
         {
             "id": item.id,
@@ -241,15 +246,17 @@ def _find_reusable_tool_result(
     outcomes = [normalize_tool_result(result) for result in matches]
     if outcomes[-1].outcome != "error":
         return matches[-1]
-    # One retry is allowed after the first execution error; later identical calls reuse it.
-    if sum(outcome.outcome == "error" for outcome in outcomes) >= 2:
+    # Timeout attempts share the executor's policy, including when retries are disabled.
+    error = matches[-1].get("execution", {}).get("error") or {}
+    max_attempts = TOOL_RETRY_POLICY.max_attempts if error.get("code") == "timeout" else 2
+    if sum(outcome.outcome == "error" for outcome in outcomes) >= max_attempts:
         return matches[-1]
     return None
 
 
 def _planner_requires_business_tools(state: AgentState) -> bool:
     """Return whether an observation turn can still make an admissible business call."""
-    if state.get("tool_wave_count", 0) >= MAX_TOOL_WAVES:
+    if state.get("tool_wave_count", 0) >= wave_limit(state):
         return False
     if state.get("route_plan") and (
         "task_status" not in state or "task_artifacts" not in state
@@ -264,7 +271,7 @@ def _planner_requires_business_tools(state: AgentState) -> bool:
 
 def _deterministic_recovery_decision(state: AgentState) -> OrchestratorDecision | None:
     """Compile the only automatic recovery: one byte-equivalent retry when allowed."""
-    if state.get("tool_wave_count", 0) >= MAX_TOOL_WAVES:
+    if state.get("tool_wave_count", 0) >= wave_limit(state):
         return None
     ledger = [
         entry
@@ -291,7 +298,10 @@ def _deterministic_recovery_decision(state: AgentState) -> OrchestratorDecision 
             for item in state.get("subquery_ledger", [])
             if isinstance(item, dict)
         )
-        if failures >= 2:
+        if not TOOL_RETRY_POLICY.allows_retry(
+            completed_attempts=failures, code=code,
+            retryable=error.get("retryable") is True, action=action,
+        ):
             continue
         return OrchestratorDecision(
             type="tool_calls",
@@ -378,7 +388,7 @@ def _followup_tool_call_allowed(state: AgentState, call: PlannedToolCall) -> boo
     outcome = str(latest.get("outcome") or "")
     if outcome == "usable" and _is_supported_dependent_call(state, call):
         # A usable discovery result may be the prerequisite for a different Tool in the same
-        # routed task, for example catalog_search -> catalog_compare. Do not mark the whole
+        # routed task, for example an order list followed by order details. Do not mark the whole
         # subquery complete before admitting that explicitly requested dependent step.
         return True
     if outcome in {"usable", "empty", "not_found", "unsupported", "insufficient"}:
@@ -407,7 +417,10 @@ def _followup_tool_call_allowed(state: AgentState, call: PlannedToolCall) -> boo
             and str(entry.get("fingerprint") or "") == previous_fingerprint
             for entry in ledger
         )
-        return same_failures < 2 and next_fingerprint == previous_fingerprint
+        return TOOL_RETRY_POLICY.allows_retry(
+            completed_attempts=same_failures, code=code,
+            retryable=error.get("retryable") is True, action=action,
+        ) and next_fingerprint == previous_fingerprint
     if action == "replan_arguments":
         if call.name != str(latest.get("tool_name") or ""):
             return False
@@ -422,11 +435,6 @@ def _followup_tool_call_allowed(state: AgentState, call: PlannedToolCall) -> boo
 
 def _is_supported_dependent_call(state: AgentState, call: PlannedToolCall) -> bool:
     """Allow only bounded continuations authorized by a ready routed Task."""
-    if call.name == "catalog_compare":
-        task = _ready_task_for_call(state, call)
-        if task is None:
-            return False
-        return len(bound_task_catalog_targets(state, task)) >= 2
     if call.name == "order_lookup":
         task = _ready_task_for_call(state, call)
         if task is not None:
@@ -543,6 +551,20 @@ def _ai_message_text(message: AIMessage) -> str:
 
 def _state_terminal_decision(state: AgentState, reason: str) -> OrchestratorDecision:
     """Stop the loop without discarding observations already useful to the user."""
+    if state.get("route_plan"):
+        from app.agent.responses import fallback_goal_response
+
+        payload = fallback_goal_response(state)
+        context = build_answer_context(state)
+        if payload["used_tool_call_ids"]:
+            action = "finish_partial" if payload["unavailable_parts"] else "finish_answer"
+            kind = "partial_response" if payload["unavailable_parts"] else "grounded_response"
+        elif context["recommended_control_action"] == "ask_clarification":
+            action, kind = "ask_clarification", "clarification"
+        else:
+            action, kind = "finish_unavailable", "unavailable_response"
+            payload["unavailable_parts"] = payload["unavailable_parts"] or ["本轮回答"]
+        return OrchestratorDecision(type=kind, control_action=action, reason=reason, **payload)
     answer_context = build_answer_context(state)
     has_task_context = bool(answer_context["tasks"])
     answerable_ids = (

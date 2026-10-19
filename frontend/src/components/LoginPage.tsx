@@ -24,14 +24,14 @@ export function LoginPage({ loading, error, onLogin }: LoginPageProps) {
             <MonitorCog size={22} />
           </span>
           <div>
-            <strong>PC Agent</strong>
-            <small>客服工作台</small>
+            <strong>小帕瓦</strong>
+            <small>在线咨询</small>
           </div>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
-            登录标识
+            账号
             <input
               value={loginIdentifier}
               onChange={(event) => setLoginIdentifier(event.target.value)}

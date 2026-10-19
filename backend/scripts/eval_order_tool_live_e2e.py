@@ -11,12 +11,14 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.api.dependencies import get_session
 from app.core.config import get_settings
 from app.main import app
+from app.models.conversation import AgentRun, ToolCall
 from scripts.seed_user_isolation import DEMO_PASSWORD
 
 EVAL_LOGIN_IDENTIFIER = "test_user_001@example.com"
@@ -216,26 +218,11 @@ MIXED_CASE = EvalCase(
 )
 
 
-def _parse_sse(body: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    for block in body.strip().split("\n\n"):
-        data = "\n".join(
-            line.removeprefix("data: ")
-            for line in block.splitlines()
-            if line.startswith("data: ")
-        )
-        if data:
-            events.append(json.loads(data))
-    return events
-
-
-def _order_tool_output(events: list[dict[str, Any]]) -> dict[str, Any]:
+def _order_tool_output(audit: list[dict[str, Any]]) -> dict[str, Any]:
     completed = [
         event
-        for event in events
-        if event.get("type") == "tool_call"
-        and event.get("tool_name") == "order_lookup"
-        and event.get("status") == "completed"
+        for event in audit
+        if event.get("tool_name") == "order_lookup"
     ]
     if not completed:
         raise AssertionError("Order Tool was not called")
@@ -248,24 +235,15 @@ def _order_tool_output(events: list[dict[str, Any]]) -> dict[str, Any]:
     return output
 
 
-def _order_tool_input(events: list[dict[str, Any]]) -> dict[str, Any]:
+def _order_tool_input(audit: list[dict[str, Any]]) -> dict[str, Any]:
     started = [
         event
-        for event in events
-        if event.get("type") == "tool_call"
-        and event.get("tool_name") == "order_lookup"
-        and event.get("status") == "started"
+        for event in audit
+        if event.get("tool_name") == "order_lookup"
     ]
     if not started or not isinstance(started[-1].get("input"), dict):
         raise AssertionError("Order Tool did not expose its bound input")
     return started[-1]["input"]
-
-
-def _done_response(events: list[dict[str, Any]]) -> dict[str, Any]:
-    done = [event for event in events if event.get("type") == "done"]
-    if not done or not isinstance(done[-1].get("response"), dict):
-        raise AssertionError("Chat stream did not finish with a response")
-    return done[-1]["response"]
 
 
 def _assert_no_private_fields(value: Any) -> None:
@@ -337,8 +315,9 @@ def _validate_case(
     )
 
 
-async def _stream_chat(
+async def _chat(
     client: AsyncClient,
+    session_factory: async_sessionmaker,
     headers: dict[str, str],
     query: str,
     *,
@@ -347,16 +326,23 @@ async def _stream_chat(
     payload: dict[str, Any] = {"message": query}
     if conversation_id is not None:
         payload["conversation_id"] = conversation_id
-    async with client.stream(
-        "POST",
-        "/api/chat/stream",
-        json=payload,
-        headers=headers,
-    ) as response:
-        response.raise_for_status()
-        body = "".join([chunk async for chunk in response.aiter_text()])
-    events = _parse_sse(body)
-    return events, _done_response(events)
+    response = await client.post("/api/chat", json=payload, headers=headers)
+    response.raise_for_status()
+    result = response.json()
+    # This evaluator sends turns sequentially in its isolated outer transaction.
+    async with session_factory() as session:
+        run = await session.scalar(
+            select(AgentRun).where(AgentRun.conversation_id == result["conversation_id"])
+            .order_by(AgentRun.id.desc()).limit(1)
+        )
+        if run is None or run.status != "completed":
+            raise AssertionError("Chat did not persist a completed run")
+        calls = (await session.scalars(
+            select(ToolCall).where(ToolCall.agent_run_id == run.id).order_by(ToolCall.id)
+        )).all()
+        audit = [{"tool_name": call.tool_name, "input": call.input_json,
+                  "output": call.output_json} for call in calls]
+    return audit, result
 
 
 async def main() -> int:
@@ -401,20 +387,20 @@ async def main() -> int:
             headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
             for case in (*SUPPORTED_CASES, *UNSUPPORTED_CASES, MIXED_CASE):
-                events: list[dict[str, Any]] = []
+                audit: list[dict[str, Any]] = []
                 output: dict[str, Any] | None = None
                 response: dict[str, Any] | None = None
                 try:
-                    events, response = await _stream_chat(
+                    audit, response = await _chat(
                         client,
+                        session_factory,
                         headers,
                         case.query,
                     )
                     if case.expected_result_type is None:
                         assert not any(
-                            event.get("type") == "tool_call"
-                            and event.get("tool_name") == "order_lookup"
-                            for event in events
+                            event.get("tool_name") == "order_lookup"
+                            for event in audit
                         ), "Router-owned case unexpectedly called Order Tool"
                         actual_boundary = response["boundary"]["classification"]
                         assert actual_boundary == case.expected_boundary, (
@@ -422,7 +408,7 @@ async def main() -> int:
                             f"actual={actual_boundary}"
                         )
                     else:
-                        output = _order_tool_output(events)
+                        output = _order_tool_output(audit)
                         _validate_case(case, output, response)
                 except Exception as exc:
                     failures.append(f"{case.name}: {type(exc).__name__}: {exc}")
@@ -457,9 +443,8 @@ async def main() -> int:
                             "tool_names": sorted(
                                 {
                                     str(event.get("tool_name"))
-                                    for event in events
-                                    if event.get("type") == "tool_call"
-                                    and event.get("tool_name")
+                                    for event in audit
+                                    if event.get("tool_name")
                                 }
                             ),
                         }
@@ -492,23 +477,25 @@ async def main() -> int:
                     )
 
             try:
-                first_events, first_response = await _stream_chat(
+                first_audit, first_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "最近两笔先给我看看，别一下子全铺开",
                 )
-                first_output = _order_tool_output(first_events)
+                first_output = _order_tool_output(first_audit)
                 assert first_output["result_type"] == "order_candidates"
                 assert first_output["returned_count"] == 2
                 assert first_output["next_offset"] == 2
                 conversation_id = first_response["conversation_id"]
-                remaining_events, remaining_response = await _stream_chat(
+                remaining_audit, remaining_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "行，那剩下的也都给我吧",
                     conversation_id=conversation_id,
                 )
-                remaining_output = _order_tool_output(remaining_events)
+                remaining_output = _order_tool_output(remaining_audit)
                 assert remaining_output["result_type"] == "order_candidates"
                 assert remaining_output["query_mode"] == "remaining"
                 assert remaining_output["returned_count"] == 3
@@ -536,45 +523,49 @@ async def main() -> int:
                 )
 
             try:
-                latest_events, latest_response = await _stream_chat(
+                latest_audit, latest_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "最新的一笔订单是什么",
                 )
-                latest_output = _order_tool_output(latest_events)
+                latest_output = _order_tool_output(latest_audit)
                 latest_order_id = latest_output["order"]["id"]
                 assert latest_order_id == 991_000_000_101
 
-                keyboard_events, keyboard_response = await _stream_chat(
+                keyboard_audit, keyboard_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "我买过什么键盘吗",
                     conversation_id=latest_response["conversation_id"],
                 )
-                keyboard_output = _order_tool_output(keyboard_events)
+                keyboard_output = _order_tool_output(keyboard_audit)
                 assert keyboard_output["result_type"] == "order_analysis"
                 assert keyboard_output["focus_order_ids"] == [991_000_000_103]
 
-                logistics_events, logistics_response = await _stream_chat(
+                logistics_audit, logistics_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "这单的物流状态是什么",
                     conversation_id=keyboard_response["conversation_id"],
                 )
-                logistics_input = _order_tool_input(logistics_events)
-                logistics_output = _order_tool_output(logistics_events)
+                logistics_input = _order_tool_input(logistics_audit)
+                logistics_output = _order_tool_output(logistics_audit)
                 assert logistics_input["order_id"] == 991_000_000_103
                 assert logistics_output["order"]["id"] == 991_000_000_103
                 assert logistics_response["boundary"]["classification"] == "in_scope_auto"
 
-                eta_events, eta_response = await _stream_chat(
+                eta_audit, eta_response = await _chat(
                     client,
+                    session_factory,
                     headers,
                     "这个多久能到？",
                     conversation_id=logistics_response["conversation_id"],
                 )
-                eta_input = _order_tool_input(eta_events)
-                eta_output = _order_tool_output(eta_events)
+                eta_input = _order_tool_input(eta_audit)
+                eta_output = _order_tool_output(eta_audit)
                 assert eta_input["order_id"] == 991_000_000_103
                 assert eta_output["result_type"] == "unsupported"
                 assert eta_output["diagnostics"][0]["code"] == "unsupported_query"
