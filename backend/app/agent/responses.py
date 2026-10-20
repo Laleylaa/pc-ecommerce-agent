@@ -5,12 +5,13 @@ from typing import Any
 
 from app.agent.answer_context import build_answer_context
 from app.agent.boundary import BOUNDARY_POLICY
-from app.agent.intent import classify_intent, extract_order_id
+from app.agent.intent import classify_intent
 from app.agent.outcomes import (
     active_usable_tool_call_ids,
     is_active_ledger_entry,
     normalize_tool_result,
 )
+from app.agent.result_projection import _handoff_payload
 from app.agent.routing import RequestRoutePlan, RoutedSubquery, blocked_subqueries
 from app.agent.state import AgentState
 
@@ -679,24 +680,3 @@ def _suggest_actions(state: AgentState) -> list[dict[str, Any]]:
     if state.get("order"):
         return [{"label": "转人工处理售后", "payload": {"orderId": state["order"].id}}]
     return []
-
-
-def _handoff_payload(message: str) -> dict[str, Any]:
-    return {
-        "handoff": True,
-        "orderId": extract_order_id(message),
-        "requestType": _handoff_request_type(message),
-        "reason": message,
-    }
-
-
-def _handoff_request_type(message: str) -> str:
-    if "退款" in message:
-        return "refund"
-    if "退货" in message or "换货" in message:
-        return "return"
-    if "维修" in message or "保修" in message:
-        return "repair"
-    if any(term in message for term in ["取消订单", "改地址", "改收货", "修改订单"]):
-        return "order_change"
-    return "other"

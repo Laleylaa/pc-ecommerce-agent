@@ -15,6 +15,7 @@ import {
   restoreSession,
   sendChat
 } from "./api";
+import { executionDetailsFromMetadata } from "./utils/execution-details";
 import { ChatPanel } from "./components/ChatPanel";
 import { ContextPanel } from "./components/ContextPanel";
 import { LoginPage } from "./components/LoginPage";
@@ -29,7 +30,6 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ConversationTurn,
-  ExecutionDetails,
   EvidenceItem,
   HandoffRequest,
   HandoffRequestType,
@@ -462,21 +462,26 @@ export default function App() {
     const receivedAt = new Date().toISOString();
     const currentTurnOrderId = response.order?.id;
     const contextOrderId = response.order?.id ?? order?.id;
+    const hasOrderResults = response.order_query != null ||
+      response.execution_details?.tool_calls.some(
+        (call) => call.tool_name === "order_lookup" &&
+          ["usable", "empty", "not_found"].includes(call.outcome)
+      );
     setConversationId(response.conversation_id);
     setBoundary(response.boundary);
     setEvidence(isBlockedBoundary(response.boundary) ? [] : response.evidence);
     setProducts(isBlockedBoundary(response.boundary) ? [] : response.products);
     setOrder((current) => {
       if (isBlockedBoundary(response.boundary)) return null;
-      if (response.order_query) return response.order ?? null;
+      if (hasOrderResults) return response.order ?? null;
       return response.order ?? current;
     });
     if (isBlockedBoundary(response.boundary)) {
       setOrders([]);
       setOrderQuery(null);
-    } else if (response.order_query) {
+    } else if (hasOrderResults) {
       setOrders(response.orders);
-      setOrderQuery(response.order_query);
+      setOrderQuery(response.order_query ?? null);
     }
     setSuggestedActions(response.suggested_actions);
     updateMessage(assistantMessageId, (message) => ({
@@ -587,6 +592,7 @@ export default function App() {
     }
     if (!reason) return;
     if (handoffNotice?.requestId) return;
+    const orderId = handoffNotice?.orderId ?? order?.id;
 
     setHandoffSubmitting(true);
     setHandoffQueryError(null);
@@ -594,7 +600,7 @@ export default function App() {
     try {
       const response = await createHandoffRequest({
         session_id: conversationId,
-        order_id: order?.id,
+        order_id: orderId,
         request_type: ticketType,
         reason
       });
@@ -603,7 +609,7 @@ export default function App() {
         requested: true,
         source: "人工确认诉求",
         reason,
-        orderId: order?.id,
+        orderId,
         requestId: response.request_id,
         status: response.status,
         message: response.message,
@@ -968,13 +974,6 @@ function numberFromPayload(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function executionDetailsFromMetadata(value: unknown): ExecutionDetails | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const details = value as ExecutionDetails;
-  if (!Array.isArray(details.goals) || !Array.isArray(details.tool_calls)) return undefined;
-  return details;
 }
 
 function returnedOrderCount(

@@ -21,9 +21,22 @@ BUSINESS_RESULT_RESPONSE_POLICY = """
   超预算、缺资料、只查到部分对象等影响选择的具体限制仍须简短说明；用户追问可靠性时正常回答。
 """.strip()
 
+ANSWER_ORGANIZATION = """
+按用户目标组织，不按工具或任务逐条播报；每个目标先给结论，再给最少必要依据。
+简单查询通常一两句即可；推荐用短列表说明商品名称、关键理由和必要取舍，不堆砌完整规格。
+多对象比较可用简短Markdown表格，只列用户关心的维度；简单回答不用强加标题或表格。
+范围随结论表达：说明针对哪个对象、版本、条件或时间；子集统计不说成全集，未核实不说成否定。
+比较先对齐指标、单位和对象粒度；说明是在比最低价、区间或具体版本。最低价更低不代表所有
+版本都更便宜；范围不能对齐就分别说明，缺一方资料不判断胜负。推荐结合用户条件给依据和取舍。
+混合结果先保留可答内容，再说明未完成部分；同因失败合并说明受影响目标，不同原因不混为一谈。
+澄清集中提出继续所需的最少问题，不用泛泛追问代替已有答案；下一步只建议实际可行的操作，
+不承诺自动执行。没有必要追问就结束，不追加无关规格、推销或重复提醒。
+""".strip()
+
 CUSTOMER_RESPONSE_POLICY = f"{BASE_CUSTOMER_VOICE}\n{BUSINESS_RESULT_RESPONSE_POLICY}"
 
 __all__ = [
+    "ANSWER_ORGANIZATION",
     "BASE_CUSTOMER_VOICE",
     "BUSINESS_RESULT_RESPONSE_POLICY",
     "CUSTOMER_RESPONSE_POLICY",

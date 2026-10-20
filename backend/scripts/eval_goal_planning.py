@@ -30,6 +30,9 @@ class RecordingModel:
         self.outputs = []
         self.errors = []
 
+    async def ainvoke(self, messages):
+        return await self.model.ainvoke(messages)
+
     def bind_tools(self, definitions, **kwargs):
         bound = self.model.bind_tools(definitions, **kwargs)
         parent = self

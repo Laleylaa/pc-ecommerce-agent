@@ -1,27 +1,18 @@
-from collections.abc import Mapping
 from typing import Any
 
 from app.agent.decisions import PlannedToolCall
 from app.agent.outcomes import is_active_ledger_entry
+from app.agent.result_projection import (
+    _catalog_search_projection,
+    _order_query_projection,
+)
+from app.agent.result_projection import without_pagination_controls as without_pagination_controls
 from app.agent.state import AgentState
 from app.schemas.catalog import ProductCard
 from app.schemas.catalog_search import SearchProduct
 from app.schemas.chat import EvidenceItem
 from app.schemas.order import OrderCard
 from app.tools.schemas import ToolExecutionResult
-
-
-def without_pagination_controls(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """Project tool facts without exposing storage cursors as conversation capabilities."""
-    controls = {"offset", "next_offset", "page", "page_from", "search_page"}
-    projected = {k: v for k, v in facts.items() if k not in controls}
-    if isinstance(projected.get("query_plan"), Mapping):
-        projected["query_plan"] = without_pagination_controls(projected["query_plan"])
-    if projected.get("query_mode") in {"page", "remaining"}:
-        projected.pop("query_mode")
-    if projected.get("selection") == "remaining":
-        projected.pop("selection")
-    return projected
 
 
 def _product_card(value):
@@ -219,35 +210,6 @@ def _catalog_execution_completed(execution: dict[str, Any]) -> bool:
     return not any(
         isinstance(item, dict) and item.get("severity") == "error" for item in diagnostics
     )
-
-
-def _order_query_projection(output: dict[str, Any]) -> dict[str, Any]:
-    return without_pagination_controls({
-        "result_type": output.get("result_type"),
-        "pending_suggestions": [
-            {"id": item["order"]["id"], "differences": item["differences"]}
-            for item in output.get("suggestions", [])
-        ],
-        "query_mode": output.get("query_mode") or "recent",
-        "total_match_count": int(output.get("total_match_count") or 0),
-        "returned_count": int(output.get("returned_count") or 0),
-        "is_exhaustive": bool(output.get("is_exhaustive", True)),
-    })
-
-
-def _catalog_search_projection(output: dict[str, Any]) -> dict[str, Any]:
-    projection = dict(output.get("query_plan") or {})
-    for key in (
-        "result_purpose",
-        "selection_scope",
-        "total_match_count",
-        "returned_count",
-        "is_exhaustive",
-        "ranking_strategy",
-    ):
-        if key in output:
-            projection[key] = output[key]
-    return without_pagination_controls(projection)
 
 
 def tool_call_arguments(state: AgentState, call_id: str) -> dict[str, Any]:

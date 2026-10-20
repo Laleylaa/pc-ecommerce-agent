@@ -10,6 +10,7 @@ const outcomes: Record<string, string> = {
   unsupported: "能力不支持", insufficient: "资料不足 / 需澄清", error: "调用失败"
 };
 const stages: Record<string, string> = {
+  query: "查询决策",
   route_request: "目标理解", submit_execution_plan: "任务规划",
   tool_review: "工具语义检查", tool_planning: "工具内部规划", summarize_goals: "回答生成", answer: "回答生成",
   other: "其他"

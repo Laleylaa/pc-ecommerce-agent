@@ -1,4 +1,7 @@
-"""Live model + formal graph/tool services + synthetic repositories, stopping before LLM3."""
+"""Formal graph/tools over synthetic repositories; CLI stops before answering.
+
+P0 baseline may opt into full answering with in-memory completion via evaluate().
+"""
 
 import argparse
 import asyncio
@@ -20,7 +23,7 @@ from app.core.config import Settings, get_settings
 from app.core.llm import build_chat_model
 from app.core.tracing import agent_trace, trace_boundary, trace_data
 from app.schemas.chat import ChatRequest
-from app.schemas.context import PreparedTurn, WorkingMemoryV2
+from app.schemas.context import MemoryChanges, PreparedTurn, WorkingMemoryV2
 from app.services.context import _next_working_memory
 from app.tools.catalog import CatalogToolService, LLMCatalogQueryPlanner
 from app.tools.catalog_search.planner import CatalogSearchPlanner
@@ -38,8 +41,9 @@ from scripts.goal_tool_fixtures import (
 
 
 class Context:
-    def __init__(self, case):
+    def __init__(self, case, *, complete=False):
         self.case = case
+        self.complete = complete
 
     async def prepare_turn(self, user_id, conversation_id, text):
         return PreparedTurn(
@@ -53,7 +57,11 @@ class Context:
             working_memory=WorkingMemoryV2.model_validate(self.case.get("memory", {})),
         )
 
-    async def complete_turn(self, *args):
+    async def complete_turn(self, prepared, outcome):
+        if self.complete:
+            return MemoryChanges(
+                working_memory=_next_working_memory(prepared.working_memory, outcome)
+            )
         raise AssertionError("Must stop before LLM3 and persistence")
 
 
@@ -169,7 +177,7 @@ def inspect_results(case, state):
     return issues
 
 
-async def evaluate(case, settings, *, model=None):
+async def evaluate(case, settings, *, model=None, full_answer=False):
     request = ChatRequest(message=case["message"])
     recorder = RecordingModel(
         model if model is not None else build_chat_model(settings, temperature=0, max_retries=0)
@@ -181,9 +189,11 @@ async def evaluate(case, settings, *, model=None):
         chat_model=recorder,
         router_model=recorder,
         tool_executor=executor,
-        context_service=Context(case),
+        context_service=Context(case, complete=full_answer),
     )
     state = runtime._initial_state(request, 1)
+    if full_answer:
+        state["turn_deadline_monotonic"] = asyncio.get_running_loop().time() + 240
     visited = []
     with ExitStack() as stack:
         for replacement in fixture_patches():
@@ -195,6 +205,10 @@ async def evaluate(case, settings, *, model=None):
                 for name, values in update.items():
                     visited.append(name)
                     state.update(values)
+                    if full_answer:
+                        if name == "persist_turn":
+                            return report(case, state, recorder, executor, visited)
+                        continue
                     if name == "request_router" and runtime._dispatch_route(state) != "plan":
                         trace_boundary("no_tool_route", state)
                         return report(case, state, recorder, executor, visited)
@@ -219,6 +233,8 @@ def report(case, state, recorder, executor, visited):
     memory = _next_working_memory(WorkingMemoryV2.model_validate(case.get("memory", {})), clean)
     return {
         "id": case["id"],
+        "answer": state.get("answer"),
+        "subquery_ledger": state.get("subquery_ledger", []),
         "input": case,
         "planning_failures": assess(case, state),
         "information_issues": inspect_results(case, state),
@@ -316,6 +332,7 @@ def implementation_manifest():
 
     files = [*sorted((root / "backend/app").rglob("*.py")),
              *sorted((root / "backend/scripts").glob("*.py")),
+             *sorted((root / "tests/agent_loop").rglob("*.py")),
              root / "backend/uv.lock", CASE_PATH]
     return {
         "head": git("rev-parse", "HEAD"), "branch": git("branch", "--show-current"),

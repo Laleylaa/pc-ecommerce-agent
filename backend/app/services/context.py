@@ -158,6 +158,18 @@ class ConversationContextService:
         await self.session.commit()
         return prepared
 
+    async def fail_turn(
+        self, prepared_turn: PreparedTurn | None, error_type: str, audit: dict[str, Any],
+    ) -> None:
+        """Roll back pending answer/memory writes before the independent failure record."""
+        await self.session.rollback()
+        if prepared_turn is not None:
+            await self.repository.fail_run(
+                prepared_turn.run_id, "general", audit,
+                {"type": error_type, "message": "Turn did not complete"},
+            )
+            await self.session.commit()
+
     async def complete_turn(
         self, prepared_turn: PreparedTurn, outcome: Mapping[str, Any] | BaseModel
     ) -> MemoryChanges:
@@ -286,6 +298,15 @@ def _next_working_memory(previous: WorkingMemoryV2, state: dict[str, Any]) -> Wo
         order_memory.total_match_count = int(order_query.get("total_match_count") or 0)
         order_memory.returned_count = int(order_query.get("returned_count") or 0)
         order_memory.is_exhaustive = bool(order_query.get("is_exhaustive", True))
+    elif isinstance(parsed.get("order_queries"), list) and parsed["order_queries"]:
+        # Independent windows/counts cannot be combined into one exhaustive query.
+        # Keep displayed identities for later references, without choosing a last order.
+        order_memory.candidate_order_ids = _object_ids(order_candidates or [], "id")
+        order_memory.last_order_id = None
+        order_memory.pending_suggestions = []
+        order_memory.total_match_count = len(order_memory.candidate_order_ids)
+        order_memory.returned_count = len(order_memory.candidate_order_ids)
+        order_memory.is_exhaustive = False
 
     policy = previous.policy.model_copy(deep=True)
     evidence = state.get("evidence") if isinstance(state.get("evidence"), list) else []

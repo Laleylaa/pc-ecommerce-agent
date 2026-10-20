@@ -255,6 +255,7 @@ make frontend     # 终端 B：前端
 | 配置 | 说明 |
 | --- | --- |
 | `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | 默认 DeepSeek；base URL 留空时按 provider 选择 |
+| `AGENT_RUNTIME` | P3 开发选项：`legacy`（默认旧链路）或 `strands`（两阶段查询／独立回答）；重启后生效，一次请求只运行所选链路。联合验收未放行前不切默认值 |
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | 创建 PostgreSQL 容器时使用的数据库凭据 |
 | `DATABASE_URL` | 后端数据库连接，须与用户、密码及主机端口一致 |
 | `REDIS_URL` / `CHROMA_HOST` / `CHROMA_PORT` | 后端连接 Redis 与 Chroma 的地址 |
@@ -316,6 +317,7 @@ make backend BACKEND_PORT=8002
 ├── frontend/
 │   ├── src/                # 页面、组件与 API 封装
 │   └── package-lock.json   # 前端依赖锁文件
+├── tests/                  # Agent loop 重构测试与显式模型验证
 ├── scripts/                # 环境检查与 Podman 管理
 ├── .env.example            # 后端与基础设施配置模板
 └── Makefile                # 安装、启动与检查的统一入口
@@ -323,9 +325,14 @@ make backend BACKEND_PORT=8002
 
 ## 测试与维护
 
-Agent 调试与技术评测 trace 使用 LangChain/LangSmith，并同步写入本地统一目录
+本次 Agent loop 重构后续修改只运行根目录 [tests/](tests/README.md) 的新增测试，入口为 `make agent-loop-test`，不运行旧测试或下面的 `make check`。测试按业务、冒烟、契约分类，命令见该目录说明；开发过程和验证记录维护在 `docs/development/iterations/`。
+
+旧 LangGraph 链路的调试与技术评测 trace 使用 LangChain/LangSmith，并同步写入本地统一目录
 `backend/evals/results/agent_traces/`（默认忽略）。默认关闭普通聊天记录；离线冒烟、真实模型
 评测、上传配置及产物字段见 [Agent trace 使用说明](backend/evals/README.md)。
+Strands 新链路目前保存执行记录及用量，尚未接入完整可视化调用树。新增 P4 计划接入本地
+Phoenix，覆盖查询、工具内部过程、程序交接与独立回答；原切换清理顺延为 P5。
+计划和验收清单见 [AL-016](docs/development/issues.md#al-016本地可视化-trace尚未接入)，当前没有新增平台启动命令。
 离线检查不需要数据库或模型密钥：在 `backend/` 执行
 `.venv/bin/python -m scripts.eval_goal_tool_flow --scripted`。
 
@@ -333,7 +340,7 @@ Agent 调试与技术评测 trace 使用 LangChain/LangSmith，并同步写入�
 make check
 ```
 
-运行后端 pytest、Ruff 和前端 TypeScript / Vite 构建。当前 pytest 集合不含真实数据库集成测试，默认排除 network 标记测试；数据库读写与持久化隔离不在这套自动化测试的验证范围内。模块、冒烟和依赖选择见 [后端测试入口](backend/tests/README.md)。页面交互与真实模型效果需另做验证，完整从零复现还需使用独立新数据库执行初始化。
+运行后端及根目录 Agent loop 测试、Ruff 和前端 TypeScript / Vite 构建。当前 pytest 集合不含真实数据库集成测试，默认排除 network 标记测试；数据库读写与持久化隔离不在这套自动化测试的验证范围内。模块、冒烟和依赖选择见 [后端测试入口](backend/tests/README.md)。页面交互与真实模型效果需另做验证，完整从零复现还需使用独立新数据库执行初始化。
 
 - **依赖更新**：后端修改 `pyproject.toml` 后在 `backend/` 执行 `uv lock`；前端通过 npm 更新并提交锁文件。普通安装保持锁定版本。
 - **知识更新**：修改 `backend/data/knowledge_documents.json` 后执行 `make knowledge-index` 并重启后端；`make knowledge-sync` 不会更新本地 JSON 索引。

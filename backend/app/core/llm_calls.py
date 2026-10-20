@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
+from app.core.loop_budget import model_stage
 from app.core.model_usage import record_model_call
 
 
@@ -89,7 +90,8 @@ async def invoke_before(
     try:
         async with budget:
             record_model_call(stage)
-            response = await model.ainvoke(messages)
+            with model_stage(stage):
+                response = await model.ainvoke(messages)
     except TimeoutError as exc:
         if budget.expired():
             raise ModelDeadlineExceeded("Model call budget exhausted") from exc

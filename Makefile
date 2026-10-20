@@ -7,7 +7,7 @@ DATASET_DIR ?= .cache/pc-part-dataset
 DATASET_JSON_DIR := $(DATASET_DIR)/data/json
 PART_TYPES := case-accessory,case-fan,case,cpu-cooler,cpu,external-hard-drive,fan-controller,headphones,internal-hard-drive,keyboard,memory,monitor,motherboard,mouse,optical-drive,os,power-supply,sound-card,speakers,thermal-paste,ups,video-card,webcam,wired-network-card,wireless-network-card
 
-.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate db-seed dataset data-import legacy-data-import knowledge-sync knowledge-index model-prepare backend-test frontend-build check
+.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate db-seed dataset data-import legacy-data-import knowledge-sync knowledge-index model-prepare backend-test agent-loop-test frontend-build check
 
 help:
 	@echo "doctor          Check local tools and Podman connectivity (read-only)"
@@ -22,7 +22,8 @@ help:
 	@echo "db-migrate      Apply migrations; changes target database"
 	@echo "db-init         Apply migrations, import demo catalog, seed, sync Chroma"
 	@echo "model-prepare   Download/warm the local knowledge embedding model"
-	@echo "check           Run backend tests/lint and frontend build"
+	@echo "agent-loop-test Run isolated Agent loop tests and lint from root tests/"
+	@echo "check           Run backend/Agent loop tests, lint and frontend build"
 
 doctor:
 	./scripts/doctor.sh
@@ -104,9 +105,14 @@ model-prepare:
 backend-test:
 	cd backend && .venv/bin/pytest && .venv/bin/ruff check .
 
+agent-loop-test:
+	backend/.venv/bin/python -m pytest -c tests/pytest.ini tests -q
+	backend/.venv/bin/ruff check --config backend/pyproject.toml tests
+
 frontend-build:
 	cd frontend && npm run build
 
 check:
 	$(MAKE) backend-test
+	$(MAKE) agent-loop-test
 	$(MAKE) frontend-build
