@@ -4,23 +4,22 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from app.agent.evidence import EvidenceStore, ToolInvocation
-from app.agent.independent_answer import (
+from agent_loop.support.loop_runtime import goal
+from app.agent.loop.evidence import EvidenceStore, ToolInvocation
+from app.agent.loop.independent_answer import (
     AnswerDraft,
     AnswerInput,
     fallback_answer,
     validate_answer,
 )
-from app.agent.query_context import resolve_reference
-from app.agent.query_loop import project_record
-from app.agent.query_schema import ContextReference, GoalRegistration, QueryCompletion
-from app.agent.query_state import GoalBook
-from app.agent.tool_adapter import AdmissionError
+from app.agent.loop.query_context import resolve_reference
+from app.agent.loop.query_loop import project_record
+from app.agent.loop.query_schema import ContextReference, GoalRegistration, QueryCompletion
+from app.agent.loop.query_state import GoalBook
+from app.agent.loop.tool_adapter import AdmissionError
 from app.schemas.context import PreparedTurn
 from app.tools.schemas import ToolExecutionResult
 from pydantic import TypeAdapter
-
-from agent_loop.support.loop_runtime import goal
 
 pytestmark = pytest.mark.contract
 

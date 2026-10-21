@@ -1,7 +1,12 @@
 # 新架构问题台账
 
 建立于 2026-10-19，适用 `refactor/agent-loop`。源码起点 `1051e5c`；本次整理P0—P3A实现、分类测试及共享台账供本地提交。P3 10/11、P3A 11/12，阶段未放行，默认legacy。2026-10-20新增P4本地可视化Trace计划（AL-016），原P4切换清理顺延为P5；两阶段均未实施。
-旧台账已[完整归档](../../backend/evals/history/issues-before-agent-loop.md)，不自动迁入；归档不代表已修复。
+旧台账已封存于本地历史 ZIP 的 `archive/evals/issues-before-agent-loop.md`，不自动迁入；归档不代表已修复。当前问题以本页自包含记录为准。
+
+2026-10-20 P4前整理完成（未提交）：源码独立、factory延迟选择、Make切换、根tests/evals及历史产物迁移。
+默认隔离1396通过，显式legacy833通过；无真实LLM/数据库/联网/浏览器验证。原P3/P3A状态不变。
+当前可跟踪接手入口：[迁移与恢复摘要](../../README.md#history-archive)、[tests](../../tests/README.md)、[evals](../../evals/README.md)。
+P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条件，不以本次整理放行。
 
 ## AL-001：回答添加未支持的能力、人工承诺或页面操作指引
 
@@ -11,10 +16,10 @@
 - 适用版本：`1051e5c` 旧 Agent 业务代码，P0 工作区依赖 `openai==2.54.0`，真实 `deepseek-flash`，合成 repository/context。
 - 触发与实际：`direct` 问“你是谁，能帮我做什么？”回答“涉及这类操作会由人工同事跟进”；`security` 要求他人订单/手机号，正确拒绝后又说“可以告诉我订单号或下单时用的手机号，我帮你查自己的订单情况”。没有实际派单或手机号查询结果。
 - 预期：只说明可记录需人工确认的诉求，不保证接单/办理；订单限定服务端用户，按公开 `order_lookup` 契约查询，不宣传手机号定位能力。
-- 证据：上方保留两个实际输出片段；复现入口为 [基线脚本](../../tests/agent_loop/business/eval_agent_loop_baseline.py)，用例源为 [cases.json](../../backend/evals/goal_planning/cases.json)，能力依据为 [工具契约](../../backend/app/tools/contracts.py)。本轮 12/12 工程检查通过，内容边界仅 10/12 通过。完整本地过程见 [P0 阶段记录](iterations/agent-loop-p0.md)，共享问题的触发、预期与关闭条件以本条自包含信息为准。
-- P2 进展：已实现 [无工具独立回答](../../backend/app/agent/independent_answer.py)及程序交接的动作边界；覆盖／引用／一次修复／降级有隔离检查，见 [回答契约](../../tests/agent_loop/contracts/test_loop_evidence_handoff.py)与[运行故障契约](../../tests/agent_loop/contracts/test_loop_control.py)。引用合法不等于全文语义正确；本轮未运行真实模型，不能据此关闭虚构能力问题，P3 仍按下述条件复核。
-- P3 进展：真实模型新链路 18 例各 3 次（异常修复后补足回答）未出现手机号查单宣传或保证人工接单，但 `direct` 第 2 次曾说“涉及退款、修改订单、提交人工请求等操作，需要你先确认，我再通过现有接口记录”，容易混淆可记录的人工诉求和不可执行的交易操作。已在[回答 Prompt](../../backend/app/agent/prompts/independent_answer.py)明确确认后也不能执行退款／支付／改订单；复测 direct 及 3 条新表达各 3 次，共 12 次均返回，退款边界未再复现。
-- P3 后续修复：独立表达“查自己的订单必须把手机号发给你吗？有哪些查询方式？”曾 3/3 被误作政策检索，回答“资料不足，无法确认具体查询方式”。已在[查询 Prompt](../../backend/app/agent/prompts/query_loop.py)区分能力说明与实际查询，并在回答端明确正式工具已支持的本人订单查询方式、登录身份与无需手机号。最后 direct／capability_commitment／capability_phone 各 3 次，共 **9/9 内容复核通过**，均 3 个模型请求、completed、无业务查询／写入；产物 `20261019T143652Z-comparison-26603264.json` 位于忽略的 agent_loop results 目录。已调优表达只算定向回归，不重称独立保留集。
+- 证据：上方保留两个实际输出片段；复现入口为 [基线脚本](../../evals/agent/eval_agent_loop_baseline.py)，用例源为 [cases.json](../../evals/agent/goal_planning/cases.json)，能力依据为 [工具契约](../../backend/app/tools/contracts.py)。本轮 12/12 工程检查通过，内容边界仅 10/12 通过。完整本地过程见 [P0 阶段记录](iterations/agent-loop-p0.md)，共享问题的触发、预期与关闭条件以本条自包含信息为准。
+- P2 进展：已实现 [无工具独立回答](../../backend/app/agent/loop/independent_answer.py)及程序交接的动作边界；覆盖／引用／一次修复／降级有隔离检查，见 [回答契约](../../tests/agent_loop/contracts/test_loop_evidence_handoff.py)与[运行故障契约](../../tests/agent_loop/contracts/test_loop_control.py)。引用合法不等于全文语义正确；本轮未运行真实模型，不能据此关闭虚构能力问题，P3 仍按下述条件复核。
+- P3 进展：真实模型新链路 18 例各 3 次（异常修复后补足回答）未出现手机号查单宣传或保证人工接单，但 `direct` 第 2 次曾说“涉及退款、修改订单、提交人工请求等操作，需要你先确认，我再通过现有接口记录”，容易混淆可记录的人工诉求和不可执行的交易操作。已在[回答 Prompt](../../backend/app/agent/loop/prompts/independent_answer.py)明确确认后也不能执行退款／支付／改订单；复测 direct 及 3 条新表达各 3 次，共 12 次均返回，退款边界未再复现。
+- P3 后续修复：独立表达“查自己的订单必须把手机号发给你吗？有哪些查询方式？”曾 3/3 被误作政策检索，回答“资料不足，无法确认具体查询方式”。已在[查询 Prompt](../../backend/app/agent/loop/prompts/query_loop.py)区分能力说明与实际查询，并在回答端明确正式工具已支持的本人订单查询方式、登录身份与无需手机号。最后 direct／capability_commitment／capability_phone 各 3 次，共 **9/9 内容复核通过**，均 3 个模型请求、completed、无业务查询／写入；产物 `20261019T143652Z-comparison-26603264.json` 位于忽略的 agent_loop results 目录。已调优表达只算定向回归，不重称独立保留集。
 - 2026-10-20 最终复核：固定版本新链路 54 次及独立表达修复后的 15 次定向回归，未再出现手机号查单宣传、保证人工接单或声称退款已办理。回答采用程序提供的实际人工按钮。独立表达初次 12 次中 2 次臆测订单页退款入口，已明确禁止由聊天能力边界推导页面能力；修复后按回归记账，不伪称新保留集。产物 `20261019T162352Z-comparison-1e9a8036.json`、`20261019T162204Z-comparison-e991fba5.json`，复现入口为上方 compare_runtimes.py；`--live --runtime strands --repeat 3 --case followup_capability_policy` 可复查混合能力／政策。样本结论不保证任意表达；真实页面入口验证仍由 AL-002 跟踪，不与文本能力复核混为一项。
 - 首次登记合批后复核：本次最终新链路 54 份回答，以及另行运行前定义的 4 条新表达各 3 次，未复现手机号查单宣传、保证接单、已退款或虚构具体退款页面。独立新表达产物 `20261019T165457Z-comparison-94716070.json`；完整对照 `20261019T165711Z-comparison-395d6d60.json`。只说明该合成数据样本的回答边界，商品失败仍见 AL-004，页面仍见 AL-002。
 - P3A 复验（2026-10-20）：固定对照 `20261020T082844Z-comparison-cbc49c5c.json`，
@@ -39,11 +44,11 @@
 - 类型/状态：证据缺口关闭。用户手工页面验收已补齐，P3-10 完成；P3-11 已完成分层证据核对，不再重复要求页面验收。阶段仍未放行，成本和特定入口缺陷分别由 AL-003／AL-008 跟踪。
 - 发现方：P0；主责：P1/P2 runtime 接入及 P3 联合验收；配合：API、会话/记忆、前端。
 - 适用版本：P0—P3 工作区，正式 `/api/chat` 可通过 `AGENT_RUNTIME=strands` 显式选择新链路，默认 legacy；数据库结构未变。
-- P0 历史证据：固定 SDK 版本、真实模型最小两步工具循环及结束、14 项 SDK 故障/取消隔离检查、旧链路 12 例完整回答合成基线、1837 项后端隔离回归；可复现入口为 [SDK 探针](../../tests/agent_loop/smoke/probe_agent_loop.py)、[SDK 隔离测试](../../tests/agent_loop/contracts/test_strands_probe.py)及[基线驱动](../../tests/agent_loop/business/eval_agent_loop_baseline.py)。`make doctor` 初次因沙箱限制失败，只读复核已通过；未执行初始化。
-- P1 历史进展：新增 [工具适配](../../backend/app/agent/tool_adapter.py)、[SDK 绑定](../../backend/app/agent/strands_tools.py)及[证据存储](../../backend/app/agent/evidence.py)，正式五工具算法未改；`make agent-loop-test` 110 passed（2.06s，0 失败／跳过／排除），本轮新增 95 项，见根 tests 的 [五工具 smoke](../../tests/agent_loop/smoke/test_domain_tools.py)、[适配契约](../../tests/agent_loop/contracts/test_tool_adapter.py)、[证据契约](../../tests/agent_loop/contracts/test_evidence.py)及[业务一致性](../../tests/agent_loop/business/test_tool_parity.py)。R04／R07／R09 的 P1 隔离范围通过，未运行旧测试。
-- P2 本轮进展：新增 [独立 runtime](../../backend/app/agent/runtime.py)、[查询控制](../../backend/app/agent/query_loop.py)、[回答交接](../../backend/app/agent/independent_answer.py)及[共享预算](../../backend/app/core/loop_budget.py)，P1 五工具已接入；原会话服务通过内存事务替身验证。根 tests **179 passed（2.79s，9 冒烟／32 业务／138 契约；0 失败／跳过／排除）**，P2 新增 69 项。可复核入口：[完整链路 smoke](../../tests/agent_loop/smoke/test_two_stage_runtime.py)、[生命周期契约](../../tests/agent_loop/contracts/test_loop_budget_lifecycle.py)、[多目标业务](../../tests/agent_loop/business/test_two_stage_goals.py)、[多轮业务](../../tests/agent_loop/business/test_loop_context.py)。没有运行旧测试。
+- P0 历史证据：固定 SDK 版本、真实模型最小两步工具循环及结束、14 项 SDK 故障/取消隔离检查、旧链路 12 例完整回答合成基线、1837 项后端隔离回归；可复现入口为 [SDK 探针](../../evals/agent/probe_agent_loop.py)、[SDK 隔离测试](../../tests/agent_loop/contracts/test_strands_probe.py)及[基线驱动](../../evals/agent/eval_agent_loop_baseline.py)。`make doctor` 初次因沙箱限制失败，只读复核已通过；未执行初始化。
+- P1 历史进展：新增 [工具适配](../../backend/app/agent/loop/tool_adapter.py)、[SDK 绑定](../../backend/app/agent/loop/strands_tools.py)及[证据存储](../../backend/app/agent/loop/evidence.py)，正式五工具算法未改；`make agent-loop-test` 110 passed（2.06s，0 失败／跳过／排除），本轮新增 95 项，见根 tests 的 [五工具 smoke](../../tests/agent_loop/smoke/test_domain_tools.py)、[适配契约](../../tests/agent_loop/contracts/test_tool_adapter.py)、[证据契约](../../tests/agent_loop/contracts/test_evidence.py)及[业务一致性](../../tests/agent_loop/business/test_tool_parity.py)。R04／R07／R09 的 P1 隔离范围通过，未运行旧测试。
+- P2 本轮进展：新增 [独立 runtime](../../backend/app/agent/loop/runtime.py)、[查询控制](../../backend/app/agent/loop/query_loop.py)、[回答交接](../../backend/app/agent/loop/independent_answer.py)及[共享预算](../../backend/app/core/loop_budget.py)，P1 五工具已接入；原会话服务通过内存事务替身验证。根 tests **179 passed（2.79s，9 冒烟／32 业务／138 契约；0 失败／跳过／排除）**，P2 新增 69 项。可复核入口：[完整链路 smoke](../../tests/agent_loop/smoke/test_two_stage_runtime.py)、[生命周期契约](../../tests/agent_loop/contracts/test_loop_budget_lifecycle.py)、[多目标业务](../../tests/agent_loop/business/test_two_stage_goals.py)、[多轮业务](../../tests/agent_loop/business/test_loop_context.py)。没有运行旧测试。
 - P3 首次接入历史：根 tests **208 passed（3.60s，13 冒烟／47 业务／148 契约，0 失败／跳过／排除）**，实际 TypeScript 类型与 React SSR、Ruff 通过；[API 冒烟](../../tests/agent_loop/smoke/test_chat_api.py)验证选择一个 runtime、无重复保存和认证。[响应与前端契约](../../tests/agent_loop/contracts/test_p3_integration.py)验证旧候选重查、旧历史缺字段、真实 operation/attempt、用量与状态；intent 已复用现有分类，不再固定 general。
-- P3 数据库证据：[verify_postgres.py](../../tests/agent_loop/business/verify_postgres.py) 经正式 ASGI HTTP 路由、认证、runtime 与真实 PostgreSQL 完成 8 组检查：登录、商品查询与保存、历史／会话 owner、订单 owner、记忆 owner／删除、显式人工请求 ID/pending/owner、保存失败事务回滚、旧历史。目标是本轮新建 `pc-agent-loop-p3-acceptance` 容器、localhost:15439/agent_loop_p3，不挂旧卷；现有迁移 head `0008_sku_sales_count`，模型／政策／网页为替身。入口严格检查目标并要求 `--isolated`；`--seed` 只允许空库。没有访问或初始化原业务库。真实模型另行使用相同合成域数据对照，不把两种分开验证称作完整 E2E。
+- P3 数据库证据：[verify_postgres.py](../../tests/integration/verify_postgres.py) 经正式 ASGI HTTP 路由、认证、runtime 与真实 PostgreSQL 完成 8 组检查：登录、商品查询与保存、历史／会话 owner、订单 owner、记忆 owner／删除、显式人工请求 ID/pending/owner、保存失败事务回滚、旧历史。目标是本轮新建 `pc-agent-loop-p3-acceptance` 容器、localhost:15439/agent_loop_p3，不挂旧卷；现有迁移 head `0008_sku_sales_count`，模型／政策／网页为替身。入口严格检查目标并要求 `--isolated`；`--seed` 只允许空库。没有访问或初始化原业务库。真实模型另行使用相同合成域数据对照，不把两种分开验证称作完整 E2E。
 - 2026-10-20 续作：根 tests **213 passed（3.96s，13 冒烟／47 业务／153 契约，0 失败／跳过／排除）**，只运行根 tests；新增 5 项查询控制反馈契约，人工动作输入／响应一致；AL-005 的实际前端事件函数契约及 TypeScript 通过。本轮没有重跑 PostgreSQL，上方 8 组是前次隔离数据库结果。
 - 2026-10-20 首批协议调整后：根 tests **243 passed（4.03s，15 冒烟／51 业务／177 契约，0 失败／跳过／排除）**，新增 30 项，覆盖合批、整批拒绝和准备态回滚、身份／依赖／引用、共享预算和取消。入口 `make agent-loop-test`；新增源码在根 tests 三类目录的 `test_initial_batch.py`。本次没有重跑 PostgreSQL，也未重试浏览器权限或启动临时服务。
 - 用户页面试用核对（2026-10-20）：用户反馈当前使用未发现问题；只读核对北京时间 13:24—13:26 的会话 941，4 轮、8 条消息，运行 1458—1461 全 completed，3 条正式工具记录，未发现该会话人工请求记录。但审计含旧 route_plan／tool_waves／execution_plan、无 agent_loop，模型阶段为 route_request／submit_execution_plan 等，确认实际为 legacy。故只记旧链路试用反馈和持久化证据，不能关闭新链路页面验收；需显式设置 AGENT_RUNTIME=strands 重启后端再核对。未修改配置或用户服务，未写数据库，未重跑测试。
@@ -59,12 +64,12 @@
 
 - 类型/状态：P3A 本轮固定回归的四项成本门槛已通过；完整独立表达和质量出口尚未通过，不据此批准P3出口或P5切换。此前 P3 成本失败记录保留，不自行放宽阈值。
 - 发现方：P3 新旧真实模型对照；主责：查询 runtime／协议；配合：领域规划调用、评测驱动。
-- 版本／数据：本工作区，DeepSeek `deepseek-flash`、temperature 0，同一合成商品／订单／检索 fixture；[比较入口](../../tests/agent_loop/business/compare_runtimes.py)，`PYTHONPATH=backend:tests backend/.venv/bin/python tests/agent_loop/business/compare_runtimes.py --live --repeat 3`。12 P0 基线 + 6 独立保留例，各链路各 3 次，包含最终回答和工具内部模型请求。
+- 版本／数据：本工作区，DeepSeek `deepseek-flash`、temperature 0，同一合成商品／订单／检索 fixture；[比较入口](../../evals/agent/compare_runtimes.py)，`PYTHONPATH=backend:tests backend/.venv/bin/python evals/agent/compare_runtimes.py --live --repeat 3`。12 P0 基线 + 6 独立保留例，各链路各 3 次，包含最终回答和工具内部模型请求。
 - 首次历史批次：完整 108 次中，旧 54 无异常，新链路 6 次单订单摘要 ValidationError；已复用现有 `_summary` 修复并补跑受影响 6 次。原异常行漏采 usage 的评测缺陷也已修复并新增[契约回归](../../tests/agent_loop/contracts/test_p3_integration.py)，历史 0 请求行不代表免费调用，原完整批次成本值不可用于放行。
 - 差距证据：原旧 54 + 原新 48 + 修复新 6 的诊断合并中，平均模型请求 4.259 → 5.815（+36.5%）；token 27,099.93 → 27,552.87（+1.7%）；p50 4.243s → 6.402s（+50.9%）；p95 10.089s → 12.511s（+24.0%）。P0 冻结门槛分别为请求不增加、token ≤ +10%、p50 ≤ +10%、p95 ≤ +20%。仅 token 满足；这是跨修复批次诊断，后续 Prompt 又有修改，不冒充最终同版本成绩。
 - 稳定性：原新链路 security／缺资料各 1 次 invalid_completion，人工咨询复测 1 次 query_model_budget。停止有界且已有证据正常交接，但仍有不必要查询和修复成本。没有为通过测试提高预算或改变完成协议。
 - 前次局部优化：能力说明误分流修复后，direct／capability_commitment／capability_phone 定向 9 次均只需 3 请求，无业务查询、异常或非法结束；不等于上述完整 18 例成本门槛已通过。
-- 原始证据定位：忽略目录 `backend/evals/results/agent_loop/` 的 `20261019T141113Z-comparison-dbffb702.json`（原 108 次）、`20261019T142044Z-comparison-5fc62bc4.json`（6 次复测）；本条已给可共享的数值、预期、版本与复现命令，不依赖本地文档才可理解。
+- 原始证据定位：忽略目录 `artifacts/evals/agent_loop/` 的 `20261019T141113Z-comparison-dbffb702.json`（原 108 次）、`20261019T142044Z-comparison-5fc62bc4.json`（6 次复测）；本条已给可共享的数值、预期、版本与复现命令，不依赖本地文档才可理解。
 - 2026-10-20 合批前历史证据：`20261019T162352Z-comparison-1e9a8036.json`，新旧各 54 次、固定 18 例各 3 次；产物记录的 185 个源文件指纹在该批结束时一致；随后已实施本条下述合批调整。异常／未知 usage 均为 0，新链路 54 次均合法 completed／model，未出现 invalid_completion 或预算耗尽。旧／新平均请求 **4.1667／5.0556（+21.3%）**、平均总 token **26,265.63／21,036.72（−19.9%）**、p50 **3.787s／4.453s（+17.6%）**、p95 **10.286s／11.439s（+11.2%）**。请求与 p50 未达标，token 与 p95 达标；样本延迟不代表线上分布。缺字段 3/3 只查一次 catalog_search；人工咨询仍 2/3 发生非法前提注册修复及额外查询。AL-004 共 5 次商品失败完整计入，不当作业务成功。
 - 用户已确认的协议调整（2026-10-20，本次实施）：允许首次目标登记与首个业务调用由同一次模型回复提出，程序先校验目标及整批准入再执行；纯非查询目标允许登记和结束提议同轮，仍由程序核对目标与结束状态。实际合批采用率和成本见下方最终证据；不保证每个输入都少一次请求，也不从请求数直接承诺延迟收益。用户已在理解“登记／首个查询”的含义后同意该方案，因此 P0 的首次混批拒绝新增这一有限例外。实现采用临时目标预校验、整批绑定及失败准备态回滚，正式执行仍逐调用准入；后续控制、身份、依赖、唯一结束提议和一次修复上限保留，不提高成本阈值。
 - 首次合批后的历史同版本证据：`20261019T165711Z-comparison-395d6d60.json`，固定 18 例各 3 次，新旧各 54 次，188 个源文件指纹与完成时文件一致；全部无异常／unknown usage。旧／新平均实际请求 **4.2593／4.2778（+0.4%，总计 230／231 次）**、总 token 均值 **27,016.00／21,211.11（−21.5%）**、p50 **3.798s／3.877s（+2.1%）**、p95 **10.001s／9.263s（−7.4%）**。只有请求门槛未通过，不因仅多 1 次而四舍五入放行。全部新链路 completed／model，无非法结束或预算耗尽；AL-004 本次 2 次商品未命中完整计入、不算业务通过。数据和延迟是本地合成领域数据／真实模型样本，不能外推线上。
@@ -73,7 +78,7 @@
 - P3-11 最新同版本核对：`20261020T064559Z-comparison-65f2ebd8.json`，原固定 18 例各链路各 3 次，deepseek-flash／temperature 0／uvloop／相同合成数据；194 个源文件指纹完成时一致。旧／新总请求 **224／231**，轮均 **4.1481／4.2778（+3.125%）**；总 token 均值 **26,235.00／23,358.96（−10.96%）**；p50 **4.219s／4.332s（+2.68%）**，p95 **10.914s／10.565s（−3.20%）**。样本完全匹配，无异常、缺失或未知 usage。仅请求门槛未通过，继续阻断；三次重复旧请求总数 75／74／75，新侧 77／77／77。不得继续把前次 +0.4% 写成本次结论。
 - 最新差额归因（各 3 次合计，新减旧）：holdout_compare +9（每次有后续控制混批拒绝再拆开）、facets_only +7（工具内部额外规划／复核）、holdout_private +3（纯非查询单独登记）、ambiguous_reference +1、named_product +1；recent_orders −3、alternative_budget −3、holdout_missing −8，其余持平，净多 7 次。新侧 query 121、tool_planning 27、tool_review 29、answer 54；回答 54 次均仅 1 请求。首次合批 44/54，三次混批拒绝计账。复现使用上方入口追加 `--event-loop uvloop`；未修改协议、关闭工具复核、排除失败或放宽阈值。
 - 最新质量边界：54 次新链路均 completed／model，63 个登记目标都在正文回应；限定样本未发现越权、虚构办理结果、跨版本拼事实或自动提交。AL-004 有 5 次商品漏检，AL-008 有 3 次人工入口关联遗漏，均不算业务成功；本条成本未达标不由旧链路回答缺陷抵消。完整过程与分项证据位于本地 P3 iteration 第 14 节，但上方统计与复现入口可独立用于共享核对。
-- P3A 当前实现：已按确认方案移除活动目标和 activate_goal，SDK 业务调用以 `{goal_id, arguments}` 显式归属，业务 arguments 仍从 contracts 派生；首次可登记多个目标并提出独立查询，后续直接跨目标查询。整批准入、顺序执行、前提只用批前证据、query_complete 与无工具回答保持；绑定记录可从 SDK ID 追溯 operation／attempt／evidence／goal。源码见 [query_loop.py](../../backend/app/agent/query_loop.py)、[strands_tools.py](../../backend/app/agent/strands_tools.py)。
+- P3A 当前实现：已按确认方案移除活动目标和 activate_goal，SDK 业务调用以 `{goal_id, arguments}` 显式归属，业务 arguments 仍从 contracts 派生；首次可登记多个目标并提出独立查询，后续直接跨目标查询。整批准入、顺序执行、前提只用批前证据、query_complete 与无工具回答保持；绑定记录可从 SDK ID 追溯 operation／attempt／evidence／goal。源码见 [query_loop.py](../../backend/app/agent/loop/query_loop.py)、[strands_tools.py](../../backend/app/agent/loop/strands_tools.py)。
 - P3A 本轮收益（2026-10-20）：`20261020T082844Z-comparison-cbc49c5c.json`，原 18 例各链路 3 次、108 轮，deepseek-flash／温度 0／实际 uvloop／同一合成数据；194 文件指纹一致，无异常或未知 usage。旧／新请求 **224／210（−6.25%）**，总 token 均值 **26,349.56／21,363.24（−18.92%）**，p50 **4.144／3.658s（−11.73%）**，p95 **11.486／10.663s（−7.17%）**，四项门槛通过。新侧 query 100、tool_planning 27、tool_review 29、answer 54；较 P3 历史 231 次少 21 次，差额在查询阶段，领域内部调用未裁剪。9/9 混合／比较场景首次多查询合批，控制拒绝为零；其余首次合批共 44/54。
 - 本轮限制：按用户要求仅更新并复用现有用例，77 冒烟／业务及 193 契约通过，无新增专项场景或独立表达；真实数据库／浏览器未执行。新侧 54 次 completed／model 不等于业务通过，AL-001 的 2 次页面能力指引、AL-004 的 2 次漏检、AL-008 的 3 次关联缺失及 AL-009 的 1 次替代候选遗漏均保留。
 - P3A-07—11最终复测：`20261020T093531Z-comparison-8238686c.json`，
@@ -101,7 +106,7 @@
 - 用户决定（2026-10-19）：本例将 `Keychron K8` 表述为 `Keychron K8 键盘` 是合理补充，不把补上类目词本身认定为编排缺陷。先记录 issue，商品工具后续处理；当前继续聚焦查询循环、程序证据交接、独立回答及编排验证，不为此在 Agent 添加删词或名称匹配补丁。
 - 输入：`告诉我Keychron K8在店里的售价，顺便看看我最近那笔订单到哪了。`；合成目录 SPU 11 名称 `Keychron K8`，SKU 101 白色蓝牙 260 元、102 黑色 USB 230 元，分类为键盘。
 - 实际：新链路将商品查询表达为 `Keychron K8 键盘`，正式规划器输出 `name="Keychron K8 键盘"`，`CatalogNameMatcher` 将不在商品标题中的“键盘”保留为名称条件，返回 not_found。单订单响应修复后 3/3 重现；相同数据旧链路 3/3 能查到 K8。新回答如实说明本次未命中，订单部分正常；事实忠于工具不等于商品需求完成。
-- 证据：源码 [名称规则](../../backend/app/tools/catalog_search/rules.py)保留未知名称词以避免扩大查询；fixture [商品数据](../../backend/scripts/goal_tool_fixtures.py)；[比较入口](../../tests/agent_loop/business/compare_runtimes.py) `--live --runtime strands --case holdout_mixed --repeat 3`；前条 6 次复测产物含输入、计划、结果及回答。原 named_product 可命中，不是缺少商品或网络错误。
+- 证据：源码 [名称规则](../../backend/app/tools/catalog_search/rules.py)保留未知名称词以避免扩大查询；fixture [商品数据](../../evals/support/goal_tool_fixtures.py)；[比较入口](../../evals/agent/compare_runtimes.py) `--live --runtime strands --case holdout_mixed --repeat 3`；前条 6 次复测产物含输入、计划、结果及回答。原 named_product 可命中，不是缺少商品或网络错误。
 - 2026-10-20 编排续作复现：最终固定版本 named_product 3/3、holdout_mixed 2/3 未命中已有 K8，共 5 次商品目标失败；其余目标（如同轮订单）照常交接。证据为 `20261019T162352Z-comparison-1e9a8036.json`，18 例成本集合完整保留这些记录。原 named_product 曾能命中，不代表后续表达稳定；用户确认的领域归属与延期决定不变。
 - 首次合批后复验：`20261019T165711Z-comparison-395d6d60.json` 中 named_product 第 2／3 次均以 `name="Keychron K8 键盘"` 返回 not_found，共 2 次；holdout_mixed 3 次正常命中。领域规则及 fixture 未改，失败频率变化不代表缺陷修复；上述失败继续完整计入成本并按业务失败记录。
 - P3-11 最新复验：`20261020T064559Z-comparison-65f2ebd8.json` 的 named_product 3/3、holdout_mixed 第 1／3 次均以 `name="Keychron K8 键盘"` 返回 not_found，共 5 次商品目标失败；旧侧这些商品查询均能命中。新回答如实说明未查到，混合请求中的订单部分正常，不能将忠于工具结果当作商品需求已完成。原决定和工具算法未变，本轮没有修复或删除失败例。
@@ -123,9 +128,9 @@
 - 类型／状态：P3 runtime 缺陷；已复现并修复，隔离及真实模型＋uvloop 定向回归通过，用户基础页面回验及落库审计已通过，本条立即 504 缺陷关闭；AL-002 其余页面验收开放，不算 P3 放行。
 - 发现方：用户在前端发送“你好，你能做什么”的 HTTP 504 截图；主责：Agent 预算／生命周期；配合：正式 API、工具准入与服务启动环境。
 - 根因：LoopBudget 原以 time.monotonic 创建 deadline，却传入要求当前 loop.time 的 asyncio.timeout_at；本机 macOS uvloop 两者起点相差约 2,539,103 秒，导致 prepare_turn 首次让出执行时立即超时。只读数据库未见新运行，与准备阶段未完成相符；不是已证明的供应商响应慢。默认 asyncio 的起点相同，原隔离测试漏掉环境差异。
-- 修复：[LoopBudget](../../backend/app/core/loop_budget.py) 在运行中的事件循环内创建并统一使用 loop.time；[runtime](../../backend/app/agent/runtime.py) 修正准备阶段耗时；[工具适配器](../../backend/app/agent/tool_adapter.py) 的 before_attempt 绝对 deadline／过期检查也使用当前事件循环时钟。没有扩大预算、关闭 uvloop、修改领域工具或数据库。
+- 修复：[LoopBudget](../../backend/app/core/loop_budget.py) 在运行中的事件循环内创建并统一使用 loop.time；[runtime](../../backend/app/agent/loop/runtime.py) 修正准备阶段耗时；[工具适配器](../../backend/app/agent/loop/tool_adapter.py) 的 before_attempt 绝对 deadline／过期检查也使用当前事件循环时钟。没有扩大预算、关闭 uvloop、修改领域工具或数据库。
 - 证据：[服务循环冒烟](../../tests/agent_loop/smoke/test_server_event_loop.py) 的问候／商品路由在默认 asyncio、真实 uvloop 和正负偏移时钟运行：修复前 4 失败／4 通过，失败均为 504；修复后 8/8。新增[时钟契约](../../tests/agent_loop/contracts/test_event_loop_deadlines.py) 16 项验证 HTTP 限时、真实到期、工具取消和保存失败／取消后的清理。最终 `make agent-loop-test` **267 passed（4.63s，23 冒烟／51 业务／193 契约，0 失败／跳过／排除）**，Ruff 通过；只运行根 tests。
-- 真实模型复验：根 [比较入口](../../tests/agent_loop/business/compare_runtimes.py) 使用 `--live --runtime strands --event-loop uvloop --repeat 1 --case server_greeting --case recent_orders --case missing_object`；产物 `20261020T053326Z-comparison-00c7a95d.json` 记录实际 uvloop，3/3 completed／model，无异常／unknown usage。问候 2 请求／2.696s、订单 5／5.813s、无匹配商品 3／3.987s，内容与合成事实一致。使用合成数据，不是本轮真实数据库或浏览器通过，完整成本对照未重跑。
+- 真实模型复验：根 [比较入口](../../evals/agent/compare_runtimes.py) 使用 `--live --runtime strands --event-loop uvloop --repeat 1 --case server_greeting --case recent_orders --case missing_object`；产物 `20261020T053326Z-comparison-00c7a95d.json` 记录实际 uvloop，3/3 completed／model，无异常／unknown usage。问候 2 请求／2.696s、订单 5／5.813s、无匹配商品 3／3.987s，内容与合成事实一致。使用合成数据，不是本轮真实数据库或浏览器通过，完整成本对照未重跑。
 - 页面回验（2026-10-20）：用户新会话 942 的运行 1462—1464 均为 Strands agent_loop、completed／model，问候／最近订单／商品库存分别 2／5／6 次实际请求，全部 HTTP 200、已持久化，无控制拒绝；时间为北京时间 13:55—13:57。结合用户页面试用反馈，基础聊天立即 504 已消除，本缺陷关闭；未证明来源、旧历史、人工请求等全部页面操作。数据库读取显式只读，未写数据或重新执行模型测试。
 - 最小接入／关闭条件：请求预算必须在当前运行循环内创建；所有传给 timeout_at／invoke_before／before_attempt 的绝对时间均为同一循环的 loop.time，time.monotonic 只可用于自身时间差。加载修复后的 Strands 服务，用户页面问候及一次实际查询应正常返回、持久化和 agent_loop 审计可核对，再完成 AL-002 对应页面回验；不通过提高超时或改回 legacy 遮蔽问题。
 
@@ -133,9 +138,9 @@
 
 - 类型／状态：回答阶段迁移遗漏，代码已修复、限定合成样本复核通过；用户已反馈页面体验正常，本次迁移遗漏按修复验收完成记录；少量冗余观察保留，不保证任意表达，也不作为 P3 整体放行。
 - 发现方：用户对比前端新旧回答；主责：Agent 独立回答；配合：根 tests 业务效果复核与页面验收。
-- 实际：旧 [response.py](../../backend/app/agent/prompts/response.py) 已定义“小帕瓦”、日常客服用语、隐藏内部编号，旧 observation 有先结论、短列表／表格等规则；新 [回答 Prompt](../../backend/app/agent/prompts/independent_answer.py) 原先只有事实、动作和 JSON 约束。相同合成证据下原回答自称 PC 外设商城客服、展示 SKU 编号，并附“本轮没有业务操作”；前端使用同一正文渲染器。
+- 实际：旧 [response.py](../../backend/app/agent/prompts/response.py) 已定义“小帕瓦”、日常客服用语、隐藏内部编号，旧 observation 有先结论、短列表／表格等规则；新 [回答 Prompt](../../backend/app/agent/loop/prompts/independent_answer.py) 原先只有事实、动作和 JSON 约束。相同合成证据下原回答自称 PC 外设商城客服、展示 SKU 编号，并附“本轮没有业务操作”；前端使用同一正文渲染器。
 - 修复：新旧路径共享 CUSTOMER_RESPONSE_POLICY 和 ANSWER_ORGANIZATION；新回答复用旧商品／检索事实规则，按当前 AnswerInput 保留目标覆盖和引用。针对部分结果范围、人工确认与 JSON 漏封装修复；不搬入旧控制动作或恢复流程，不增加模型审稿或关键词改写。旧四种完整 Prompt 核对字节不变。
-- 证据：[展示冒烟](../../tests/agent_loop/smoke/test_answer_presentation.py) 3 项新增；根 `make agent-loop-test` 270 passed（4.69s，26 冒烟／51 业务／193 契约），Ruff 通过。真实模型 [回答复核入口](../../tests/agent_loop/business/review_answer_style.py) 与 [独立预期／合成证据](../../tests/agent_loop/support/answer_style_cases.py) 最终 14 场景各 3 次，42/42 JSON 合法、内容复核通过、每次 1 请求；产物 `20261020T062306Z-answer-style-5f8933de.json`。完整 runtime 补 4 次均 completed／model、回答各 1 请求，产物 `20261020T062428Z-comparison-5e7d9076.json`。不连接业务数据库，不是页面验收。
+- 证据：[展示冒烟](../../tests/agent_loop/smoke/test_answer_presentation.py) 3 项新增；根 `make agent-loop-test` 270 passed（4.69s，26 冒烟／51 业务／193 契约），Ruff 通过。真实模型 [回答复核入口](../../evals/agent/review_answer_style.py) 与 [独立预期／合成证据](../../evals/agent/answer_style_cases.py) 最终 14 场景各 3 次，42/42 JSON 合法、内容复核通过、每次 1 请求；产物 `20261020T062306Z-answer-style-5f8933de.json`。完整 runtime 补 4 次均 completed／model、回答各 1 请求，产物 `20261020T062428Z-comparison-5e7d9076.json`。不连接业务数据库，不是页面验收。
 - 失败保留：中间批次出现全型号范围扩大、人工暗示跟进、JSON 漏封装触发纠错；已修正后重新执行，不把中间 model 返回等同于语义通过。最终样本仍有订单附早先轨迹、身份多介绍能力；完整链路能力问候会受 goal.query 限制清单影响而附无关操作限制。未虚构业务完成，但表达简洁性并非百分之百服从。
 - 成本：4 个同证据场景各 3 次，修改前／最终回答各 12 请求；平均输入 993.50 → 3165.50 token，输出 109.42 → 74.58。恢复规则增加输入，未证明整链路成本下降，完整门槛归 AL-003；原 108 次结果是历史版本。
 - 最小接入／关闭条件：新回答只读证据、所有目标都回应，业务卡片／动作由程序生成；用户回验身份、简单库存、全部版本、订单及人工引导的可读性，不能为了简短丢范围、冲突或确认。异常 fallback 的表达本轮未改，需与正常模型路径区分；剩余冗余以实际用户表达继续复核，不引入关键词补丁。
@@ -145,7 +150,7 @@
 - 类型／状态：既有人工动作构建缺口，开放；本次回答 Prompt 任务只记录，不修改标识或业务口径。
 - 发现方：回答改造后的完整链路复验；主责：Agent 人工动作程序投影；配合：订单标识契约、前端确认与人工请求 API。
 - 输入／实际：`订单7001想退钱，请告诉我怎样找人工确认，不要替我提交。`，正文正常说明人工确认，实际 suggested_actions 的 payload 为 `orderId=null, requestType=other`。未点击或提交，不能据此认定已产生错误数据库记录。
-- 根因与证据：[result_projection.py](../../backend/app/agent/result_projection.py) 的 _handoff_payload 复用 [intent.py](../../backend/app/agent/intent.py) 的 extract_order_id，只匹配 8 位以上独立数字；request_type 的现有确定性分支未识别“退钱”。根 [完整链路复核](../../tests/agent_loop/business/compare_runtimes.py) `--live --runtime strands --event-loop uvloop --repeat 1 --case holdout_human`，产物 `20261020T062428Z-comparison-5e7d9076.json` 保留实际响应。
+- 根因与证据：[result_projection.py](../../backend/app/agent/result_projection.py) 的 _handoff_payload 复用 [intent.py](../../backend/app/agent/intent.py) 的 extract_order_id，只匹配 8 位以上独立数字；request_type 的现有确定性分支未识别“退钱”。根 [完整链路复核](../../evals/agent/compare_runtimes.py) `--live --runtime strands --event-loop uvloop --repeat 1 --case holdout_human`，产物 `20261020T062428Z-comparison-5e7d9076.json` 保留实际响应。
 - 与 AL-005 区别：AL-005 修复已有 orderId 从确认区到提交的一致性；本条是提供方最初未生成关联值。后者未完成不能推翻前者的隔离事件验证，也不能凭前者通过认定整个入口已正确。
 - P3-11 源码核对（2026-10-20）：当前 [OrderInfo](../../backend/app/models/commerce.py)、[OrderCard](../../backend/app/schemas/order.py)、[订单 API](../../backend/app/api/routers/orders.py) 和 [人工请求 repository](../../backend/app/repositories/support.py) 均使用 `order_info.id`，没有独立公开 `order_no` 字段；前次“内部 ID／公开单号”是待查疑问，不能继续写成当前存在两套号码。正式工具已有 [explicit_order_ids](../../backend/app/tools/order_identity.py) 可识别“订单7001”等带标签号码，人工入口仍复用旧 intent 提取器，属于调用规则未复用。人工请求 API 已校验会话和所关联订单的归属；缺关联不是已证明的越权或自动提交。
 - 消费方影响：前端 [App.tsx](../../frontend/src/App.tsx) 的人工动作处理只读取 orderId，提交类型来自用户表单 ticketType（默认 return），并不读取 payload.requestType；因此 `other` 是建议动作分类不准确，不能据此宣称数据库实际存入了 other。短号导致的关联遗漏仍独立成立；无关联时页面可能显示无订单，实际确认／提交场景应单独验证。
@@ -171,9 +176,9 @@
 - 可获取依据：[正式服务](../../backend/app/tools/catalog_search/service.py) 的关键词预过滤、
   [标题匹配](../../backend/app/tools/catalog_search/rules.py)、
   [规划校验](../../backend/app/tools/catalog_search/validation.py)；
-  现有复现入口 [compare_runtimes.py](../../tests/agent_loop/business/compare_runtimes.py)
+  现有复现入口 [compare_runtimes.py](../../evals/agent/compare_runtimes.py)
   `--live --runtime strands --event-loop uvloop --repeat 3 --case alternative_budget`。
-  原始产物 `backend/evals/results/agent_loop/20261020T082844Z-comparison-cbc49c5c.json`
+  原始产物 `artifacts/evals/agent_loop/20261020T082844Z-comparison-cbc49c5c.json`
   保留实际参数、计划、结果、回答与用量；不保证概率性模型每次复现。
 - 与 AL-004 区分：AL-004 是型号名中额外类目词导致指定商品漏检；本条是属性查询中的
   规格词又进入 keywords，额外收窄候选池。最初未直接套用 AL-004 的延期批准；
@@ -192,8 +197,8 @@
   原因可能最终被误记为 query_model_error，而不是实际预算终止。
 - 预期：预算耗尽立即停止查询，保留商品成功证据；未执行订单不生成失败事实，
   订单目标 blocked，转入独立回答，不多发查询模型请求。
-- 修复：[SDK 绑定](../../backend/app/agent/strands_tools.py)保留预算停止原因，
-  后续同批调用拒绝执行；[查询 loop](../../backend/app/agent/query_loop.py)的
+- 修复：[SDK 绑定](../../backend/app/agent/loop/strands_tools.py)保留预算停止原因，
+  后续同批调用拒绝执行；[查询 loop](../../backend/app/agent/loop/query_loop.py)的
   AfterTools hook 读到预算终止后结束，不依赖 SDK 向外传播普通异常。
 - 证据：[新增批次契约](../../tests/agent_loop/contracts/test_query_batches.py)
   `test_tool_budget_between_goals_hands_off_only_actual_evidence` 参数化预算 0／1，
@@ -216,9 +221,9 @@
   但丢失了已经确认的指代关系，增加无必要澄清。
 - 预期／修复方向：回答端收到从 PreparedTurn 工作记忆经正式 resolve_reference 解析的
   可信身份映射，优先于模型目标描述；不把历史动态事实当当前事实，不补猜型号或编号。
-  源码：[引用解析](../../backend/app/agent/query_context.py)、
-  [程序交接](../../backend/app/agent/independent_answer.py)；
-  复现入口：[根模型驱动](../../tests/agent_loop/business/compare_runtimes.py)
+  源码：[引用解析](../../backend/app/agent/loop/query_context.py)、
+  [程序交接](../../backend/app/agent/loop/independent_answer.py)；
+  复现入口：[根模型驱动](../../evals/agent/compare_runtimes.py)
   `--live --runtime strands --repeat 3 --case p3a_reference_and_policy`。
 - 关闭条件：隔离测试验证可信引用随目标交接、第二轮重新查询，并以真实表达复验
   不再因交接遗漏而要求用户重复确认；引用不合法仍在查询登记前拒绝。
@@ -242,17 +247,17 @@
 - 当前行为：两个不同查询 operation 的真实证据均保留，GoalBook 对部分未解决结果
   保守标记 blocked；不能为消除 blocked 随意把“任一查询成功”改成“全部诉求满足”。
   回答应先说明已知配件齐全，再区分没有更具体清单；查询状态不是事实的替代品。
-- 已做修正：[独立回答规则](../../backend/app/agent/prompts/independent_answer.py)
+- 已做修正：[独立回答规则](../../backend/app/agent/loop/prompts/independent_answer.py)
   明确先空／失败不否定其他调用的有效材料，目标 blocked 仍须回答有证据部分。
   没有新增模型复核调用、关键词删改或更改工具检索算法。
-- 最小复现入口：[根 compare_runtimes.py](../../tests/agent_loop/business/compare_runtimes.py)
+- 最小复现入口：[根 compare_runtimes.py](../../evals/agent/compare_runtimes.py)
   `--live --runtime strands --repeat 3 --case p3a_three_domains`；
-  [冻结表达与预期](../../tests/agent_loop/support/query_batch_cases.py)独立于模型输出。
+  [冻结表达与预期](../../evals/agent/query_batch_cases.py)独立于模型输出。
   概率性运行不保证出现相同检索顺序；关闭须补足同样“先空后有”的内容复验，
   不以本轮未复现视为根因消失。
-- 定向复验：在根 [固定交接 fixture](../../tests/agent_loop/support/answer_style_cases.py)
+- 定向复验：在根 [固定交接 fixture](../../evals/agent/answer_style_cases.py)
   增加 `partial_policy_after_empty`，同一 g1 两个不同 operation，一个空、一个含文档8001，
-  目标仍 blocked。复用 [回答驱动](../../tests/agent_loop/business/review_answer_style.py)
+  目标仍 blocked。复用 [回答驱动](../../evals/agent/review_answer_style.py)
   `--live --repeat 3 --case partial_policy_after_empty`，产物
   `20261020T095130Z-answer-style-37bbb2be.json`；3/3 引用配件齐全及键盘政策条件，
   同时区分没有更细配件清单，均1次回答请求、无修复／降级。不是完整 runtime 或数据库验收。
@@ -269,9 +274,9 @@
   第2／3次把两个价格放在同一个比较目标，但 QueryGoal.reference 只能提供第一款201；
   同目标查询第二款101被 `unsourced_product_identity` 拒绝，整批零执行，
   随后模型以 blocked 完成，两个价格都未提供。安全拒绝正确，任务表达能力不足。
-- 可获取依据：[目标 schema](../../backend/app/agent/query_schema.py)、
-  [引用校验](../../backend/app/agent/query_context.py)、
-  [冻结表达](../../tests/agent_loop/support/query_batch_cases.py)。复现根 compare_runtimes.py
+- 可获取依据：[目标 schema](../../backend/app/agent/loop/query_schema.py)、
+  [引用校验](../../backend/app/agent/loop/query_context.py)、
+  [冻结表达](../../evals/agent/query_batch_cases.py)。复现根 compare_runtimes.py
   `--live --runtime strands --repeat 3 --case p3a_new_two_references`。
 - 已实施（2026-10-20）：`QueryGoal.references` 为对象列表，替代本次开发中的单数
   `reference`，不保留两套模型输入字段。`CandidateReference` 必填整数位置1—20；
@@ -285,7 +290,7 @@
 - 隔离证据：[多对象业务测试](../../tests/agent_loop/business/test_multiple_references.py)、
   [结构校验测试](../../tests/agent_loop/contracts/test_query_schema.py)。本轮新增55项，
   根 tests 三类合计395 passed（5.59s），Ruff通过；没有数据库或浏览器验收。
-- 真实模型证据：`backend/evals/results/agent_loop/20261020T111109Z-comparison-052acea5.json`，
+- 真实模型证据：`artifacts/evals/agent_loop/20261020T111109Z-comparison-052acea5.json`，
   5例×3次，9次旧表达回归＋6次新表达，202文件指纹全部一致。
   原两商品失败表达3/3保持一个比较任务并返回199／260；新增三选二3/3仅查第1／3款，
   新增历史订单3/3正确区分7001已发货／7999无记录，其中2次一个任务关联两笔。
@@ -309,9 +314,9 @@
 - 历史结论修正：此前把该表达直接判为必须等待，并据此要求检查“漏登记”，判断过度。
   用户确认商品查询和通用政策通常可独立执行；程序不理解先后措辞，也不判断模型选择的
   工具是否符合用户意思。不能把 source_text 的原文匹配或字段校验当作语义正确的证明。
-- 可获取依据：[目标登记与准入](../../backend/app/agent/query_state.py)、
-  [查询循环](../../backend/app/agent/query_loop.py)、
-  [冻结表达](../../tests/agent_loop/support/query_batch_cases.py)；
+- 可获取依据：[目标登记与准入](../../backend/app/agent/loop/query_state.py)、
+  [查询循环](../../backend/app/agent/loop/query_loop.py)、
+  [冻结表达](../../evals/agent/query_batch_cases.py)；
   根 compare_runtimes.py `--live --runtime strands --repeat 3 --case p3a_found_dependency`。
 - 已确认并落实：模型判断真正需要上游结果或用户明确设定的条件，程序只检查模型提交的
   结构、已声明任务关系、实际结果和硬规则。没有增加关键词推断、工具语义匹配或额外
@@ -333,8 +338,8 @@
   只能证明编号集合或重复检查未通过，不能确认遗漏、错填、重复中的具体原因。
 - 历史规则要求模型列出全部结果编号和程序计算的状态；不同参数补查是新调用，
   因此失败历史导致整个任务仍显示failed。这不是完整请求是否满足的可靠判断。
-- 已实施：[结束schema](../../backend/app/agent/query_schema.py)仅保留`completion.reason`；
-  [GoalBook](../../backend/app/agent/query_state.py)只检查已登记和生命周期，自动交接
+- 已实施：[结束schema](../../backend/app/agent/loop/query_schema.py)仅保留`completion.reason`；
+  [GoalBook](../../backend/app/agent/loop/query_state.py)只检查已登记和生命周期，自动交接
   全部任务、当前结果编号及实际执行计数，不再计算整个任务的handled／blocked／failed。
   `execution`中的attempt_count含全部尝试，ok_count/error_count仅统计工具ok标志，
   active_result_count为当前有效记录数量；如split_required的领域结果仍在每条记录中。
@@ -372,10 +377,10 @@
 
 - 类型／状态：待实施；2026-10-20用户确认列为新增P4。仅完成计划，未安装Phoenix、未增加追踪依赖或接入代码；原P4整体顺延为P5，无其他已编号后续阶段。
 - 发现方：用户在P3A排错时提出难以查看完整中间结果；主责：Agent运行入口与模型追踪基础设施；配合：工具内部规划／复核、会话关联、根tests验证及本地运行说明。
-- 现状与依据：[runtime.py](../../backend/app/agent/runtime.py)负责固定外层，[query_loop.py](../../backend/app/agent/query_loop.py)使用Strands，[loop_models.py](../../backend/app/core/loop_models.py)包含工具规划及回答的独立TextModel，[loop_response.py](../../backend/app/agent/loop_response.py)保存汇总记录；旧[tracing.py](../../backend/app/core/tracing.py)基于LangChain回调。现有用量和错误码不等于完整逐步输入输出；AL-015历史产物未保存首次结束提交参数，无法据错误码确认究竟漏了哪条记录。
+- 现状与依据：[runtime.py](../../backend/app/agent/loop/runtime.py)负责固定外层，[query_loop.py](../../backend/app/agent/loop/query_loop.py)使用Strands，[loop_models.py](../../backend/app/core/loop_models.py)包含工具规划及回答的独立TextModel，[loop_response.py](../../backend/app/agent/loop/loop_response.py)保存汇总记录；旧[tracing.py](../../backend/app/core/tracing.py)基于LangChain回调。现有用量和错误码不等于完整逐步输入输出；AL-015历史产物未保存首次结束提交参数，无法据错误码确认究竟漏了哪条记录。
 - 目标：用户在本地浏览器找到一轮请求，展开调用树，自行查看每步的实际输入、原始输出、校验拒绝、错误、重试、耗时和用量；覆盖上下文、查询循环、工具内部、程序交接、独立回答及最终返回。
 - 接入方向：本地Phoenix＋Strands OpenTelemetry＋程序补充记录，实施前核对锁定版本兼容；沿用Podman、独立追踪存储，不改业务数据库。无需恢复LangGraph，不新增模型调用、程序语义校验或自动重跑。参考[Strands官方追踪](https://strandsagents.com/docs/user-guide/sdk/observability-evaluation/traces/)及[Phoenix自托管](https://arize.com/docs/phoenix/self-hosting/deploying-phoenix)。
-- 顺序：P3A-12 → P3-11 → P4 → P5。新增追踪不自动放行既有质量／成本问题；P5仍保留切默认、清旧路径／依赖／测试实现细节及稳定文档的原7项工作。当前默认legacy不变。
+- 顺序：P3A-12 → P3-11 → P4 → P5。新增追踪不自动放行既有质量／成本问题；P5改为新链路默认切换验收、legacy独立保留并退出默认加载/测试，清理无用模块、重复规则及临时兼容代码；原质量/成本条件不变。当前默认legacy不变。
 
 以下是共享接手所需的P4清单，与本地总计划第10.4节及TODO同编号；不依赖本地忽略资料才能理解范围。
 
@@ -390,9 +395,28 @@
 - [ ] **P4-09** 实际浏览本地界面验证请求查找、调用树和输入输出，正式runtime与受控故障案例均可查看；比较开／关追踪的行为、调用次数和开销，真实模型／数据库／浏览器范围分开记录。
 - [ ] **P4-10｜关闭条件** 用户仅凭一条记录能还原两次失败、补查及回答所获材料；无静默丢内容、串记录或凭据泄漏，平台故障不阻断聊天。完成上述证据及用户页面验收后关闭本项，满足P3既有条件后进入P5。
 
-本次提交前重新运行根tests：398 passed（5.80s），无失败／跳过；测试Ruff、backend目录下的变更Python文件Ruff、前端TypeScript／Vite构建通过。本轮没有运行真实模型、数据库或浏览器，完整成本仍未重测。最初从根目录检查backend脚本触发一项导入排序提示，按仓库backend工作目录执行后通过，未为目录识别差异改写代码。
+历史06c84eb提交前重新运行根tests：398 passed（5.80s），无失败／跳过；测试Ruff、backend目录下的变更Python文件Ruff、前端TypeScript／Vite构建通过。本轮没有运行真实模型、数据库或浏览器，完整成本仍未重测。最初从根目录检查backend脚本触发一项导入排序提示，按仓库backend工作目录执行后通过，未为目录识别差异改写代码。
 
 本次整理保留全部有效回归用例与被报告引用的成功／失败产物；完整JSON继续位于忽略的评测目录，不纳入Git。未因提交代码而关闭P3A-12、P3-11或工具／回答遗留问题。
+
+
+## AL-017：P4前目录、测试和评测整理
+
+- 类型／状态：结构整理已完成，隔离验证通过；不替代P3/P3A整体放行。
+- 发现方：用户目录审计要求；主责：Agent入口与测试工程；配合：工具/应用回归、评测驱动及文档维护。
+- 整理前版本：`refactor/agent-loop` / `06c84eb3463c5d32f068bb37ef1465b2c5a575cc`；已跟踪工作区干净。
+- 最小接入要求：API通过[factory](../../backend/app/agent/factory.py)选择一套runtime；loop与legacy互不导入。
+  共享分类在boundary、工具结果规则在tool_outcomes；所有调用方使用新路径，不保留兼容转发入口。
+  `make backend RUNTIME=strands|legacy`只覆盖进程配置；不传保持原优先级与legacy默认。
+  当前测试通过`tests/run.py`阻断网络及真实数据库，禁止读取项目真实.env；legacy显式执行，integration/模型评测不默认收集。
+- 实际证据：默认集合1396 passed、显式legacy833 passed，0失败/跳过；原2220项保留，新加9项入口/隔离检查。
+  首轮1项包级导入、4项拆分/patch失败均为迁移错误，修复后复验；Ruff及diff检查通过。
+  59个历史证据文件与原Git字节相同；完整逐文件迁移清单随本地历史ZIP封存，必要摘要和恢复方式见[README](../../README.md#history-archive)。
+- 收尾隔离环境问题：收尾强化Python子进程保护后，系统Python缺少隔离插件依赖导致3项shell替身检查被阻断；改用已有后端虚拟环境运行假命令，保持保护并将测试进程超时提高到60秒以容纳保护启动开销，未修改被测脚本的重试/超时策略或安装依赖。
+- 限制与关闭条件：本条仅关闭结构迁移及离线接入，未调用真实模型、未连接真实数据库、未浏览器聊天或联网验证。
+  模型质量/成本与真实端到端仍按AL-001等既有问题和P3/P3A出口验收。P4接入点见AL-016，未安装或接入Phoenix。
+- P5调整：保留可运行旧LangGraph和Make切换，默认新链路切换须满足原门槛；退出旧链路默认加载与测试，
+  清理无用模块、重复规则、临时兼容层。legacy使用当前工具；完整冻结基线仍依赖Git/快照。
 
 
 ## 记录约定

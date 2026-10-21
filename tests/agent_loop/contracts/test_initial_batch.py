@@ -5,12 +5,6 @@ import json
 
 import httpx
 import pytest
-from app.agent import runtime as runtime_module
-from app.agent.tool_adapter import AdmissionError
-from app.core.loop_budget import LoopBudget
-from app.schemas.chat import ChatRequest
-from app.tools.contracts import BoundTool, ToolCatalog
-
 from agent_loop.support.domain_tools import adapter, make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -20,6 +14,11 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.agent.loop import runtime as runtime_module
+from app.agent.loop.tool_adapter import AdmissionError
+from app.core.loop_budget import LoopBudget
+from app.schemas.chat import ChatRequest
+from app.tools.contracts import BoundTool, ToolCatalog
 
 pytestmark = [pytest.mark.contract, pytest.mark.asyncio]
 MESSAGE = "查 SKU 9101 的价格"

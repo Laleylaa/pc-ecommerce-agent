@@ -2,8 +2,6 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select, text
-
 from app.core.database import AsyncSessionLocal
 from app.models import (
     AppUser,
@@ -22,6 +20,8 @@ from app.models import (
 )
 from app.services.auth import PasswordHasher, normalize_login_identifier
 from app.services.dataset_mapper import ImportedProduct, attribute_flags, normalize_part_record
+from sqlalchemy import select, text
+
 from scripts.seed_user_isolation import seed_user_isolation
 
 DEMO_LOGIN_IDENTIFIER = "demo@example.com"

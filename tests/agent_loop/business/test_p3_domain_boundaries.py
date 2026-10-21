@@ -4,6 +4,8 @@ import json
 from datetime import datetime
 
 import pytest
+from agent_loop.support.domain_tools import make_catalog
+from agent_loop.support.loop_runtime import calls, final_answer, goal, register, runtime_fixture
 from app.repositories.orders import OrderRepository
 from app.schemas.chat import ChatRequest
 from app.schemas.order import OrderFilters
@@ -11,9 +13,6 @@ from app.tools.contracts import BoundTool, ToolCatalog
 from app.tools.knowledge import LocalKnowledgeDocument
 from app.tools.orders import OrderQueryPlan, OrderToolService
 from app.tools.schemas import OrderLookupInput
-
-from agent_loop.support.domain_tools import make_catalog
-from agent_loop.support.loop_runtime import calls, final_answer, goal, register, runtime_fixture
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

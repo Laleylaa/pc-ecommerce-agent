@@ -4,9 +4,9 @@ import pytest
 from app.core.config import Settings
 from app.core.model_usage import collect_model_calls
 from langchain_core.messages import AIMessage
-from scripts.eval_goal_tool_flow import evaluate
 
-from agent_loop.business.eval_agent_loop_baseline import MeteredModel
+from evals.agent.eval_agent_loop_baseline import MeteredModel
+from evals.agent.eval_goal_tool_flow import evaluate
 
 
 class DirectModel:

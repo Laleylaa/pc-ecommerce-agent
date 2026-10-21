@@ -1,8 +1,6 @@
 """Customer-facing Markdown survives the answer envelope and stored chat response."""
 
 import pytest
-from app.schemas.chat import ChatRequest
-
 from agent_loop.support.loop_runtime import (
     final_answer,
     finish,
@@ -10,6 +8,7 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.schemas.chat import ChatRequest
 
 pytestmark = [pytest.mark.smoke, pytest.mark.asyncio]
 

@@ -5,11 +5,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from app.core.loop_budget import LoopBudget
-from app.core.loop_models import LoopUsage
-from app.schemas.chat import ChatRequest
-from app.schemas.context import WorkingMemoryV2
-
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -18,7 +13,12 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
-from agent_loop.support.postgres_app import isolated_url
+from app.core.loop_budget import LoopBudget
+from app.core.loop_models import LoopUsage
+from app.schemas.chat import ChatRequest
+from app.schemas.context import WorkingMemoryV2
+
+from tests.integration.postgres_app import isolated_url
 
 pytestmark = pytest.mark.contract
 
@@ -37,8 +37,9 @@ async def test_partial_usage_stays_unknown_in_attempt_audit():
 
 @pytest.mark.asyncio
 async def test_live_comparison_retains_usage_when_response_projection_fails(monkeypatch):
-    from agent_loop.business import compare_runtimes
     from agent_loop.support.strands_provider import SETTINGS
+
+    from evals.agent import compare_runtimes
 
     usage = {
         "http_attempts": 4,

@@ -3,8 +3,14 @@
 from copy import deepcopy
 
 import pytest
-from app.agent.evidence import EvidenceError
-from app.agent.tool_adapter import QueryToolAdapter
+from agent_loop.support.domain_tools import (
+    TOOL_ARGUMENTS,
+    adapter,
+    admit_goal,
+    make_catalog,
+)
+from app.agent.loop.evidence import EvidenceError
+from app.agent.loop.tool_adapter import QueryToolAdapter
 from app.tools.contracts import (
     BoundTool,
     ToolCatalog,
@@ -13,13 +19,6 @@ from app.tools.contracts import (
     execute_bound_tool,
 )
 from app.tools.orders import OrderToolService
-
-from agent_loop.support.domain_tools import (
-    TOOL_ARGUMENTS,
-    adapter,
-    admit_goal,
-    make_catalog,
-)
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 
@@ -108,10 +107,9 @@ async def test_missing_product_is_not_fabricated_and_scope_is_preserved(monkeypa
 
 
 async def test_window_never_becomes_exhaustive_evidence(monkeypatch):
+    from agent_loop.support.domain_tools import product
     from app.schemas.catalog_search import SearchPlan
     from app.tools.catalog_search.planner import CatalogSearchPlanner
-
-    from agent_loop.support.domain_tools import product
 
     async def plan(self, request):
         return SearchPlan(category="键盘", category_evidence="键盘")

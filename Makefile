@@ -1,13 +1,23 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 PYTHON_VERSION ?= 3.11
+
+ifneq ($(strip $(RUNTIME)),)
+ifneq ($(words $(RUNTIME)),1)
+$(error RUNTIME must be one of legacy or strands)
+endif
+ifneq ($(filter $(RUNTIME),legacy strands),$(RUNTIME))
+$(error RUNTIME must be legacy or strands)
+endif
+RUNTIME_ENV := AGENT_RUNTIME=$(RUNTIME)
+endif
 BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8000
 DATASET_DIR ?= .cache/pc-part-dataset
 DATASET_JSON_DIR := $(DATASET_DIR)/data/json
 PART_TYPES := case-accessory,case-fan,case,cpu-cooler,cpu,external-hard-drive,fan-controller,headphones,internal-hard-drive,keyboard,memory,monitor,motherboard,mouse,optical-drive,os,power-supply,sound-card,speakers,thermal-paste,ups,video-card,webcam,wired-network-card,wireless-network-card
 
-.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate db-seed dataset data-import legacy-data-import knowledge-sync knowledge-index model-prepare backend-test agent-loop-test frontend-build check
+.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate db-seed dataset data-import legacy-data-import knowledge-sync knowledge-index model-prepare backend-test agent-loop-test frontend-build check tools-test application-test legacy-test integration-test model-eval
 
 help:
 	@echo "doctor          Check local tools and Podman connectivity (read-only)"
@@ -16,14 +26,17 @@ help:
 	@echo "infra-up        Start PostgreSQL, Redis, Chroma and wait for readiness"
 	@echo "infra-stop      Stop infrastructure; preserve containers and data"
 	@echo "infra-status    Show configured container status"
-	@echo "backend         Start backend (separate terminal, no DB initialization)"
+	@echo "backend         Start backend; optional RUNTIME=strands|legacy (default unchanged)"
 	@echo "frontend        Start frontend (separate terminal)"
 	@echo "db-status       Show applied and available migrations (read-only)"
 	@echo "db-migrate      Apply migrations; changes target database"
 	@echo "db-init         Apply migrations, import demo catalog, seed, sync Chroma"
 	@echo "model-prepare   Download/warm the local knowledge embedding model"
-	@echo "agent-loop-test Run isolated Agent loop tests and lint from root tests/"
-	@echo "check           Run backend/Agent loop tests, lint and frontend build"
+	@echo "agent-loop-test Run offline loop tests (tools-test/application-test also available)"
+	@echo "legacy-test     Explicit offline legacy Graph checks"
+	@echo "integration-test Real isolated database writes; explicit only"
+	@echo "model-eval      Real model comparison; consumes API credits; explicit only"
+	@echo "check           Run offline current tests, lint and frontend build"
 
 doctor:
 	./scripts/doctor.sh
@@ -54,7 +67,7 @@ config-check:
 	cd backend && .venv/bin/python -m scripts.check_local_config
 
 backend:
-	cd backend && .venv/bin/uvicorn app.main:app --reload --host $(BACKEND_HOST) --port $(BACKEND_PORT)
+	cd backend && $(RUNTIME_ENV) .venv/bin/uvicorn app.main:app --reload --host $(BACKEND_HOST) --port $(BACKEND_PORT)
 
 frontend:
 	cd frontend && npm run dev
@@ -102,17 +115,33 @@ knowledge-index:
 model-prepare:
 	cd backend && .venv/bin/python -m scripts.prepare_knowledge_model
 
+# All default checks are offline. Explicit legacy is excluded from this set.
 backend-test:
-	cd backend && .venv/bin/pytest && .venv/bin/ruff check .
+	backend/.venv/bin/python tests/run.py -q
+	backend/.venv/bin/ruff check --config backend/pyproject.toml backend/app backend/scripts tests evals
 
 agent-loop-test:
-	backend/.venv/bin/python -m pytest -c tests/pytest.ini tests -q
-	backend/.venv/bin/ruff check --config backend/pyproject.toml tests
+	backend/.venv/bin/python tests/run.py tests/agent_loop -q
+
+tools-test:
+	backend/.venv/bin/python tests/run.py tests/tools -q
+
+application-test:
+	backend/.venv/bin/python tests/run.py tests/application -q
+
+legacy-test:
+	backend/.venv/bin/python tests/run.py tests/legacy -q
+
+# Explicit, potentially destructive/paid entry points. Never dependencies of check.
+integration-test:
+	PYTHONPATH=backend:.:tests backend/.venv/bin/python -m tests.integration.verify_postgres $(ARGS)
+
+model-eval:
+	PYTHONPATH=backend:.:tests backend/.venv/bin/python -m evals.agent.compare_runtimes $(ARGS)
 
 frontend-build:
 	cd frontend && npm run build
 
 check:
 	$(MAKE) backend-test
-	$(MAKE) agent-loop-test
 	$(MAKE) frontend-build

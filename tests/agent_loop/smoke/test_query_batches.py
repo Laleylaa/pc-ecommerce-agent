@@ -3,8 +3,6 @@
 import json
 
 import pytest
-from app.schemas.chat import ChatRequest
-
 from agent_loop.support.domain_tools import make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -15,6 +13,7 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import with_handlers
+from app.schemas.chat import ChatRequest
 
 pytestmark = [pytest.mark.smoke, pytest.mark.asyncio]
 

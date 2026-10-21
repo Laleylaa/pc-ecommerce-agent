@@ -4,12 +4,6 @@ import asyncio
 
 import httpx
 import pytest
-from app.agent.tool_adapter import AdmissionError
-from app.core.loop_budget import LoopBudget, LoopLimit, model_stage
-from app.core.loop_models import LoopUsage
-from app.schemas.chat import ChatRequest
-from app.tools.contracts import BoundTool, ToolCatalog, default_tool_contracts
-
 from agent_loop.support.domain_tools import adapter
 from agent_loop.support.event_loops import LOOP_KINDS, new_loop
 from agent_loop.support.loop_runtime import (
@@ -19,6 +13,11 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.agent.loop.tool_adapter import AdmissionError
+from app.core.loop_budget import LoopBudget, LoopLimit, model_stage
+from app.core.loop_models import LoopUsage
+from app.schemas.chat import ChatRequest
+from app.tools.contracts import BoundTool, ToolCatalog, default_tool_contracts
 
 pytestmark = pytest.mark.contract
 

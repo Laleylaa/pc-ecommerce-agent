@@ -51,10 +51,11 @@ logs/
 
 # 本地业务数据、评测输出与容器数据目录
 /data/
+# 退役产物路径也保留忽略保护，防止旧命令生成文件被误提交
 /evals/results/
 /backend/evals/results/
 # 商品搜索本地评测：输入、报告、接口示例统一保留在本机
-/backend/evals/catalog_search/
+/evals/tools/catalog_search/
 chroma/
 postgres-data/
 redis-data/
@@ -113,3 +114,6 @@ Desktop.ini
 # 保留版本控制：uv.lock、package-lock.json、.python-version、.nvmrc、
 # Alembic migrations 与其他已纳入版本管理的评测用例；商品搜索本地评测目录除外。
 # .gitignore 不会移除已被 Git 跟踪的文件，也不会检查文件内容中的秘密。
+
+# Layout migration: local snapshots, generated evaluations and trace exports
+/artifacts/

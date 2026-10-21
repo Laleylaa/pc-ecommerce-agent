@@ -6,6 +6,7 @@ from random import Random
 
 from app.core.database import AsyncSessionLocal
 from app.services.dataset_mapper import ImportedProduct
+
 from scripts.seed_demo import _upsert_product
 
 TARGET_CATEGORIES = ("鼠标", "键盘", "耳机", "显示器", "音箱", "摄像头")

@@ -3,9 +3,6 @@
 import json
 
 import pytest
-from app.schemas.chat import ChatRequest
-from app.schemas.context import WorkingMemoryV2
-
 from agent_loop.support.domain_tools import make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -16,6 +13,8 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import with_handlers
+from app.schemas.chat import ChatRequest
+from app.schemas.context import WorkingMemoryV2
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

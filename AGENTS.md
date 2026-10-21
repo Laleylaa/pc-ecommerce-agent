@@ -30,16 +30,17 @@
 | `backend/app/models/` | SQLAlchemy 持久化模型；不放 LLM 客户端或业务流程 |
 | `backend/app/schemas/` | 请求、响应和结构化数据契约；不查询数据库或调用模型 |
 | `backend/app/core/` | 配置、数据库连接、模型客户端等基础设施；不收纳商品业务规则 |
-| `backend/scripts/` | 开发、数据操作及评测入口；复用正式实现 |
-| `backend/tests/`、`backend/evals/` | 既有后端测试；评测输入、预期、输出和分析产物 |
-| 根目录 `tests/` | Agent loop 重构的冒烟、业务、契约和故障测试及显式验证入口；本次重构新增测试不放 scripts |
+| `backend/scripts/` | 环境检查、数据导入、seed、知识索引等维护入口 |
+| `evals/`、`artifacts/` | 模型评测驱动/输入/评分；忽略的运行产物。历史证据与退役脚本在项目外档案包保管，恢复说明见 README |
+| 根目录 `tests/` | 当前 loop、工具、应用隔离测试；legacy 和 integration 仅显式执行 |
 | `frontend/src/` | UI、API 调用与展示状态；业务判定和权限校验以后端为准 |
 
 - Agent 查询商品、订单、政策等业务事实必须经过正式工具；会话、记忆和审计通过相应服务或 repository 管理。
 - API 简单查询可调用 repository；复杂业务流程调用对应服务。工具可以调用 repository 或复用已有 service，不增加仅转发参数的中间层。
 - 工具专属实现优先集中在 tools 的对应模块或包；多个工具共享稳定逻辑时在 tools 内提取，跨应用业务复用再评估 services。core 只承载基础设施。
-- 工具 Prompt 放 `tools/prompts/`，编排 Prompt 放 `agent/prompts/`。Prompt 维护语义、能力和输出约束；调用模块维护模型调用、校验和有界重试。
+- 工具 Prompt 放 `tools/prompts/`，编排 Prompt 放 `agent/loop/prompts/` 或 `agent/legacy/prompts/`，共用回答文字规则放 `agent/prompts/`。Prompt 维护语义、能力和输出约束；调用模块维护模型调用、校验和有界重试。
 - 模块使用 snake_case，按业务对象或职责命名。避免无明确边界的 common/utils/manager，以及 new/v2/final 等临时名称；业务包内可使用 service.py、rules.py 等简短名称。
+- `agent/loop` 与 `agent/legacy` 不相互导入；API 通过 `agent/factory.py` 延迟选择。共用定义按职责放 agent 根层，不重复规则。可运行 legacy 使用当前工具，完整历史恢复依赖 Git / 快照。
 - graph 表示图构建与拓扑，runtime 表示运行入口和生命周期，state 表示执行状态。planner 明确规划对象，必要时使用 task_planner、query_planner 区分。这是命名约定，不表示当前文件已完成对应调整。
 - 公开工具名称沿用“领域 + 动作”的契约风格，如 catalog_search、order_lookup；内部文件改名不自动改变公开工具名。
 - 小能力保留单文件，复杂能力再形成包；按职责和变化原因拆分，不强制工具采用相同文件清单，不预建 nodes、agents、workflows 或公共基类。
@@ -69,14 +70,14 @@
 
 ## 验证
 
-- Agent loop 重构后续修改只运行根目录 `tests/` 内新增的测试，以同一口径验收；默认入口为 `make agent-loop-test`。不运行或联合收集 `backend/tests/`，不执行旧测试脚本、`make backend-test` 或 `make check`。覆盖不足时在根 tests 补充用例，不用旧测试成绩替代新链路验收。
+- 有效测试统一在根 `tests/`；默认 `make backend-test` / `make check` 只收集当前 loop、tools、application 的离线隔离测试，统一通过 `tests/run.py` 阻断网络及真实数据库并避免读取真实凭据。`make agent-loop-test` 为 loop 专项；`make legacy-test` 显式检查旧链路。integration 和收费模型评测不得隐式执行。运行前审查 fixture、插件及导入副作用，不能关闭保护解决失败。
 - `tests/agent_loop/` 按 `business/`（业务验收）、`smoke/`（链路冒烟）、`contracts/`（契约及故障边界）分类；共享替身放 `support/`，不互相导入测试函数。
 
 - 根据改动选择检查，不默认执行完整测试。文档修改检查内容与链接；行为变化覆盖相关场景、边界和历史缺陷；模块迁移检查独立导入与调用方。
 - 单元测试隔离数据库和真实模型，预期结果独立于被测实现。自然语言效果评测包含真实用户表达与独立用例，不只验证编号直读；调优用例通过不代表新表达也稳定。
-- 运行前检查 fixture 和脚本的数据影响。当前测试集合不含真实数据库集成用例；后续若新增，必须使用明确隔离的目标。连接数据库并写入的测试即使最终回滚，也不属于只读操作；不能将隔离测试通过视为真实数据库验收。
+- 运行前检查 fixture 和脚本的数据影响。真实数据库入口位于 `tests/integration`，仅在明确授权且目标隔离时显式执行。连接数据库并写入的测试即使最终回滚，也不属于只读操作；不能将隔离测试通过视为真实数据库验收。
 - 区分隔离测试、真实模型/数据库评测和聊天端到端验证；如实列出失败、跳过、排除和未执行项，不复用历史成绩冒充本轮结果。
-- `make check` 包含完整后端测试，不是默认安全检查。可按范围使用 pytest、Ruff 或 `make frontend-build`；构建通过不代表页面交互通过。
+- `make check` 包含当前隔离测试、Ruff 和前端构建，不包含 legacy、integration 或真实模型评测。可按范围使用 pytest、Ruff 或 `make frontend-build`；构建通过不代表页面交互通过。
 - Python 使用 4 空格、类型标注和 Ruff 100 列；React 组件使用 PascalCase。
 
 ## 文档维护
@@ -92,14 +93,14 @@
 | `docs/development/README.md` | 活跃主题、适用分支、阶段及下一步的接手入口 |
 | `docs/development/iterations/` | 组件当前实现、开发契约及接入要求、关键决定、验证与下一步 |
 | `docs/development/issues.md` | 共享缺陷、待接入事项、待决策问题与验证缺口，记录责任和关闭条件 |
-| `backend/evals/` | 具体评测输入、预期、输出和报告 |
+| `evals/` / `artifacts/evals/` | 具体评测驱动、输入和预期 / 默认忽略的输出和报告 |
 
 - 每个模块或开发主题维护一个现行入口，独立契约按职责链接，不复制多份“最终版”或规则表。
 - 开发主题顶部维护当前状态、完成证据、未解决/未验证项和下一步验收条件；更新索引，标注已取代方案，不只在文末追加。
 - 不再单设开发 handoff 文档。有效契约留在提供方 iteration，稳定确认后归入 modules；未完成工作统一进入 issues，其他文档按 ID 引用，不复制问题清单。Issue 区分发现方、主责和配合方；提供方完成不等于消费方接入或联合验收完成。
 - 文档归属与稳定升级门槛以 [docs/README.md](docs/README.md#稳定基线更新准则) 为准：局部变更先维护 development，完成相关接入、模块验证并确认稳定后再整理到 modules；不把同步文档等同于立即覆盖模块基线。产品决定变化才更新需求，小修无需另建开发主题。
 - 具体重构建议和待实施命名方案放 development，不写成模块现状或 AGENTS 的长期待办。
-- `docs/development/issues.md` 是 docs 中唯一放行跟踪的共享入口；其他 `docs/` 资料和 `backend/evals/catalog_search/` 继续忽略，不擅自扩大放行范围。共享 issue 自带最小接入要求，必要引用指向同版本可获取的源码或已跟踪证据，不能依赖本地忽略资料。跨分支核对代码版本；本地文档切分支不会自动同步。完整 JSON 产物放 evals，不放 docs/modules。不自动暂存、提交或推送文档整理结果。
+- `docs/development/issues.md` 是 docs 中唯一放行跟踪的共享入口；其他 `docs/` 资料和 `evals/tools/catalog_search/` 继续忽略，不擅自扩大放行范围。共享 issue 自带最小接入要求，必要引用指向同版本可获取的源码或已跟踪证据，不能依赖本地忽略资料。跨分支核对代码版本；本地文档切分支不会自动同步。完整 JSON 产物放 artifacts/evals，不放 docs/modules。不自动暂存、提交或推送文档整理结果。
 
 ## 环境与数据
 

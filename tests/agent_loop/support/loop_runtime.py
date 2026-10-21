@@ -5,12 +5,11 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import httpx
-from app.agent.runtime import AgentLoopRuntime
-from app.schemas.context import WorkingMemoryV2
-from app.services.context import ConversationContextService
-
 from agent_loop.support.domain_tools import make_catalog
 from agent_loop.support.strands_provider import SETTINGS
+from app.agent.loop.runtime import AgentLoopRuntime
+from app.schemas.context import WorkingMemoryV2
+from app.services.context import ConversationContextService
 
 
 def goal(source, *, goal_id="g1", disposition="tool_planning", **kwargs):

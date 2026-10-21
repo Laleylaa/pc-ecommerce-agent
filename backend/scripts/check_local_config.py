@@ -2,9 +2,8 @@
 
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from app.core.config import Settings
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 PLACEHOLDER_SECRETS = {

@@ -4,10 +4,6 @@ import json
 from copy import deepcopy
 
 import pytest
-from app.agent.query_schema import CompletionCall, RegistrationCall
-from app.schemas.chat import ChatRequest
-from pydantic import ValidationError
-
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -17,6 +13,9 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import capture_sessions
+from app.agent.loop.query_schema import CompletionCall, RegistrationCall
+from app.schemas.chat import ChatRequest
+from pydantic import ValidationError
 
 pytestmark = pytest.mark.contract
 MESSAGE = "查 SKU 9101"

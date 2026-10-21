@@ -5,13 +5,6 @@ import json
 
 import httpx
 import pytest
-from app.core.llm_calls import invoke_before
-from app.core.loop_budget import LoopBudget, LoopLimit, model_stage
-from app.core.loop_models import loop_models
-from app.schemas.chat import ChatRequest
-from app.tools.contracts import BoundTool, ToolCatalog
-from langchain_core.messages import HumanMessage
-
 from agent_loop.support.domain_tools import make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -22,6 +15,12 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.strands_provider import SETTINGS
+from app.core.llm_calls import invoke_before
+from app.core.loop_budget import LoopBudget, LoopLimit, model_stage
+from app.core.loop_models import loop_models
+from app.schemas.chat import ChatRequest
+from app.tools.contracts import BoundTool, ToolCatalog
+from langchain_core.messages import HumanMessage
 
 pytestmark = pytest.mark.contract
 

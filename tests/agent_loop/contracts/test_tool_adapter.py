@@ -4,11 +4,16 @@ import asyncio
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
-from app.agent.strands_tools import StrandsToolBindings
-from app.agent.tool_adapter import AdmissionError, QueryToolAdapter
+from agent_loop.support.domain_tools import (
+    TOOL_ARGUMENTS,
+    adapter,
+    admit_goal,
+    make_catalog,
+)
+from app.agent.loop.strands_tools import StrandsToolBindings
+from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.tools.contracts import (
     BoundTool,
     ToolCatalog,
@@ -16,13 +21,6 @@ from app.tools.contracts import (
     default_tool_contracts,
 )
 from app.tools.schemas import OrderLookupOutput
-
-from agent_loop.support.domain_tools import (
-    TOOL_ARGUMENTS,
-    adapter,
-    admit_goal,
-    make_catalog,
-)
 
 pytestmark = pytest.mark.contract
 
@@ -252,12 +250,11 @@ async def test_invalid_handler_output_is_execution_failure():
 
 
 def test_tool_imports_do_not_load_agent_or_strands():
-    root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
         [sys.executable, "-c", (
             "import sys; import app.tools.contracts; import app.tools.schemas; "
             "assert not any(n.startswith(('app.agent', 'strands')) for n in sys.modules)"
-        )], env={**os.environ, "PYTHONPATH": str(root / "backend")},
+        )], env={**os.environ, "PYTHONPATH": os.environ["PYTHONPATH"]},
         capture_output=True, text=True, check=False, timeout=20,
     )
     assert result.returncode == 0, result.stderr

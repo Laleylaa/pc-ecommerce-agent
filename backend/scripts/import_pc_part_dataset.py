@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.database import AsyncSessionLocal
 from app.services.dataset_mapper import normalize_part_record
+
 from scripts.seed_demo import _upsert_product
 
 DEFAULT_PART_TYPES = ("headphones", "keyboard", "mouse")

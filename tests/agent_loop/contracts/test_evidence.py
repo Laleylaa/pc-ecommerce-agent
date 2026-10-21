@@ -1,8 +1,9 @@
 """R09 evidence references, completeness and detached presentation candidates."""
 
 import pytest
-from app.agent.evidence import EvidenceError
-from app.agent.tool_adapter import AdmissionError, QueryToolAdapter
+from agent_loop.support.domain_tools import adapter, make_catalog
+from app.agent.loop.evidence import EvidenceError
+from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.tools.contracts import (
     BoundTool,
     ToolCatalog,
@@ -10,8 +11,6 @@ from app.tools.contracts import (
     default_tool_contracts,
 )
 from app.tools.schemas import OrderLookupOutput, ToolDiagnostic
-
-from agent_loop.support.domain_tools import adapter, make_catalog
 
 pytestmark = [pytest.mark.contract, pytest.mark.asyncio]
 

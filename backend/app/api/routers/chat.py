@@ -2,8 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.graph import AgentRuntime
-from app.agent.runtime import AgentLoopRuntime
+from app.agent.factory import create_runtime
 from app.api.dependencies import get_current_user
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
@@ -21,8 +20,7 @@ async def chat(
     settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
     try:
-        runtime_type = AgentLoopRuntime if settings.agent_runtime == "strands" else AgentRuntime
-        return await runtime_type(session, settings).run(request, current_user.id)
+        return await create_runtime(session, settings).run(request, current_user.id)
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="本次处理超时，请稍后重试。") from exc
     except HTTPException:

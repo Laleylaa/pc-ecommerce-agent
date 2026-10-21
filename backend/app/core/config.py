@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     agent_runtime: Literal["legacy", "strands"] = "legacy"
     agent_context_budget_tokens: int = 6000
     agent_trace_mode: Literal["off", "local", "langsmith"] = "off"
-    agent_trace_dir: Path = Path(__file__).resolve().parents[2] / "evals/results/agent_traces"
+    agent_trace_dir: Path = Path(__file__).resolve().parents[3] / "artifacts/traces"
     langsmith_api_key: SecretStr = SecretStr("")
     langsmith_project: str = "pc-ecommerce-agent"
     langsmith_endpoint: str = "https://api.smith.langchain.com"

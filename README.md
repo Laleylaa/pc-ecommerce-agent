@@ -133,7 +133,7 @@ Tavily 使用 basic 搜索，每次请求最多 10 条，8 秒总超时，不自
 
 本店政策默认使用 BM25 + 本地向量混合检索，索引缺失或过期时退回 BM25 并标明实际策略。请求内不下载模型；缺少模型时运行已有的 `make model-prepare` 显式准备。政策超时为 8 秒；同步计算移到单个后台线程，超时或取消后运行中的计算仍占用名额直到完成，期间新请求返回忙碌状态。
 
-商品搜索、目录和订单的自然语言规划增加语义复核：程序校验后由模型对照原请求检查，再经程序校验才执行。规划与复核共用 60 秒预算、最多两次纠错和一次传输重试，正常两次模型调用；复核使用成对示例及程序派生的条件匹配解释。外层工具超时均为 75 秒。无法确认或耗尽预算返回失败，不作为“没有商品/订单”。明确编号等确定性路径仍按原规则执行。离线检查和真实模型对照入口见 [评测说明](backend/evals/README.md#正常购物工具评测)。
+商品搜索、目录和订单的自然语言规划增加语义复核：程序校验后由模型对照原请求检查，再经程序校验才执行。规划与复核共用 60 秒预算、最多两次纠错和一次传输重试，正常两次模型调用；复核使用成对示例及程序派生的条件匹配解释。外层工具超时均为 75 秒。无法确认或耗尽预算返回失败，不作为“没有商品/订单”。明确编号等确定性路径仍按原规则执行。离线检查和真实模型对照入口见 [评测说明](evals/README.md)。
 
 > [!IMPORTANT]
 > 真实 `.env`、API key 和数据库备份不提交到 Git。模型 key 留空时只有有限 fallback，无法验证完整 AI 对话能力。
@@ -311,13 +311,14 @@ make backend BACKEND_PORT=8002
 │   │   └── models/         # 数据模型
 │   ├── alembic/            # 数据库迁移
 │   ├── data/               # 运行所需的知识与向量索引
-│   ├── scripts/            # 初始化、导入与评测脚本
-│   ├── tests/              # 后端测试
+│   ├── scripts/            # 环境、导入、seed 与知识维护
 │   └── uv.lock             # 后端依赖锁文件
 ├── frontend/
 │   ├── src/                # 页面、组件与 API 封装
 │   └── package-lock.json   # 前端依赖锁文件
-├── tests/                  # Agent loop 重构测试与显式模型验证
+├── tests/                  # 当前隔离测试、显式 legacy 与 integration
+├── evals/                  # 模型效果评测驱动、用例和评分
+├── artifacts/              # 本地生成的评测结果和 Trace（忽略）
 ├── scripts/                # 环境检查与 Podman 管理
 ├── .env.example            # 后端与基础设施配置模板
 └── Makefile                # 安装、启动与检查的统一入口
@@ -325,28 +326,59 @@ make backend BACKEND_PORT=8002
 
 ## 测试与维护
 
-本次 Agent loop 重构后续修改只运行根目录 [tests/](tests/README.md) 的新增测试，入口为 `make agent-loop-test`，不运行旧测试或下面的 `make check`。测试按业务、冒烟、契约分类，命令见该目录说明；开发过程和验证记录维护在 `docs/development/iterations/`。
-
-旧 LangGraph 链路的调试与技术评测 trace 使用 LangChain/LangSmith，并同步写入本地统一目录
-`backend/evals/results/agent_traces/`（默认忽略）。默认关闭普通聊天记录；离线冒烟、真实模型
-评测、上传配置及产物字段见 [Agent trace 使用说明](backend/evals/README.md)。
-Strands 新链路目前保存执行记录及用量，尚未接入完整可视化调用树。新增 P4 计划接入本地
-Phoenix，覆盖查询、工具内部过程、程序交接与独立回答；原切换清理顺延为 P5。
-计划和验收清单见 [AL-016](docs/development/issues.md#al-016本地可视化-trace尚未接入)，当前没有新增平台启动命令。
-离线检查不需要数据库或模型密钥：在 `backend/` 执行
-`.venv/bin/python -m scripts.eval_goal_tool_flow --scripted`。
+目录整理后有效测试统一在根 [tests](tests/README.md)，模型效果评测在 [evals](evals/README.md)。
 
 ```bash
-make check
+make agent-loop-test       # 当前 loop 的 business / smoke / contracts
+make tools-test            # 工具隔离测试
+make application-test      # API / 鉴权 / 记忆 / 基础设施隔离测试
+make legacy-test           # 显式旧 Graph 隔离检查，不进入默认集合
+make check                 # 当前隔离测试、Ruff、前端构建
 ```
 
-运行后端及根目录 Agent loop 测试、Ruff 和前端 TypeScript / Vite 构建。当前 pytest 集合不含真实数据库集成测试，默认排除 network 标记测试；数据库读写与持久化隔离不在这套自动化测试的验证范围内。模块、冒烟和依赖选择见 [后端测试入口](backend/tests/README.md)。页面交互与真实模型效果需另做验证，完整从零复现还需使用独立新数据库执行初始化。
+这些检查使用已有依赖和网络阻断保护，不调用真实模型、不连接真实数据库；不自动安装依赖。
+默认不收集 legacy、integration 或模型评测。`make integration-test` 会写入明确隔离的真实数据库；
+`make model-eval` 调用真实 LLM、消耗额度，二者均仅显式执行，本轮未运行。
+检查通过不代表真实模型效果、数据库持久化或浏览器验收通过。
+
+编排按启动进程配置切换：
+
+```bash
+make backend RUNTIME=strands
+make backend RUNTIME=legacy
+make backend                 # 保留环境变量 → .env → 代码默认 legacy 的优先级
+```
+
+`RUNTIME` 只接受 `strands` / `legacy`，不改 `.env`；保留 `BACKEND_HOST` / `BACKEND_PORT`。
+API 经 `agent/factory.py` 延迟导入选中的 runtime，一次请求只执行一套。
+`agent/loop` 是固定外层 → Strands 查询 → 程序交接 → 独立回答；`agent/legacy` 保留旧 Graph，
+两者使用当前共用工具。legacy 并非完整冻结基线，后续工具优化也影响它。
+历史恢复以 Git 为主，历史档案包及范围见 [历史档案与恢复](#history-archive)。
+
+旧链路现有本地追踪默认关闭，输出改为 `artifacts/traces/`。新链路完整可视化调用树仍由 P4
+Phoenix 计划跟踪（[AL-016](docs/development/issues.md#al-016本地可视化-trace尚未接入)），
+本轮没有平台启动命令或 Phoenix 存储。P3 10/11、P3A 11/12 均未放行，默认未切换。
+P5 改为满足原质量/成本条件后切换默认，并独立保留旧链路、退出默认加载和默认测试。
 
 - **依赖更新**：后端修改 `pyproject.toml` 后在 `backend/` 执行 `uv lock`；前端通过 npm 更新并提交锁文件。普通安装保持锁定版本。
 - **知识更新**：修改 `backend/data/knowledge_documents.json` 后执行 `make knowledge-index` 并重启后端；`make knowledge-sync` 不会更新本地 JSON 索引。
 - **评测输入**：仓库不包含根目录客服 CSV 评测数据集，对应评测需自行提供输入，不影响应用启动。
 
 代码约定见 [AGENTS.md](AGENTS.md)。
+
+<a id="history-archive"></a>
+### 历史档案与恢复
+
+历史报告和退役资料的原 Git 路径为 `backend/evals/history/`，将在后续档案外置提交中移除。
+整理前基点为 `06c84eb3463c5d32f068bb37ef1465b2c5a575cc`，恢复以 Git 版本为主要依据。
+当前启动不依赖历史报告；完整历史实现与使用当前共用工具的 legacy 应分别理解。
+
+当前目录迁移要点：`agent/runtime.py` → `agent/loop/runtime.py`，原 `agent/graph.py` →
+`agent/legacy/runtime.py`，原 `agent/workflow.py` → `agent/legacy/graph.py`；API 统一通过 factory 选择。
+原 `backend/tests` 已按职责归入根 tests，评测脚本及输入归入根 evals，生成结果归入 artifacts。
+所有原测试函数保留；删除的是被统一入口替代的 pytest 配置和旧目录空包标记，没有旧路径转发入口。
+历史整理验证为默认 1396 项、显式 legacy 833 项通过，含 9 项新增入口/隔离检查；
+这些是 2026-10-20 整理任务的记录，本次打包没有重跑测试或真实服务验证，也不改变 P3/P3A 放行状态。
 
 ## 常见问题
 

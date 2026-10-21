@@ -3,11 +3,6 @@
 import json
 
 import pytest
-from app.agent.independent_answer import AnswerInput, fallback_answer
-from app.schemas.catalog_search import SearchPlan
-from app.schemas.chat import ChatRequest
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-
 from agent_loop.support.domain_tools import make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -18,6 +13,10 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import with_handlers
+from app.agent.loop.independent_answer import AnswerInput, fallback_answer
+from app.schemas.catalog_search import SearchPlan
+from app.schemas.chat import ChatRequest
+from app.tools.catalog_search.planner import CatalogSearchPlanner
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

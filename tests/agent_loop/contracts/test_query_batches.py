@@ -4,11 +4,6 @@ import asyncio
 import json
 
 import pytest
-from app.agent.strands_tools import StrandsToolBindings
-from app.agent.tool_adapter import AdmissionError
-from app.core.loop_budget import LoopBudget
-from app.schemas.chat import ChatRequest
-
 from agent_loop.support.domain_tools import TOOL_ARGUMENTS, adapter, make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
@@ -20,6 +15,10 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import capture_sessions, with_handlers
+from app.agent.loop.strands_tools import StrandsToolBindings
+from app.agent.loop.tool_adapter import AdmissionError
+from app.core.loop_budget import LoopBudget
+from app.schemas.chat import ChatRequest
 
 pytestmark = pytest.mark.contract
 MESSAGE = "查 SKU 9101 的价格，也查订单 8201"

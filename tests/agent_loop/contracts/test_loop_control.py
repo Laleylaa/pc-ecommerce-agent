@@ -4,9 +4,6 @@ import json
 
 import httpx
 import pytest
-from app.core.loop_budget import LoopBudget
-from app.schemas.chat import ChatRequest
-
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -15,6 +12,8 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.core.loop_budget import LoopBudget
+from app.schemas.chat import ChatRequest
 
 pytestmark = pytest.mark.contract
 
@@ -224,9 +223,8 @@ async def test_query_budget_hands_off_partial_without_extra_http(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_explicit_retry_replaces_failed_evidence_but_preserves_attempt_audit(monkeypatch):
-    from app.tools.contracts import BoundTool, ToolCatalog
-
     from agent_loop.support.domain_tools import make_catalog
+    from app.tools.contracts import BoundTool, ToolCatalog
 
     catalog = make_catalog(monkeypatch)
     original = catalog.get_by_llm_name("catalog_search")

@@ -4,9 +4,6 @@ import asyncio
 
 import httpx
 import pytest
-from app.core.strands_model import TransportUsage, strands_model
-
-from agent_loop.smoke.probe_agent_loop import ProbeState, build_probe, run_probe
 from agent_loop.support.strands_provider import (
     FINISH,
     FIRST,
@@ -15,6 +12,9 @@ from agent_loop.support.strands_provider import (
     Provider,
     call,
 )
+from app.core.strands_model import TransportUsage, strands_model
+
+from evals.agent.probe_agent_loop import ProbeState, build_probe, run_probe
 
 pytestmark = pytest.mark.contract
 

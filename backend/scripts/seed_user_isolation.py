@@ -5,9 +5,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from random import Random
 
-from sqlalchemy import or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.database import AsyncSessionLocal
 from app.models import (
     AppUser,
@@ -23,6 +20,8 @@ from app.models import (
     UserAuthCredential,
 )
 from app.services.auth import PasswordHasher
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 USER_COUNT = 5
 ORDERS_PER_USER = 5

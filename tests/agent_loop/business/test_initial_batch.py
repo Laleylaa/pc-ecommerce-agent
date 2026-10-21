@@ -3,9 +3,6 @@
 import json
 
 import pytest
-from app.schemas.chat import ChatRequest
-from app.schemas.context import WorkingMemoryV2
-
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -14,6 +11,8 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.schemas.chat import ChatRequest
+from app.schemas.context import WorkingMemoryV2
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

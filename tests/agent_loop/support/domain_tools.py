@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import httpx
-from app.agent.tool_adapter import AdmissionError, QueryToolAdapter
+from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.repositories.catalog_search import CatalogRecord, CatalogSearchRepository
 from app.schemas.catalog import ProductCard
 from app.schemas.order import OrderCard

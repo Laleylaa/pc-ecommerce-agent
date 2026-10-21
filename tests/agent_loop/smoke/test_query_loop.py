@@ -2,8 +2,6 @@
 
 import httpx
 import pytest
-
-from agent_loop.smoke.probe_agent_loop import run_probe
 from agent_loop.support.strands_provider import (
     FINISH,
     FIRST,
@@ -11,6 +9,8 @@ from agent_loop.support.strands_provider import (
     SETTINGS,
     Provider,
 )
+
+from evals.agent.probe_agent_loop import run_probe
 
 
 @pytest.mark.smoke

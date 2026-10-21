@@ -38,15 +38,6 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "scripts*"]
 exclude = ["alembic*", "tests*"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "--strict-markers"
-markers = [
-  "smoke: selected module business checks (not full application E2E)",
-  "network: uses external services; requires --run-network",
-]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"

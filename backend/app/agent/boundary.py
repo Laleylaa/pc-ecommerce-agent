@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from app.schemas.chat import BoundaryClassification
 
@@ -605,3 +606,14 @@ def _has_strong_scope_signal(message: str, lowered: str, compact: str) -> bool:
         or any(term in message for term in AFTER_SALES_TERMS)
         or any(term in compact for term in ["外设", "pc", "电脑"])
     )
+
+
+RouteDisposition = Literal[
+    "tool_planning",
+    "direct_response",
+    "session_grounded_response",
+    "clarification",
+    "human_handoff",
+    "out_of_scope",
+    "security_refusal",
+]

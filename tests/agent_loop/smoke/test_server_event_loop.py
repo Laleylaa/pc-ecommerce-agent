@@ -5,12 +5,6 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from app.api.dependencies import get_current_user
-from app.api.routers import chat
-from app.core.config import get_settings
-from app.core.database import get_session
-from fastapi import FastAPI
-
 from agent_loop.support.event_loops import LOOP_KINDS, new_loop
 from agent_loop.support.loop_runtime import (
     calls,
@@ -20,6 +14,11 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.api.dependencies import get_current_user
+from app.api.routers import chat
+from app.core.config import get_settings
+from app.core.database import get_session
+from fastapi import FastAPI
 
 pytestmark = pytest.mark.smoke
 
@@ -52,7 +51,7 @@ def test_chat_route_with_server_clock(monkeypatch, loop_kind, kind):
             return await prepare(*args)
 
         monkeypatch.setattr(runtime.context, "prepare_turn", yielding_prepare)
-        monkeypatch.setattr(chat, "AgentLoopRuntime", lambda *args: runtime)
+        monkeypatch.setattr(chat, "create_runtime", lambda *args: runtime)
         app = FastAPI()
         app.include_router(chat.router, prefix="/api")
         app.dependency_overrides[get_session] = lambda: None

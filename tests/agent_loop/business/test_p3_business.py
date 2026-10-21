@@ -4,12 +4,6 @@ import json
 
 import httpx
 import pytest
-from app.schemas.catalog_search import SearchCondition, SearchPlan
-from app.schemas.chat import ChatRequest
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-from app.tools.contracts import BoundTool, ToolCatalog
-from app.tools.web_search import WebSearchToolService
-
 from agent_loop.support.domain_tools import make_catalog, product
 from agent_loop.support.loop_runtime import (
     calls,
@@ -19,6 +13,11 @@ from agent_loop.support.loop_runtime import (
     register,
     runtime_fixture,
 )
+from app.schemas.catalog_search import SearchCondition, SearchPlan
+from app.schemas.chat import ChatRequest
+from app.tools.catalog_search.planner import CatalogSearchPlanner
+from app.tools.contracts import BoundTool, ToolCatalog
+from app.tools.web_search import WebSearchToolService
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

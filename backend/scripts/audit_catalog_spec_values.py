@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
-
 from app.core.database import AsyncSessionLocal
 from app.models import (
     AttributeKey,
@@ -19,6 +17,7 @@ from app.models import (
     Sku,
     Spu,
 )
+from sqlalchemy import func, select
 
 DEFAULT_OUTPUT = Path("backend/data/catalog_spec_values_audit.json")
 

@@ -3,9 +3,6 @@
 import json
 
 import pytest
-from app.schemas.chat import ChatRequest
-from app.tools.contracts import default_tool_contracts
-
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -15,6 +12,8 @@ from agent_loop.support.loop_runtime import (
     runtime_fixture,
 )
 from agent_loop.support.query_batches import capture_sessions
+from app.schemas.chat import ChatRequest
+from app.tools.contracts import default_tool_contracts
 
 pytestmark = [pytest.mark.contract, pytest.mark.asyncio]
 

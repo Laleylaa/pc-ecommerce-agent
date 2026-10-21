@@ -2,14 +2,13 @@
 
 import httpx
 import pytest
-from app.agent.strands_tools import StrandsToolBindings
+from agent_loop.support.domain_tools import TOOL_ARGUMENTS, adapter, make_catalog
+from agent_loop.support.strands_provider import SETTINGS, Provider, call
+from app.agent.loop.strands_tools import StrandsToolBindings
 from app.core.strands_model import TransportUsage, strands_model
 from strands import Agent
 from strands.hooks import AfterToolsEvent, BeforeToolsEvent
 from strands.tools.executors import SequentialToolExecutor
-
-from agent_loop.support.domain_tools import TOOL_ARGUMENTS, adapter, make_catalog
-from agent_loop.support.strands_provider import SETTINGS, Provider, call
 
 
 @pytest.mark.smoke

@@ -1,6 +1,6 @@
 """Helpers for inspecting real query sessions and replacing isolated domain handlers."""
 
-from app.agent import runtime as runtime_module
+from app.agent.loop import runtime as runtime_module
 from app.tools.contracts import BoundTool, ToolCatalog
 
 
