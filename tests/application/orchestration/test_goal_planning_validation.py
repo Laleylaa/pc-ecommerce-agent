@@ -3,7 +3,7 @@ import pytest
 from app.schemas.chat import ChatRequest
 from pydantic import ValidationError
 
-from evals.agent.eval_goal_planning import assess
+from evals.legacy.eval_goal_planning import assess
 from tests.support.orchestration_goal_planning_validation import (
     plan_data,
 )

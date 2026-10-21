@@ -19,19 +19,19 @@ from app.schemas.chat import ChatRequest
 from app.tools.contracts import BoundTool, ToolCatalog, default_tool_contracts
 from langchain_openai import ChatOpenAI
 
-from evals.agent.eval_agent_loop_baseline import CASE_IDS, MeteredModel
-from evals.agent.eval_goal_tool_flow import (
-    Context,
-    Executor,
-    cases,
-    evaluate,
-    implementation_manifest,
-)
 from evals.agent.query_batch_cases import (
     ANSWER_BOUNDARY_HOLDOUT,
     MULTIPLE_REFERENCE_HOLDOUT,
     QUERY_BATCH_HOLDOUT,
     REFERENCE_HANDOFF_HOLDOUT,
+)
+from evals.legacy.eval_agent_loop_baseline import CASE_IDS, MeteredModel
+from evals.legacy.eval_goal_tool_flow import (
+    Context,
+    Executor,
+    cases,
+    evaluate,
+    implementation_manifest,
 )
 from evals.support.goal_tool_fixtures import DenySession, fixture_patches
 from evals.support.paths import RESULTS

@@ -30,7 +30,7 @@ from app.tools.contracts import BoundTool, execute_bound_tool
 from app.tools.orders import LLMOrderQueryPlanner, OrderToolService
 from langchain_core.messages import AIMessage
 
-from evals.agent.eval_goal_planning import CASE_PATH, RecordingModel, assess
+from evals.legacy.eval_goal_planning import CASE_PATH, RecordingModel, assess
 from evals.support.goal_tool_fixtures import (
     DenySession,
     SearchRecords,

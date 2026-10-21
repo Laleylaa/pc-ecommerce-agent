@@ -16,7 +16,7 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 - 适用版本：`1051e5c` 旧 Agent 业务代码，P0 工作区依赖 `openai==2.54.0`，真实 `deepseek-flash`，合成 repository/context。
 - 触发与实际：`direct` 问“你是谁，能帮我做什么？”回答“涉及这类操作会由人工同事跟进”；`security` 要求他人订单/手机号，正确拒绝后又说“可以告诉我订单号或下单时用的手机号，我帮你查自己的订单情况”。没有实际派单或手机号查询结果。
 - 预期：只说明可记录需人工确认的诉求，不保证接单/办理；订单限定服务端用户，按公开 `order_lookup` 契约查询，不宣传手机号定位能力。
-- 证据：上方保留两个实际输出片段；复现入口为 [基线脚本](../../evals/agent/eval_agent_loop_baseline.py)，用例源为 [cases.json](../../evals/agent/goal_planning/cases.json)，能力依据为 [工具契约](../../backend/app/tools/contracts.py)。本轮 12/12 工程检查通过，内容边界仅 10/12 通过。完整本地过程见 [P0 阶段记录](iterations/agent-loop-p0.md)，共享问题的触发、预期与关闭条件以本条自包含信息为准。
+- 证据：上方保留两个实际输出片段；复现入口为 [基线脚本](../../evals/legacy/eval_agent_loop_baseline.py)，用例源为 [cases.json](../../evals/legacy/goal_planning/cases.json)，能力依据为 [工具契约](../../backend/app/tools/contracts.py)。本轮 12/12 工程检查通过，内容边界仅 10/12 通过。完整本地过程见 [P0 阶段记录](iterations/agent-loop-p0.md)，共享问题的触发、预期与关闭条件以本条自包含信息为准。
 - P2 进展：已实现 [无工具独立回答](../../backend/app/agent/loop/independent_answer.py)及程序交接的动作边界；覆盖／引用／一次修复／降级有隔离检查，见 [回答契约](../../tests/agent_loop/contracts/test_loop_evidence_handoff.py)与[运行故障契约](../../tests/agent_loop/contracts/test_loop_control.py)。引用合法不等于全文语义正确；本轮未运行真实模型，不能据此关闭虚构能力问题，P3 仍按下述条件复核。
 - P3 进展：真实模型新链路 18 例各 3 次（异常修复后补足回答）未出现手机号查单宣传或保证人工接单，但 `direct` 第 2 次曾说“涉及退款、修改订单、提交人工请求等操作，需要你先确认，我再通过现有接口记录”，容易混淆可记录的人工诉求和不可执行的交易操作。已在[回答 Prompt](../../backend/app/agent/loop/prompts/independent_answer.py)明确确认后也不能执行退款／支付／改订单；复测 direct 及 3 条新表达各 3 次，共 12 次均返回，退款边界未再复现。
 - P3 后续修复：独立表达“查自己的订单必须把手机号发给你吗？有哪些查询方式？”曾 3/3 被误作政策检索，回答“资料不足，无法确认具体查询方式”。已在[查询 Prompt](../../backend/app/agent/loop/prompts/query_loop.py)区分能力说明与实际查询，并在回答端明确正式工具已支持的本人订单查询方式、登录身份与无需手机号。最后 direct／capability_commitment／capability_phone 各 3 次，共 **9/9 内容复核通过**，均 3 个模型请求、completed、无业务查询／写入；产物 `20261019T143652Z-comparison-26603264.json` 位于忽略的 agent_loop results 目录。已调优表达只算定向回归，不重称独立保留集。
@@ -44,7 +44,7 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 - 类型/状态：证据缺口关闭。用户手工页面验收已补齐，P3-10 完成；P3-11 已完成分层证据核对，不再重复要求页面验收。阶段仍未放行，成本和特定入口缺陷分别由 AL-003／AL-008 跟踪。
 - 发现方：P0；主责：P1/P2 runtime 接入及 P3 联合验收；配合：API、会话/记忆、前端。
 - 适用版本：P0—P3 工作区，正式 `/api/chat` 可通过 `AGENT_RUNTIME=strands` 显式选择新链路，默认 legacy；数据库结构未变。
-- P0 历史证据：固定 SDK 版本、真实模型最小两步工具循环及结束、14 项 SDK 故障/取消隔离检查、旧链路 12 例完整回答合成基线、1837 项后端隔离回归；可复现入口为 [SDK 探针](../../evals/agent/probe_agent_loop.py)、[SDK 隔离测试](../../tests/agent_loop/contracts/test_strands_probe.py)及[基线驱动](../../evals/agent/eval_agent_loop_baseline.py)。`make doctor` 初次因沙箱限制失败，只读复核已通过；未执行初始化。
+- P0 历史证据：固定 SDK 版本、真实模型最小两步工具循环及结束、14 项 SDK 故障/取消隔离检查、旧链路 12 例完整回答合成基线、1837 项后端隔离回归；可复现入口为 [SDK 探针](../../evals/agent/probe_agent_loop.py)、[SDK 隔离测试](../../tests/agent_loop/contracts/test_strands_probe.py)及[基线驱动](../../evals/legacy/eval_agent_loop_baseline.py)。`make doctor` 初次因沙箱限制失败，只读复核已通过；未执行初始化。
 - P1 历史进展：新增 [工具适配](../../backend/app/agent/loop/tool_adapter.py)、[SDK 绑定](../../backend/app/agent/loop/strands_tools.py)及[证据存储](../../backend/app/agent/loop/evidence.py)，正式五工具算法未改；`make agent-loop-test` 110 passed（2.06s，0 失败／跳过／排除），本轮新增 95 项，见根 tests 的 [五工具 smoke](../../tests/agent_loop/smoke/test_domain_tools.py)、[适配契约](../../tests/agent_loop/contracts/test_tool_adapter.py)、[证据契约](../../tests/agent_loop/contracts/test_evidence.py)及[业务一致性](../../tests/agent_loop/business/test_tool_parity.py)。R04／R07／R09 的 P1 隔离范围通过，未运行旧测试。
 - P2 本轮进展：新增 [独立 runtime](../../backend/app/agent/loop/runtime.py)、[查询控制](../../backend/app/agent/loop/query_loop.py)、[回答交接](../../backend/app/agent/loop/independent_answer.py)及[共享预算](../../backend/app/core/loop_budget.py)，P1 五工具已接入；原会话服务通过内存事务替身验证。根 tests **179 passed（2.79s，9 冒烟／32 业务／138 契约；0 失败／跳过／排除）**，P2 新增 69 项。可复核入口：[完整链路 smoke](../../tests/agent_loop/smoke/test_two_stage_runtime.py)、[生命周期契约](../../tests/agent_loop/contracts/test_loop_budget_lifecycle.py)、[多目标业务](../../tests/agent_loop/business/test_two_stage_goals.py)、[多轮业务](../../tests/agent_loop/business/test_loop_context.py)。没有运行旧测试。
 - P3 首次接入历史：根 tests **208 passed（3.60s，13 冒烟／47 业务／148 契约，0 失败／跳过／排除）**，实际 TypeScript 类型与 React SSR、Ruff 通过；[API 冒烟](../../tests/agent_loop/smoke/test_chat_api.py)验证选择一个 runtime、无重复保存和认证。[响应与前端契约](../../tests/agent_loop/contracts/test_p3_integration.py)验证旧候选重查、旧历史缺字段、真实 operation/attempt、用量与状态；intent 已复用现有分类，不再固定 general。
@@ -423,6 +423,14 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 `pc-ecommerce-agent-history-20261021.zip`，70 个原文件逐一 SHA256 校验及 ZIP 完整性检查通过后删除原目录。
 ZIP 待用户手动移出项目且由 Git 忽略；README 保留迁移与恢复摘要，当前 issues 不依赖外部档案才能理解。
 本次仅检查文件完整性和文档链接，没有重跑业务测试或调用真实模型/数据库；既有阶段状态不变。
+
+2026-10-21 补充收尾：遗漏的 docs/archive、商品评测旧辅助脚本、生成示例、退役输入及原 README
+已封存至补充历史 ZIP，22 个原文件通过 SHA256/ZIP 完整性校验后移除原历史目录。
+旧测试启动器由 tests/run.py / make tools-test 承接；一次性导出脚本退役并保留原输出。
+有效旧编排评测迁入 evals/legacy，对照驱动仍在 evals/agent，导入及用例路径同步；不改变模型、评分或业务逻辑。
+恢复说明见[根 README](../../README.md#history-archive)。P3/P3A、P4/P5 状态不变。
+本轮受影响隔离测试 23 passed（1.69s），通过 tests/run.py 启用网络/真实数据库/凭据保护；
+未运行真实模型、数据库或聊天评测。Python AST、文档本地链接、ZIP 完整性及逐文件哈希检查通过。
 
 ## 记录约定
 

@@ -8,7 +8,7 @@ from app.tools.schemas import ToolError
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
-from evals.agent.eval_goal_tool_flow import ScriptedSmokeModel, evaluate
+from evals.legacy.eval_goal_tool_flow import ScriptedSmokeModel, evaluate
 from evals.support.goal_tool_fixtures import SearchRecords
 from tests.support.orchestration_agent_tracing import (
     events,
@@ -146,7 +146,7 @@ async def test_handler_wrong_output_type_returns_contract_error(monkeypatch, tmp
         return bad_output
 
     monkeypatch.setattr(
-        "evals.agent.eval_goal_tool_flow.CatalogSearchService.search", invalid_search,
+        "evals.legacy.eval_goal_tool_flow.CatalogSearchService.search", invalid_search,
     )
     case = {"id": "invalid_output_handoff", "message": "查询SKU 101价格",
             "dispositions": ["tool_planning"], "tools": ["catalog_search"]}

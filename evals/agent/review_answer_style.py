@@ -16,7 +16,7 @@ from app.core.loop_budget import LoopBudget
 from app.core.loop_models import loop_models
 
 from evals.agent.answer_style_cases import style_cases
-from evals.agent.eval_goal_tool_flow import implementation_manifest
+from evals.legacy.eval_goal_tool_flow import implementation_manifest
 from evals.support.paths import RESULTS
 
 

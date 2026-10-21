@@ -5,8 +5,8 @@ from app.core.config import Settings
 from app.core.model_usage import collect_model_calls
 from langchain_core.messages import AIMessage
 
-from evals.agent.eval_agent_loop_baseline import MeteredModel
-from evals.agent.eval_goal_tool_flow import evaluate
+from evals.legacy.eval_agent_loop_baseline import MeteredModel
+from evals.legacy.eval_goal_tool_flow import evaluate
 
 
 class DirectModel:

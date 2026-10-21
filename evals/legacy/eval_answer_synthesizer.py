@@ -1,8 +1,8 @@
 """Live behavioral evaluation for the task-centered Answer Synthesizer.
 
-Run from ``backend`` with:
+Run from the project root with:
 
-    .venv/bin/python -m evals.agent.eval_answer_synthesizer
+    PYTHONPATH=backend:.:tests backend/.venv/bin/python -m evals.legacy.eval_answer_synthesizer
 
 The script uses the configured chat model but only simulated Tool observations. It does not
 connect to the catalog, order database, Redis, or vector store.

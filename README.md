@@ -379,6 +379,12 @@ P5 改为满足原质量/成本条件后切换默认，并独立保留旧链路�
 需要恢复时在独立目录检出该提交，再按包内 `local-backups/pre-layout-20261020/RESTORE.md`
 使用内层源码 ZIP；不要覆盖当前工作区。完整历史比较依赖原 Git 版本，可运行 legacy 使用当前共用工具。
 
+补充档案 `pc-ecommerce-agent-history-supplement-20261021.zip` 收录此前遗漏的
+`docs/archive/`、商品评测旧辅助脚本、生成示例、退役输入及原 README，共 22 个原文件。
+逐文件 SHA256 与 ZIP 完整性校验通过后移除原历史目录；包内附 `MANIFEST.json` 和 `RESTORE.md`。
+此补充包被 Git 忽略，待手动移到项目外，与主档案包分别保管；不是完整源码备份。
+有效商品输入保留，旧编排专项迁到 `evals/legacy/`，当前对照入口仍在 `evals/agent/`。
+
 当前目录迁移要点：`agent/runtime.py` → `agent/loop/runtime.py`，原 `agent/graph.py` →
 `agent/legacy/runtime.py`，原 `agent/workflow.py` → `agent/legacy/graph.py`；API 统一通过 factory 选择。
 原 `backend/tests` 已按职责归入根 tests，评测脚本及输入归入根 evals，生成结果归入 artifacts。

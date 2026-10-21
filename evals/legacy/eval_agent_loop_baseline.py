@@ -16,7 +16,7 @@ from uuid import uuid4
 from app.core.config import get_settings
 from app.core.llm import build_chat_model
 
-from evals.agent.eval_goal_tool_flow import cases, evaluate, implementation_manifest
+from evals.legacy.eval_goal_tool_flow import cases, evaluate, implementation_manifest
 from evals.support.paths import RESULTS
 
 CASE_IDS = (
