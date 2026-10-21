@@ -117,3 +117,6 @@ Desktop.ini
 
 # Layout migration: local snapshots, generated evaluations and trace exports
 /artifacts/
+
+# 待手动移到项目外的本地历史档案包
+/pc-ecommerce-agent-history-*.zip

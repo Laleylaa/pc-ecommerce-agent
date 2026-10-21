@@ -369,9 +369,15 @@ P5 改为满足原质量/成本条件后切换默认，并独立保留旧链路�
 <a id="history-archive"></a>
 ### 历史档案与恢复
 
-历史报告和退役资料的原 Git 路径为 `backend/evals/history/`，将在后续档案外置提交中移除。
-整理前基点为 `06c84eb3463c5d32f068bb37ef1465b2c5a575cc`，恢复以 Git 版本为主要依据。
-当前启动不依赖历史报告；完整历史实现与使用当前共用工具的 legacy 应分别理解。
+2026-10-21，原 `archive/` 和 `local-backups/` 已封存到本地
+`pc-ecommerce-agent-history-20261021.zip`，原目录删除。ZIP 被 Git 忽略，供手动移到项目外保管；
+普通启动和验证不依赖它，也不保证其他检出环境拥有此包。
+包内有完整迁移清单、历史成功/失败证据、退役脚本、旧说明和原有备份，以及 `RESTORE.md`、
+逐文件 SHA256 清单 `MANIFEST.json`。70 个原文件已逐一校验；本包不是当前未提交工作区的完整快照。
+
+整理前基点为 `refactor/agent-loop` 的 `06c84eb3463c5d32f068bb37ef1465b2c5a575cc`。
+需要恢复时在独立目录检出该提交，再按包内 `local-backups/pre-layout-20261020/RESTORE.md`
+使用内层源码 ZIP；不要覆盖当前工作区。完整历史比较依赖原 Git 版本，可运行 legacy 使用当前共用工具。
 
 当前目录迁移要点：`agent/runtime.py` → `agent/loop/runtime.py`，原 `agent/graph.py` →
 `agent/legacy/runtime.py`，原 `agent/workflow.py` → `agent/legacy/graph.py`；API 统一通过 factory 选择。
