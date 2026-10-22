@@ -54,11 +54,12 @@ async def openai_client(
     usage: TransportUsage,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    client_class: type[httpx.AsyncClient] = httpx.AsyncClient,
 ) -> AsyncIterator[AsyncOpenAI]:
     """One client per invocation/event loop, explicitly closed on errors and cancellation."""
     if not settings.llm_api_key:
         raise ValueError("Model key is not configured")
-    async with httpx.AsyncClient(
+    async with client_class(
         transport=transport, timeout=30,
         event_hooks={"request": [usage.on_request], "response": [usage.on_response]},
     ) as http_client:

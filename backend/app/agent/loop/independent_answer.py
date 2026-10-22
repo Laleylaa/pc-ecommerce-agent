@@ -12,6 +12,7 @@ from app.agent.loop.query_schema import StrictModel
 from app.agent.result_projection import _handoff_payload
 from app.core.llm_calls import retryable_transport_error
 from app.core.loop_budget import LoopBudget, model_stage
+from app.core.loop_tracing import fields, needs_answer_materials, rejection
 from app.tools.structured_planning import parse_object
 
 
@@ -62,7 +63,8 @@ def handoff(session: QuerySession) -> AnswerInput:
     return AnswerInput(
         message=session.prepared.message,
         goals=goals,
-        evidence=[project_record(record) for record in session.adapter.evidence.active_records()],
+        evidence=[project_record(record, destination="answer")
+                  for record in session.adapter.evidence.active_records()],
         history=[item.model_dump(mode="json") for item in session.prepared.history]
         if any(goal["disposition"] == "session_grounded_response" for goal in goals)
         else [],
@@ -151,12 +153,15 @@ async def answer(facts: AnswerInput, model, budget: LoopBudget) -> tuple[AnswerD
     repairs = transports = 0
     with model_stage("answer"):
         for _ in range(3):
+            response = None
             try:
                 response = await model.ainvoke(messages)
                 draft = AnswerDraft.model_validate(parse_object(response.content))
                 validate_answer(draft, facts)
                 return draft, "model"
             except (ValidationError, ValueError) as exc:
+                rejection(response.content if response else None, str(exc),
+                          {"error_type": type(exc).__name__, "will_repair": not repairs})
                 if repairs:
                     break
                 repairs += 1
@@ -176,4 +181,7 @@ async def answer(facts: AnswerInput, model, budget: LoopBudget) -> tuple[AnswerD
                 if transports or not retryable_transport_error(exc):
                     break
                 transports += 1
+    fields(answer_mode="fallback")
+    if needs_answer_materials():
+        fields(answer_materials=facts.model_dump(mode="json"))
     return fallback_answer(facts), "fallback"

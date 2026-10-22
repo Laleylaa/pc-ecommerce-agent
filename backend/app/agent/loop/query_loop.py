@@ -28,15 +28,21 @@ from app.agent.loop.strands_tools import StrandsToolBindings
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopBudget, LoopLimit, find_loop_limit
 from app.core.loop_models import QueryModel
+from app.core.loop_tracing import program_event, rejection, tracing_active
 from app.schemas.context import PreparedTurn
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext
 
 
-def project_record(record: EvidenceRecord, limit: int = 16000) -> dict:
+def project_record(
+    record: EvidenceRecord, limit: int = 16000, *, destination: str = "query",
+) -> dict:
     """Bound model observations without re-labelling an omitted collection as empty."""
     observation = record.observation()
-    if len(json.dumps(observation, ensure_ascii=False)) <= limit:
-        return {**observation, "projection_truncated": False}
+    original_chars = len(json.dumps(observation, ensure_ascii=False))
+    if original_chars <= limit:
+        projected = {**observation, "projection_truncated": False}
+        _trace_projection(record, observation, projected, original_chars, limit, destination)
+        return projected
     output = observation["result"].get("output") or {}
     metadata = {
         key: deepcopy(value)
@@ -66,7 +72,25 @@ def project_record(record: EvidenceRecord, limit: int = 16000) -> dict:
     observation["result"]["output"] = metadata
     observation["projection_truncated"] = True
     observation["completion_blockers"].append("projection_truncated")
+    _trace_projection(record, {"result": {"output": output}}, observation,
+                      original_chars, limit, destination)
     return observation
+
+
+def _trace_projection(record, original, projected, original_chars, limit, destination):
+    if not tracing_active():
+        return
+    source = original["result"].get("output") or {}
+    target = projected["result"].get("output") or {}
+    program_event("材料投影", outcome="truncated" if projected["projection_truncated"] else "kept",
+                  destination=destination, evidence_id=record.evidence_id,
+                  invocation_id=record.invocation.invocation_id,
+                  operation_id=record.invocation.operation_id,
+                  original_chars=original_chars,
+                  projected_chars=len(json.dumps(projected, ensure_ascii=False)), limit_chars=limit,
+                  omitted_fields=target.get("omitted_fields", []),
+                  source_product_count=len(source.get("products", [])),
+                  retained_product_count=len(target.get("products", [])))
 
 
 class QuerySession:
@@ -124,9 +148,10 @@ class QuerySession:
                     pass
         return [spec for spec in specs if spec["name"] in names]
 
-    def reject_control(self, name: str, exc: Exception) -> dict:
+    def reject_control(self, name: str, exc: Exception, raw=None) -> dict:
         code = str(exc) if isinstance(exc, AdmissionError) else "invalid_control_input"
         self.control_rejections.append({"tool": name, "code": code})
+        rejection(raw, str(exc), {"rejection": code, **self.control_state()})
         return {
             "status": "error",
             "content": [{"json": {"rejection": code, **self.control_state()}}],
@@ -223,7 +248,10 @@ class QuerySession:
                     "accepted": True, "trusted_references": references, **self.control_state(),
                 }
             except (AdmissionError, ValidationError) as exc:
-                return self.reject_control("register_goals", exc)
+                return self.reject_control(
+                    "register_goals", exc, registration.model_dump(mode="json")
+                    if isinstance(registration, GoalRegistration) else registration,
+                )
 
         @tool(inputSchema={"json": CompletionCall.model_json_schema()})
         def query_complete(completion: QueryCompletion) -> dict:
@@ -238,7 +266,9 @@ class QuerySession:
                 self.stop_reason = "completed"
                 return {"accepted": True}
             except (AdmissionError, ValidationError) as exc:
-                return self.reject_control("query_complete", exc)
+                return self.reject_control("query_complete", exc, completion.model_dump(mode="json")
+                                           if isinstance(completion, QueryCompletion)
+                                           else completion)
 
         controls = {"register_goals", "query_complete"}
 
@@ -282,6 +312,7 @@ class QuerySession:
             except (AdmissionError, LoopLimit, ValueError, TypeError) as exc:
                 code = str(exc) if isinstance(exc, (AdmissionError, LoopLimit)) else "invalid_call"
                 self._operations = previous_operations
+                rejection(uses, str(exc.__cause__ or exc), {"cancel": code})
                 self.rejections.append(code)
                 event.cancel = code
 

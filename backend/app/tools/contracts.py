@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError
+from app.core.loop_tracing import validation_step
 from app.core.tracing import trace_event
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import (
@@ -497,10 +498,14 @@ async def execute_bound_tool(
 
     await trace_event("tool_handler_output", tool_name=contract.llm_name, output=output)
     try:
-        if not isinstance(output, BaseModel):
-            raise TypeError("tool handler must return a structured output model")
-        validated_output = contract.output_model.model_validate(output.model_dump(mode="python"))
-        serialized_output = validated_output.model_dump(mode="json")
+        with validation_step("工具输出校验", tool_name=contract.llm_name,
+                             schema=contract.output_model.__name__):
+            if not isinstance(output, BaseModel):
+                raise TypeError("tool handler must return a structured output model")
+            validated_output = contract.output_model.model_validate(
+                output.model_dump(mode="python"),
+            )
+            serialized_output = validated_output.model_dump(mode="json")
     except (ValidationError, TypeError, PydanticSerializationError) as exc:
         await trace_event(
             "tool_output_rejected", tool_name=contract.llm_name, error_type=type(exc).__name__,

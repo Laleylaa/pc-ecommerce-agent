@@ -13,6 +13,7 @@ dependencies = [
   "langchain-openai>=0.2.0",
   "langgraph>=0.2.0",
   "langsmith>=0.14.1,<0.15",
+  "opentelemetry-exporter-otlp-proto-http==1.45.0",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.3.0",
   "python-dotenv>=1.0.1",

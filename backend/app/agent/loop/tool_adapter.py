@@ -13,6 +13,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from app.agent.loop.evidence import EvidenceRecord, EvidenceStore, ToolInvocation
+from app.core.loop_tracing import fields, payload
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext, execute_bound_tool
 from app.tools.schemas import CatalogToolRuntimeContext, ToolError, ToolExecutionResult
 
@@ -112,7 +113,9 @@ class QueryToolAdapter:
         async with self._lock:
             operation = self.operation(operation_id)
             self._admit_goal(operation.goal_id)
+            payload("input", operation.arguments)
             attempts = self._attempts[operation_id]
+            fields(operation_id=operation_id, goal_id=operation.goal_id, attempt=len(attempts) + 1)
             if attempts:
                 last = attempts[-1].result
                 if len(attempts) >= 2 or last.ok or not last.error or not last.error.retryable:
@@ -152,6 +155,9 @@ class QueryToolAdapter:
                 ),
                 result, datetime.now(UTC),
             )
+            payload("output", result.model_dump(mode="json"))
+            fields(invocation_id=record.invocation.invocation_id, evidence_id=record.evidence_id,
+                   outcome=record.invocation.status)
             attempts.append(record.model_copy(deep=True))
             if cancelled:
                 raise asyncio.CancelledError

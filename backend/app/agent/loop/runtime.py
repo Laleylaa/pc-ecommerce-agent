@@ -14,6 +14,7 @@ from app.agent.result_projection import _handoff_payload
 from app.core.config import Settings
 from app.core.loop_budget import LoopBudget
 from app.core.loop_models import loop_models
+from app.core.loop_tracing import fields, traced_turn
 from app.core.model_usage import collect_model_calls
 from app.rules.chat_input import match_input_rule
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -58,6 +59,7 @@ class AgentLoopRuntime:
             tool_session_factory=factory,
         )
 
+    @traced_turn
     async def run(self, request: ChatRequest, user_id: int) -> ChatResponse:
         if type(user_id) is not int or user_id <= 0:
             raise ValueError("authentication_required")
@@ -77,6 +79,7 @@ class AgentLoopRuntime:
                     prepared = await self.context.prepare_turn(
                         user_id, request.conversation_id, message
                     )
+                fields(run_id=prepared.run_id, **{"session.id": str(prepared.conversation_id)})
                 if prepared.user_id != user_id:
                     raise ValueError("prepared_identity_mismatch")
                 timings["prepare_seconds"] = round(
@@ -130,6 +133,8 @@ class AgentLoopRuntime:
                             answer_mode,
                             usage.summary(),
                         )
+                fields(stop_reason=state["agent_loop"]["stop_reason"],
+                       answer_mode=state["agent_loop"].get("answer_mode", "input_rule"))
                 budget.closed = True
                 state["agent_loop"]["timings"] = timings
                 # The existing service atomically commits answer, memory and audit.

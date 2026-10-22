@@ -66,8 +66,8 @@ async def test_api_selects_only_one_runtime_and_persists_once(monkeypatch, selec
     assert len(provider.requests) == 4
 
 
-async def test_default_remains_legacy_and_invalid_switch_is_rejected():
-    assert Settings(_env_file=None).agent_runtime == "legacy"
+async def test_default_is_strands_and_invalid_switch_is_rejected():
+    assert Settings(_env_file=None).agent_runtime == "strands"
     with pytest.raises(ValidationError):
         Settings(_env_file=None, agent_runtime="both")
 

@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,7 +17,15 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-app = FastAPI(title="PC Agent API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    from app.core.loop_tracing import shutdown
+
+    shutdown()
+
+
+app = FastAPI(title="PC Agent API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

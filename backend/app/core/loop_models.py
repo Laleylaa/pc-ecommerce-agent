@@ -12,6 +12,7 @@ from strands.models.openai import OpenAIModel
 from app.core.config import Settings
 from app.core.llm_calls import retryable_transport_error
 from app.core.loop_budget import LoopBudget, find_loop_limit, model_stage
+from app.core.loop_tracing import ModelHTTPClient, model_request
 from app.core.strands_model import TransportUsage, openai_client
 
 
@@ -39,6 +40,7 @@ class LoopUsage(TransportUsage):
             min(30, remaining),
         )
         await super().on_request(request)
+        model_request(request, self.attempts)
 
     async def on_response(self, response: httpx.Response) -> None:
         await super().on_response(response)
@@ -145,7 +147,9 @@ async def loop_models(
     transport=None,
 ) -> AsyncIterator[tuple[QueryModel, TextModel, LoopUsage]]:
     usage = LoopUsage(budget)
-    async with openai_client(settings, usage, transport=transport) as client:
+    async with openai_client(
+        settings, usage, transport=transport, client_class=ModelHTTPClient,
+    ) as client:
         query = QueryModel(
             budget=budget,
             client=client,

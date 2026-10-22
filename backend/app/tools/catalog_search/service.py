@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import ValidationError
 
 from app.core.llm_feedback import OutputValidationError, validation_feedback
+from app.core.loop_tracing import program_event, tracing_active
 from app.repositories.catalog_search import CatalogRecord, CatalogSearchRepository
 from app.schemas.catalog import ProductVariantCard
 from app.schemas.catalog_search import (
@@ -48,6 +49,12 @@ class CatalogSearchService:
         self.planner = planner or CatalogSearchPlanner()
 
     async def search(self, request: CatalogSearchRequest) -> CatalogSearchResult:
+        if tracing_active():
+            program_event("商品查询上下文", outcome="prepared",
+                          scope=request.scope.model_dump(mode="json"),
+                          scope_source="tool_request", category_hint=request.category_hint,
+                          hint_usage="prompt_context_only", offset=request.offset,
+                          limit=request.limit)
         try:
             direct = explicit_lookup(request.query)
             plan = direct or await self.planner.plan(request)
@@ -63,6 +70,10 @@ class CatalogSearchService:
             return self._stop(
                 issue.reason, issue.message, plan=plan, planner=planner_name, details=issue.details
             )
+        if tracing_active():
+            program_event("执行计划确认", outcome="accepted", planner=planner_name,
+                          route="explicit_reference" if direct else "planner",
+                          plan=plan.model_dump(mode="json"))
         # Read the one target independently so outside_scope is not confused with not_found.
         if plan.target:
             scope = SearchScope(**{f"{plan.target.kind}_ids": [plan.target.id]})
@@ -81,6 +92,7 @@ class CatalogSearchService:
             return self._stop(
                 ResultReason.REQUEST_NOT_SUPPORTED, "查询范围过大，请缩小范围。", plan=plan
             )
+        loaded_count = len(records)
         object_results = []
         if plan.target:
             status, active = locate_target(records, request.scope, plan.name)
@@ -110,6 +122,9 @@ class CatalogSearchService:
                 r for r in records if all(matcher.matches(word, r) for word in plan.keywords)
             ]
 
+        program_event("对象定位", outcome="completed", loaded_sku_count=loaded_count,
+                      identity_sku_count=len(identity_rows),
+                      object_statuses=[item.status for item in object_results])
         checks = {r.product.sku_id: check_record(r, plan) for r in identity_rows}
         eligible, unknown = [], 0
         for record in identity_rows:
@@ -157,6 +172,11 @@ class CatalogSearchService:
             and (plan.target or plan.name)
         ):
             selected, match_kind = identity_rows, "object_facts"
+        program_event("条件筛选", outcome="completed", identity_sku_count=len(identity_rows),
+                      exact_sku_count=len(eligible), unknown_sku_count=unknown,
+                      mismatch_sku_count=len(identity_rows) - len(eligible) - unknown,
+                      selected_sku_count=len(selected), match_kind=match_kind,
+                      fallback_attempted=fallback_attempted)
         return await self._result(
             request,
             plan,
@@ -248,6 +268,11 @@ class CatalogSearchService:
             "planner": planner_name,
             "result_purpose": plan.purpose,
         }
+        program_event("排序与返回窗口", outcome="selected", sort=plan.sort,
+                      preference_priority=has_preferences, alternative_priority=bool(scores),
+                      selection_scope=window["selection_scope"], total_count=total,
+                      offset=request.offset, limit=limit, returned_count=len(page),
+                      next_offset=window["next_offset"])
         model_ids = list(dict.fromkeys(r.product.spu_id for g in page for r in g))
         model_records = (
             await self.repository.load(None, SearchScope(spu_ids=model_ids)) if page else []
@@ -291,7 +316,7 @@ class CatalogSearchService:
             SearchDiagnostic(**item, details={"phase": "query_result"})
             for item in fact_diagnostics(conflicted, missing, unknown, action=policy.action)
         )
-        return CatalogSearchResult(
+        result = CatalogSearchResult(
             **window,
             result_type="products" if cards else "empty",
             **policy.fields(),
@@ -331,6 +356,14 @@ class CatalogSearchService:
             ),
             diagnostics=diagnostics,
         )
+        program_event("商品查询返回", outcome=result.status, result_type=result.result_type,
+                      reason=result.reason_code, match_kind=result.match_kind,
+                      returned_ids=[{"spu_id": p.spu_id, "sku_id": p.sku_id}
+                                    for p in result.products],
+                      is_exhaustive=result.is_exhaustive,
+                      missing_fact_sku_count=missing, conflicted_sku_count=conflicted,
+                      unknown_sku_count=unknown)
+        return result
 
     @staticmethod
     def _stop(
@@ -341,6 +374,8 @@ class CatalogSearchService:
         planner: str = "",
         details: dict | None = None,
     ) -> CatalogSearchResult:
+        program_event("商品查询提前结束", outcome="not_executed", reason=reason.value,
+                      message=message, details=details or {}, planner=planner)
         policy = policy_for(reason)
         diagnostic = policy.diagnostic(message)
         diagnostic["details"].update(details or {})

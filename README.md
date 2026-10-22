@@ -244,6 +244,101 @@ make frontend     # 终端 B：前端
 
 </details>
 
+<a id="local-phoenix-trace"></a>
+## 本地 Phoenix 核心 Trace（P4 首期）
+
+平台与模拟API核验已完成；2026-10-22用户确认Phoenix页面验收通过，P4首期完成。当前追踪粒度作为稳定版本，后续按需增加；这不代表工具业务问题或P3/P3A质量、成本门槛已通过。
+可查看合成trace `6b109bdb778d7483bf1930a0bca0d9f7`（两次失败后补查成功）。
+
+新 loop 已接入核心追踪，Phoenix `20.23.0` 独立运行在 Podman；默认关闭追踪、默认 runtime 为 strands（新 loop）。
+本轮先实施核心追踪以支持 P3/P3A 排错，不放宽既有质量或成本门槛。
+
+```bash
+make trace-up       # 创建/启动独立平台；首次需要下载官方锁定镜像
+make trace-status   # 检查容器与实际端口绑定
+make trace-stop     # 停止，保留容器和数据卷
+```
+
+浏览器打开 **http://127.0.0.1:6006**，项目为 **pc-ecommerce-agent-local**。
+网页及 OTLP HTTP 共用本机 6006 端口，不发布 gRPC 端口，不上传云端。
+脚本不读取 `.env`，遇到名称、镜像或端口归属冲突会拒绝操作，不覆盖既有资源。
+
+后端开启方式（需要重新启动后端进程）：
+
+```bash
+LOOP_TRACE_ENABLED=true make backend RUNTIME=strands
+```
+
+也可自行在根 `.env` 设置 `LOOP_TRACE_ENABLED=true`；本轮没有改写现有 `.env`。
+关闭时设为 `false` 并重启。旧 `AGENT_TRACE_MODE` / LangSmith 行为保留，与新开关独立。
+后端日志打印 `Local Phoenix trace_id=...`；页面按请求时间定位“用户请求”，核对 trace ID，
+也可通过 `session.id` / `run_id` 对照会话和运行记录。失败、取消也保留根记录。
+
+| 内容 | 首期查看位置 |
+| --- | --- |
+| 用户输入、最终答案、runtime、模型、Git HEAD、dirty、会话/run、停止原因 | “用户请求”的输入输出和属性；时间及总耗时由 span 提供 |
+| 每次实际模型请求，包括查询、工具规划/复核、独立回答及修正/传输重试 | 相应 LLM span 的 Input / Output Messages；按角色/文本块/工具调用显示原始消息，调用参数在 Invocation Parameters，工具定义在 llm.tools；标题含用途、请求序号及返回动作类别 |
+| 每次工具尝试及失败 | `catalog_search` 等 TOOL span；实际规范化参数、原始结果、goal/operation/attempt/invocation/evidence/SDK调用标识；工具内部模型为子 span |
+| 校验拒绝 | 所属请求/工具的 `validation.rejected` 事件：原始提交、错误、反馈、关联 model_span_id |
+| 回答材料 | “模型 · 回答生成” Input Messages 中第二条 message（完整 AnswerInput，除脱敏/明确截断）；无实际回答请求而降级时补记 answer_materials |
+| Token | 实际返回的 prompt/completion 用量；缺失为 usage_status=unknown，不记零，不生成金额 |
+
+模型标题示例：`模型 · 任务规划与调度 #1 → 目标登记提案、业务工具请求`、`模型 · 任务规划与调度 #8 → 查询结束申请`、`模型 · 回答生成 #9 → 回答候选`。序号是本轮实际模型请求的全局顺序（含工具内部请求），不是查询轮次。类别由实际工具调用名及阶段确定，支持同次多个动作；提案/候选不表示校验通过或业务成功，仍需查看拒绝事件和实际工具结果。结构化业务材料本身仍保留 JSON；旧 trace 不会自动变成新格式。
+
+精简查看：新记录在节点的 **Info → Metadata** 卡片中显示少量关键字段。可先收起 Input / Output，只展开 Metadata；它不是自动替换 Messages 的默认视图。模型摘要包含用途、请求序号、关键输入、提交动作和输出概况；商品工具摘要包含关键参数、结果数量/状态、排序窗口、最近一次校验拒绝和复核结论；材料摘要仅表示最近一次投影，全部事件仍在 Events。回答节点只摘要目标/证据数量、投影缺口和带省略标记的答案预览。摘要最多4096字符，超限明确标记；与完整消息/结果共存，不减少原采集字段。完整span导出保留两者（仍受原脱敏/截断规则限制）；当前卡片复制只复制该卡片。旧记录不会自动补摘要。
+
+工具层排错：树中 `模型 · 工具查询规划` 是生成查询计划，`模型 · 工具计划复核` 是检查计划对用户要求的忠实程度（不是复核数据库结果）；`工具 · catalog_search` 是实际工具执行。工具下另列 `程序 · 计划校验`、`程序 · 复核输出校验`、`程序 · 工具输出校验` 三类独立节点，标题标明【通过】或【拒绝】，重复尝试分别展示；模型相关校验关联来源模型，拒绝显示错误。复核输出校验通过只表示报告格式和引用规则通过，模型的批准/修正结论另见 `model_verdict`。其他程序判断保留为事件。进入工具的 **Events** 查看 `程序 · …` 事件：上下文范围、计划校验/变更字段、计划复核结论、再次调用原因、执行计划、对象定位、条件筛选计数、排序窗口及返回摘要。事件的 `outcome` 表示处理结论，`details` 保存有限结构化信息；模型相关事件带 `model_span_id`。只复用已有判断和计数，不额外查询或调用模型，不记录逐商品判定/SQL/全量数据库行。
+
+`程序 · 材料投影` 在工具节点（交给调度模型）或请求根节点（交给回答模型）的 Events 中，按 evidence/invocation/operation ID 关联；记录投影前后字符数、限制、移除字段和保留商品数量，不复制完整材料。`destination=query|answer` 区分接收阶段。这是业务投影记录，和追踪自身的 `trace.input.truncated` 不同。
+
+脱敏覆盖凭据字段、当前配置中的明确密钥、认证文本、连接凭据、邮箱/手机号及常见个人信息字段；
+不采集 HTTP 头、Settings、客户端或连接对象。自由文本脱敏为规则处理，不是语义级个人信息识别。
+通用输入/输出/事件快照上限 32768 字符，超限显示原始长度和“已截断”。模型消息每个方向共用 32768 字符及 180 个内容属性上限（含该方向附属参数），超限以 `trace.input.truncated` / `trace.output.truncated` 和提示明确标记；不重复保存完整模型报文。深层内容也明确标记。
+不保存附件，不宣称截断内容完整。快照即时序列化，后续对象修改不影响记录。
+
+不记录普通内部函数、SQL、数据库全量行、每步 Agent 状态、逐 Token 事件或未返回的内部思考；
+不做自动评分、Prompt 管理、回放、独立指标或自建追踪页面。停止说明仍仅作审计，不改回答输入。
+未使用 `llm.model_name` 自动估价字段；模型名称在 `model` 属性和实际请求中查看。
+
+平台离线或导出失败不重跑模型/工具、不改变预算和业务结果。后台队列最多 256 span，每批最多16条，
+发送超时1秒，500ms触发批次；退出最多等待2秒。失败、队列满或退出超时会提示记录可能丢失。
+恢复平台后新请求可继续导出；已经丢失的记录不会自动补传。
+
+### 隔离模拟演示及页面检查
+
+```bash
+make trace-demo
+```
+
+这是显式入口：正式新 runtime + MockTransport 模型 + 内存 repository + 合成商品；
+保留离线保护，只在本进程允许 `127.0.0.1:6006`，不接触真实 LLM 或商城数据库，不在默认测试收集内。
+预热后比较开/关追踪的一组相同输入，只导出开启组的一条 trace。报告位于 `artifacts/tests/phoenix-demo/report.json`。
+演示包含一次参数拒绝、两次工具失败、一次补查成功，以及使用299元成功结果的最终回答。
+演示还通过平台只读 API 确认记录入库；API 验证不等于页面验收。
+
+页面检查顺序：进入项目 → 找到日志 trace ID 对应的“用户请求” → 依次展开三个 `catalog_search` →
+对照各自 input/output 和错误状态 → 展开工具规划模型子节点 → 查看“独立回答”的 input 与 output。
+如果模型提交错参数，看前一条查询模型输出和根记录的拒绝事件；如果参数正确但工具失败，看 TOOL 的错误和内部模型；
+如果工具已成功而回答遗漏，看回答输入是否包含该 evidence，再对照原始回答与最终答案。
+查看超限标记，不能把缺少的内容当成没有发生。
+
+### 环境、持久化与清理
+
+- 平台镜像：`docker.io/arizephoenix/phoenix:version-20.23.0`；容器：`pc-ecommerce-agent-phoenix`。
+- 数据：Podman 专用卷 `pc-ecommerce-agent-phoenix-data`，容器内 `/data/phoenix.db`（SQLite）；与商城数据库/卷无关。
+- 后端：`backend/.venv`；uv新增 `opentelemetry-exporter-otlp-proto-http==1.45.0`，另带最少HTTP transport依赖，复用已有 OTel；不安装 Phoenix 服务。
+- 前端：沿用 `frontend/node_modules`，无前端改动。
+- 停止及移除容器不会删除专用卷；需重建时先停止，仅移除上述 Phoenix 容器，再 `make trace-up`，会复用原卷。
+- 清理全部记录是单独的破坏性操作：确认不再需要后，先停止并移除上述 Phoenix 容器，才手动删除上述专用卷；stop/up均不执行清理。
+
+本机若无法直接拉取，可从官方仓库取得匹配架构的 OCI 归档，`podman load -i <归档>` 后核对版本与镜像ID，
+再删除临时归档。此机器本轮通过已有系统代理完成 ARM64 镜像下载，校验后导入；临时下载目录已删除，未改网络设置。
+
+接入核对依据：[Strands 官方追踪](https://strandsagents.com/docs/user-guide/sdk/observability-evaluation/traces/)、
+[Phoenix 官方部署](https://arize.com/docs/phoenix/self-hosting/deploying-phoenix)。锁定 Strands 为1.61.1；
+其原生逻辑调用span不能逐一表示本项目适配器内的传输重试，且用量可能归零，独立 TextModel 也不在该边界内。
+因此首期复用已有模型客户端请求边界统一记录实际请求，使用私有 OTel provider，不叠加 SDK/OpenAI/HTTP 自动采集。
+
 <a id="configuration"></a>
 ## 配置说明
 
@@ -255,7 +350,7 @@ make frontend     # 终端 B：前端
 | 配置 | 说明 |
 | --- | --- |
 | `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | 默认 DeepSeek；base URL 留空时按 provider 选择 |
-| `AGENT_RUNTIME` | P3 开发选项：`legacy`（默认旧链路）或 `strands`（两阶段查询／独立回答）；重启后生效，一次请求只运行所选链路。联合验收未放行前不切默认值 |
+| `AGENT_RUNTIME` | `strands`（默认，两阶段查询／独立回答）或 `legacy`（显式切回旧链路）；重启后生效，一次请求只运行所选链路。默认切换按用户授权执行，不代表既有质量／成本及端到端验收已通过 |
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | 创建 PostgreSQL 容器时使用的数据库凭据 |
 | `DATABASE_URL` | 后端数据库连接，须与用户、密码及主机端口一致 |
 | `REDIS_URL` / `CHROMA_HOST` / `CHROMA_PORT` | 后端连接 Redis 与 Chroma 的地址 |
@@ -346,7 +441,7 @@ make check                 # 当前隔离测试、Ruff、前端构建
 ```bash
 make backend RUNTIME=strands
 make backend RUNTIME=legacy
-make backend                 # 保留环境变量 → .env → 代码默认 legacy 的优先级
+make backend                 # 保留环境变量 → .env → 代码默认 strands 的优先级
 ```
 
 `RUNTIME` 只接受 `strands` / `legacy`，不改 `.env`；保留 `BACKEND_HOST` / `BACKEND_PORT`。
@@ -355,10 +450,10 @@ API 经 `agent/factory.py` 延迟导入选中的 runtime，一次请求只执行
 两者使用当前共用工具。legacy 并非完整冻结基线，后续工具优化也影响它。
 历史恢复以 Git 为主，历史档案包及范围见 [历史档案与恢复](#history-archive)。
 
-旧链路现有本地追踪默认关闭，输出改为 `artifacts/traces/`。新链路完整可视化调用树仍由 P4
-Phoenix 计划跟踪（[AL-016](docs/development/issues.md#al-016本地可视化-trace尚未接入)），
-本轮没有平台启动命令或 Phoenix 存储。P3 10/11、P3A 11/12 均未放行，默认未切换。
-P5 改为满足原质量/成本条件后切换默认，并独立保留旧链路、退出默认加载和默认测试。
+旧链路现有本地追踪默认关闭，显式开启时仍使用原有 `artifacts/traces/` 行为。
+新loop通过本地Phoenix保存完整trace，启动和存储见[追踪说明](#local-phoenix-trace)；
+P4首期已验收，[AL-016已关闭](docs/development/issues.md#al-016)。默认runtime已按用户授权切为strands，legacy可显式切回。
+P3 10/11、P3A 11/12仍未放行；P5清理须满足原质量/成本条件，不因追踪验收自动开始。
 
 - **依赖更新**：后端修改 `pyproject.toml` 后在 `backend/` 执行 `uv lock`；前端通过 npm 更新并提交锁文件。普通安装保持锁定版本。
 - **知识更新**：修改 `backend/data/knowledge_documents.json` 后执行 `make knowledge-index` 并重启后端；`make knowledge-sync` 不会更新本地 JSON 索引。

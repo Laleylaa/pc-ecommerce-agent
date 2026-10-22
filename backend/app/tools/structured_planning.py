@@ -21,6 +21,13 @@ from app.core.llm_calls import (
     transport_retry_delay,
 )
 from app.core.llm_feedback import OutputErrorType, OutputValidationError, validation_feedback
+from app.core.loop_tracing import (
+    metadata,
+    program_event,
+    rejection,
+    tracing_active,
+    validation_step,
+)
 from app.core.tracing import trace_event
 from app.schemas.tool_plan_review import ToolPlanReview
 from app.tools.prompts.plan_review import build_review_prompt
@@ -210,6 +217,9 @@ async def generate_tool_plan(
         plan = schema.model_validate(plans[cache_key]).model_copy(deep=True)
         if validate is not None:
             validate(plan)
+        if tracing_active():
+            program_event("复用已验证计划", outcome="accepted", schema=schema.__name__,
+                          plan=plan.model_dump(mode="json"))
         return plan
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     original = json.loads(json.dumps(payload, ensure_ascii=False))
@@ -233,6 +243,10 @@ async def generate_tool_plan(
             validate(plan)
         if plans is not None:
             plans[cache_key] = plan.model_copy(deep=True)
+        if tracing_active():
+            program_event("计划就绪", outcome="accepted", related_model=True,
+                          schema=schema.__name__, reviewed=review, corrections=repairs,
+                          plan=plan.model_dump(mode="json"))
         return plan
 
     def timing(started: float, stage: str, attempt: int) -> dict:
@@ -253,6 +267,8 @@ async def generate_tool_plan(
         except (APIConnectionError, APIStatusError, httpx.HTTPError, TimeoutError) as exc:
             details = timing(started, stage, attempt) | transport_failure_details(exc)
             await trace_event("tool_model_attempt", **details, outcome="error")
+            program_event("模型传输失败", outcome="error", related_model=True,
+                          phase=phase, attempt=attempt + 1, error=details)
             if not retryable_transport_error(exc):
                 raise ModelCallError(
                     "planning_model_rejected", "Model request rejected", details=details,
@@ -269,18 +285,41 @@ async def generate_tool_plan(
                     code, "Tool planning transport budget exhausted", details=details,
                 ) from exc
             transports += 1
+            program_event("安排传输重试", outcome="retry", related_model=True,
+                          phase=phase, attempt=attempt + 1, delay_seconds=delay)
             await asyncio.sleep(delay)
             continue
         await trace_event(
             "tool_model_attempt", **timing(started, stage, attempt), outcome="success",
         )
         try:
-            data = parse_object(response.content)
+            with validation_step(
+                "计划校验" if phase == "plan" else "复核输出校验",
+                related_model=True, schema=schema.__name__, phase=phase, attempt=attempt + 1,
+            ):
+                data = parse_object(response.content)
+                if phase == "plan":
+                    require_decisions(data, required, schema=schema)
+                    plan = schema.model_validate_json(json.dumps(data | (trusted or {})))
+                    program_feedback = validate(plan) if validate is not None else None
+                    candidate = plan.model_dump(mode="json")
+                else:
+                    assessment = ToolPlanReview.model_validate(data)
+                    _validate_review(assessment, original, candidate)
+                    metadata(model_verdict=assessment.verdict,
+                             check_scope="复核结构与引用规则；通过不等于计划获准执行")
             if phase == "plan":
-                require_decisions(data, required, schema=schema)
-                plan = schema.model_validate_json(json.dumps(data | (trusted or {})))
-                program_feedback = validate(plan) if validate is not None else None
-                candidate = plan.model_dump(mode="json")
+                if tracing_active():
+                    changed = {
+                        key: {"submitted": data.get(key), "effective": value,
+                              "source": "trusted" if key in (trusted or {})
+                              else "schema_or_validation"}
+                        for key, value in candidate.items()
+                        if key not in data or data[key] != value
+                    }
+                    program_event("计划结构与规则校验", outcome="accepted", related_model=True,
+                                  schema=schema.__name__, attempt=attempt + 1,
+                                  changes=changed, assessment=program_feedback)
                 signature = json.dumps(candidate, sort_keys=True, ensure_ascii=False)
                 if signature in rejected_plans:
                     raise ModelCallError(
@@ -298,14 +337,20 @@ async def generate_tool_plan(
                         "program_checks": {"valid": True, "assessment": program_feedback},
                     }, ensure_ascii=False)),
                 ]
+                program_event("进入计划复核", outcome="review", related_model=True,
+                              schema=schema.__name__, attempt=attempt + 1)
                 messages, phase = list(review_messages), "review"
                 continue
-            assessment = ToolPlanReview.model_validate(data)
-            _validate_review(assessment, original, candidate)
             await trace_event(
                 "tool_plan_review", schema=schema.__name__, attempt=attempt + 1,
                 review=assessment.model_dump(mode="json"), corrections=repairs,
             )
+            program_event("计划复核结论", outcome=assessment.verdict, related_model=True,
+                          schema=schema.__name__, attempt=attempt + 1,
+                          corrections=repairs, next_action=(
+                              "final_validation" if assessment.verdict == "approve" else
+                              "stop" if assessment.verdict == "uncertain" or repairs >= max_repairs
+                              else "repair_plan"))
             if assessment.verdict == "approve":
                 phase = "plan"  # Final program errors must repair the plan, not the review.
                 return cache_and_return()
@@ -315,6 +360,7 @@ async def generate_tool_plan(
                     details={"review": assessment.model_dump(mode="json")},
                 )
             last_feedback = {"semantic_review": assessment.model_dump(mode="json")}
+            rejection(candidate, last_feedback, {"will_repair": repairs < max_repairs})
             if repairs >= max_repairs:
                 raise ModelCallError(
                     "planning_output_invalid", "Semantic correction budget exhausted",
@@ -332,6 +378,10 @@ async def generate_tool_plan(
         except (ValidationError, OutputValidationError) as exc:
             feedback = validation_feedback(exc)
             last_feedback = feedback
+            rejection(response.content, feedback, {"will_repair": repairs < max_repairs})
+            program_event("计划或复核输出校验", outcome="rejected", related_model=True,
+                          schema=schema.__name__, phase=phase, attempt=attempt + 1,
+                          feedback=feedback)
             await trace_event(
                 "tool_plan_validation_error", schema=schema.__name__, phase=phase,
                 attempt=attempt + 1, feedback=feedback,
@@ -353,6 +403,9 @@ async def generate_tool_plan(
                 ) from exc
             rejected_plans.add(fingerprint)
             repairs += 1
+            program_event("安排输出修正", outcome="repair", related_model=True,
+                          phase=phase, corrections=repairs,
+                          next_action="repair_review" if phase == "review" else "repair_plan")
             messages = [
                 *(review_messages if phase == "review" else base_messages),
                 HumanMessage(content=json.dumps({

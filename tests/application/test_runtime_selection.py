@@ -8,6 +8,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_default_runtime_is_loop_and_legacy_remains_explicit(monkeypatch):
+    from app.agent.factory import runtime_type
+    from app.core.config import Settings
+
+    monkeypatch.delenv("AGENT_RUNTIME", raising=False)
+    default = Settings(_env_file=None)
+    assert default.agent_runtime == "strands"
+    assert runtime_type(default.agent_runtime).__name__ == "AgentLoopRuntime"
+    monkeypatch.setenv("AGENT_RUNTIME", "legacy")
+    assert Settings(_env_file=None).agent_runtime == "legacy"
+
+
 def test_factory_rejects_unknown_runtime():
     from app.agent.factory import runtime_type
 
@@ -29,7 +41,7 @@ def test_make_runtime_is_process_configuration(selected):
 def test_make_rejects_invalid_runtime(selected):
     result = subprocess.run(
         ["make", "-n", "backend", f"RUNTIME={selected}"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT, capture_output=True, text=True, check=False,
     )
     assert result.returncode != 0
     assert "RUNTIME must be" in result.stderr
@@ -69,6 +81,6 @@ if {selected!r} == 'legacy':
 '''
     result = subprocess.run(
         [sys.executable, "-c", code], env=os.environ.copy(), cwd=ROOT,
-        capture_output=True, text=True, timeout=20,
+        capture_output=True, text=True, timeout=20, check=False,
     )
     assert result.returncode == 0, result.stderr

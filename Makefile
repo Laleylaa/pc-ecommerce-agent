@@ -20,13 +20,15 @@ PART_TYPES := case-accessory,case-fan,case,cpu-cooler,cpu,external-hard-drive,fa
 .PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate db-seed dataset data-import legacy-data-import knowledge-sync knowledge-index model-prepare backend-test agent-loop-test frontend-build check tools-test application-test legacy-test integration-test model-eval
 
 help:
+	@echo "trace-up/trace-stop/trace-status  Local Phoenix; independent persistent volume"
+	@echo "trace-demo      Synthetic runtime -> local Phoenix only; no LLM/database"
 	@echo "doctor          Check local tools and Podman connectivity (read-only)"
 	@echo "install         Install locked backend and frontend dependencies"
 	@echo "setup-local     First-time setup: install, validate config, init data/model"
 	@echo "infra-up        Start PostgreSQL, Redis, Chroma and wait for readiness"
 	@echo "infra-stop      Stop infrastructure; preserve containers and data"
 	@echo "infra-status    Show configured container status"
-	@echo "backend         Start backend; optional RUNTIME=strands|legacy (default unchanged)"
+	@echo "backend         Start backend; optional RUNTIME=strands|legacy (default strands; env overrides apply)"
 	@echo "frontend        Start frontend (separate terminal)"
 	@echo "db-status       Show applied and available migrations (read-only)"
 	@echo "db-migrate      Apply migrations; changes target database"
@@ -145,3 +147,16 @@ frontend-build:
 check:
 	$(MAKE) backend-test
 	$(MAKE) frontend-build
+
+.PHONY: trace-up trace-stop trace-status trace-demo
+trace-up:
+	./scripts/podman-trace.sh up
+
+trace-stop:
+	./scripts/podman-trace.sh stop
+
+trace-status:
+	./scripts/podman-trace.sh status
+
+trace-demo:
+	PYTHONPATH=backend:.:tests backend/.venv/bin/python -m tests.trace_demo

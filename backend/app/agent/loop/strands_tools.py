@@ -12,6 +12,7 @@ from app.agent.loop.evidence import EvidenceRecord
 from app.agent.loop.query_schema import GoalToolCall
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopLimit
+from app.core.loop_tracing import fields, payload, rejection, step
 
 
 class StrandsToolBindings:
@@ -76,6 +77,17 @@ class StrandsToolBindings:
         return call.model_copy(update={"arguments": arguments})
 
     async def _execute(self, tool: ToolUse, **_: Any) -> ToolResult:
+        with step(f"工具 · {tool['name']}", "TOOL") as span:
+            payload("input", tool["input"])
+            fields(tool_use_id=tool["toolUseId"], **{"tool.name": tool["name"]})
+            result = await self._execute_bound(tool)
+            if result["status"] == "error" and span is not None:
+                from opentelemetry.trace import StatusCode
+
+                span.set_status(StatusCode.ERROR, "tool failed or rejected")
+            return result
+
+    async def _execute_bound(self, tool: ToolUse) -> ToolResult:
         tool_use_id = tool["toolUseId"]
         try:
             if self.limit_reached:
@@ -98,6 +110,8 @@ class StrandsToolBindings:
                 "content": [{"json": self._observation(record)}],
             }
         except (AdmissionError, LoopLimit) as exc:
+            rejection(tool, str(exc), {"rejection": str(exc)})
+            payload("output", {"rejection": str(exc)})
             if isinstance(exc, LoopLimit):
                 # SDK executors turn ordinary exceptions into tool errors and continue.
                 # Preserve budget termination for the session's AfterTools hook.
