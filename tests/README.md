@@ -1,63 +1,201 @@
-# 离线测试
+# 测试入口、流程与职责
 
-从项目根运行，使用已有 `backend/.venv`；不安装依赖、不启动服务、不读取项目真实 `.env`。
+本目录包含离线隔离测试和显式实验。先确定测试目标、运行范围和数据影响，再选择入口。
+默认测试成功只说明隔离条件下的行为；真实工具、真实模型和端到端验收分别记录。
+本文是操作入口，不累计历史通过数，不以历史成绩说明当前实现已通过。
 
-| 入口 | 范围 | 模型 / 数据库 |
+- 复检已有结果：[通用复检手册](REVIEW.md)。
+- 商品单工具用例、数据前提、运行及复检：[catalog_search 手册](tools/catalog/REVIEW.md)。
+- 商品场景与缺口：[覆盖索引](tools/catalog/coverage.json)。
+- 开发与数据边界：[仓库约束](../AGENTS.md)。
+
+## 1. 测试如何分类
+
+测试目的与运行环境是两个独立维度。“冒烟”不代表离线，“business”不代表真实模型验收。
+
+| 按目的分类 | 要回答的问题 | 典型内容 |
 | --- | --- | --- |
-| `make agent-loop-test` | `agent_loop/business`、`smoke`、`contracts` | 模拟模型、模拟数据 |
-| `make tools-test` | 工具规则、查询构造、权限、故障 | 替身；少量 SQLite `:memory:` 合成表 |
-| `make application-test` | API、认证、记忆、基础设施及入口选择 | 模拟 HTTP transport、repository、服务 |
-| `make backend-test` | 上述三个集合及 Ruff | 全部离线，无收费调用 |
-| `make legacy-test` | 旧 Graph / DAG / 规划 / 恢复专属检查 | 显式、离线、默认不收集 |
-| `make check` | 默认隔离测试、Ruff、前端构建 | 不包含 legacy、integration、模型评测 |
-| `make integration-test ARGS=--isolated` | 独立 PostgreSQL 验证 | **真实数据库，会写入；本轮未执行** |
+| 冒烟 smoke | 最小代表路径能否执行并留下证据？ | 正式入口调用、输出返回、追踪关联 |
+| 基础核心功能 business | 主要用户目标是否正确完成？ | 找商品、查价格、列版本、查询订单 |
+| 边界／异常 | 极值、歧义、缺失和失败是否正确处理？ | 超量截断、无匹配、资料冲突、传输失败 |
+| 契约／隔离 contracts | 输入、输出及执行边界是否受约束？ | 参数类型、身份注入、预算、网络与数据库隔离 |
+| 缺陷回归 | 已发现的问题是否再次出现？ | 保留原触发输入、预期和缺陷依据 |
 
-单文件：`backend/.venv/bin/python tests/run.py tests/tools/catalog/test_catalog_search_tool.py -q`。
-默认配置只有根 `pytest.ini`，`backend/tests` 不再是入口。`tests/integration` 不参与默认收集。
-pytest 不自动加载环境第三方插件，只显式加载已审查的 `pytest_asyncio.plugin`。
+| 按环境／范围分类 | 模型与数据 | 能证明的范围 |
+| --- | --- | --- |
+| 离线隔离 | 模拟模型、合成数据、内存替身 | 确定性逻辑、契约及模拟条件下的行为 |
+| 真实单工具实验 | 正式工具、真实规划/复核、授权的数据读取及Trace | 该工具在冻结用例和当前数据下的行为 |
+| 集成测试 | 多组件、真实基础设施，可能写数据 | 明确列出的组件交互和持久化行为 |
+| 端到端测试 | 聊天入口、编排、工具、回答或前端等实际链路 | 本次真正经过的完整业务流程 |
 
-`tests/run.py` 在收集前装载 `support/offline.py`，阻断 socket/DNS、SQLAlchemy 实际连接、asyncpg；
-不读取仓库 `.env`，清除继承的密钥环境配置，使用空 key / 无效数据库目标。
-Python 子进程继承 `sitecustomize` 保护；TypeScript/SSR 子进程使用 `node_offline.cjs`。
-基础设施 shell 用例仅执行临时目录内的 Podman/curl/sleep 替身。网络标记直接报错，不提供放开保护的测试开关。
-保护不能替代入口和 fixture 审查：新增 subprocess、插件或真实服务用例必须先审查。
+边界与回归可以标注在同一用例中，不需要为了分类重复用例或预建空目录。
+现有pytest marker以根 `pytest.ini` 为准；本表不是新增marker声明。
 
-共享替身在 `support`，loop 专属替身在 `agent_loop/support`；评测和测试共用的合成领域数据在
-`evals/support`。不互相导入测试函数。混合文件已按函数拆分，旧规划专属检查保留在 legacy，
-业务断言没有删减。逐文件迁移清单随历史 ZIP 封存，摘要见 [历史档案与恢复](../README.md#history-archive)。
+## 2. 谁负责检查与验收
 
-真实 PostgreSQL 入口要求 `AGENT_LOOP_TEST_DATABASE_URL` 指向入口认可的隔离目标；其准备、写入、
-事务和清理都是真实数据库操作，回滚也不算只读。本轮禁止执行。模型评测及成本比较见
-[evals](../evals/README.md)，不属于 pytest 默认检查。
+| 角色 | 责任 | 判断边界 |
+| --- | --- | --- |
+| 检查程序 | 按运行前冻结的比较方式检查字段、集合、数值、排序和证据关联；保存逐项结果、汇总状态 | 不证明开放自然语言理解正确；退出码为零不等于业务通过 |
+| 被测工具内部模型 | 生成计划、执行工具内部复核；其输出也是被测对象 | 模型approve不等于独立验收 |
+| 独立复检LLM／代理 | 对照预标注阅读输入、全部相关尝试、实际输出和Trace，逐项判断语义并引用证据 | 不从工具结果生成标准答案，不擅自放宽条件，不推断未记录过程 |
+| 人工审阅者／业务负责人 | 确认业务标准、审阅简洁报告、按风险抽查证据、裁决歧义与决定是否接受 | 不要求逐条阅读所有原始JSON；未实际审阅不能标成人工已验收 |
 
-隔离通过仅证明模拟条件下的行为；不代表真实模型效果、SQL/数据库持久化或页面验收通过。
-旧测试说明随历史 ZIP 封存（包内 `archive/test-layout/`），
-不能作为本轮成绩。P3 10/11、P3A 11/12 未放行，P4 核心已接入；平台及页面范围见下方。
+报告必须说明判读者身份。LLM完成的是“独立LLM语义复检”，不是“人工已验收”。
+`checks/semantic.jsonl` 是语义判读载体，可由LLM或人填写，必须通过reviewer等元数据区分。
+旧报告里的“我的语义复检”等用语不能据此推断有人类审阅。
 
+技术结论与人工接受分别记录：必要硬检查、语义检查均通过且证据充分，才可给出技术“通过”；
+用户是否接受该结论、是否允许进入下一阶段，不能由程序或LLM代签。
+人工审阅仅在实际发生时另记审阅者、时间、决定及原因，不自动增加每个实验的审批步骤。
 
-## P4 Trace 验证
+## 3. 测试和复检流程
 
-`tests/agent_loop/contracts/test_local_trace.py` 使用内存导出器、MockTransport和内存repository；
-覆盖请求/工具/内部模型父子关联、实际输入输出、参数拒绝、两次失败及补查、并发隔离、
-脱敏/截断/即时快照、未知Token、回答修正、工具取消、失败导出、忽略环境中的云端地址及认证头。
-所有默认检查仍通过 `tests/run.py`，真实网络和数据库保护不变；离线入口强制默认关闭新追踪开关。
+### 新建或重跑真实工具实验
 
-`make trace-demo` 是单独显式入口，不参与默认收集；保留离线保护，**只在该进程允许127.0.0.1:6006**。
-使用同一正式runtime和受控合成场景，对照开关追踪的答案/调用次数，经正式批处理导出器发送，
-并用本地平台只读API确认入库。`--offline`仅使用内存采集器，不发送；可执行：
-
-```bash
-PYTHONPATH=backend:.:tests backend/.venv/bin/python -m tests.trace_demo --offline
+```text
+明确目标、类型、运行范围与已有授权
+  → 设计输入＋硬预期＋语义标准＋允许形式＋数据前提
+  → 独立核对数据，冻结用例、预期、版本和核对时间
+  → 检查数据影响、追踪上下文与预算上下文
+  → 显式执行正式入口，逐次保存输出、失败和Trace关联
+  → 程序硬检查与证据完整性检查
+  → 独立LLM／人工语义复检，逐项说明依据
+  → 汇总通过／失败／无法判定／未执行，生成简洁报告
+  → 人工审阅、抽查或裁决（按任务需要），另记接受决定
 ```
 
-报告在忽略的 `artifacts/tests/phoenix-demo/`。平台离线时演示业务仍通过，但导出验证入口明确以非零退出，
-不能把导出失败当作完整记录。页面需要手动按根README检查；API核验不是浏览器验收。
-本轮未运行真实LLM、商城数据库、integration、legacy测试或商城聊天；前端未改动，不重跑构建。
+- 运行授权不足时，在相关操作前取得授权；已有授权不重复询问。
+- 独立数据依据在调用前形成；数据变化时记录变化，不偷偷更新预期后判通过。
+- 正式工具测试必须经过绑定、参数与输出校验，不能用直接调用repository替代。
+- 原始失败与重试全部保留；修改用例、预期或脚本后另立版本，不覆盖旧批次。
+- 有明确失败时记录失败，并注明其他尚未判定的部分；不因缺Trace掩盖已知失败。
+- 不在实验中顺手修改生产实现或商城数据。隔离数据准备需另有明确授权。
 
-OpenInference 展示回归覆盖：实际请求与角色消息/文本块逐项对应、混合返回动作分类、工具调用关联、回答材料、脱敏与字符/属性限额；不依赖在线 Phoenix。显式平台演示另核验接收端的消息字段与标题。分类只表示模型提交内容，不替代校验结果或效果评测。
+### 仅复检已有结果
 
-工具观测补充：追踪契约验证实际CatalogSearchPlanner的非法复核路径→反馈修正→批准→查询，比较追踪开关时答案、模型及repository调用数；验证筛选计数和16000字符材料投影事件。模拟repository不连接业务数据库。显式平台演示另核对程序事件入库，报告仍只保存摘要。
+先读取冻结用例和原始证据，归档旧分析，再运行适用检查器、独立语义判读、重新生成报告。
+默认不重跑工具、不调用模型服务、不重查当前业务数据库；补取原Phoenix记录按任务授权进行。
+完整步骤、状态优先级和历史保留规则见 [REVIEW.md](REVIEW.md)。
 
-Metadata摘要验证：复用追踪场景核对关键动作、返回数量、拒绝及复核结论；保留原始消息逐字段断言，验证摘要独立限长、脱敏及快照。平台API将metadata展平为metadata.*，显式演示按接收端格式核验。
+### 离线确定性测试
 
-关键校验节点验证：计划校验、每次复核输出校验及工具输出契约校验作为工具下独立CHAIN节点，核对通过/拒绝、父子关系及来源模型ID；非法复核路径修正逐次保留，工具返回不合契约时追踪开关不改变错误结果。其他程序判断仍核对Events，不新增普通函数节点。
+输入、替身和断言可直接写在pytest模块里，通过 `tests/run.py` 执行。
+不强制拆成JSON、不强制Phoenix、不强制增加LLM语义判读。
+需要的是独立且有业务含义的断言，以及明确说明隔离结果的证明范围。
+
+## 4. 文件和模块职责
+
+| 文件／目录 | 作用 |
+| --- | --- |
+| `test_*.py` | pytest测试，通常包含合成输入、替身配置及确定性断言 |
+| `*_cases.json` | 显式实验的输入、硬预期、语义标准、数据前提和允许形式 |
+| `run_*.py` | 按类型显式执行实验并保存证据；根 `run.py` 是离线pytest入口，职责不同 |
+| `check_*.py` | 提取证据、执行比较、合并独立判读和生成报告；具体副作用见各入口 |
+| `coverage.json` | 场景对应、数据需求和未覆盖项，不是测试成绩 |
+| `support/` | 共用替身、辅助函数和隔离设施；不是待删除的运行产物 |
+| 模块 `REVIEW.md` | 专项业务判读与脚本使用；通用原则引用根手册，不复制多份 |
+| `__init__.py` | 轻量包入口，不用于启动外部操作 |
+
+| 模块 | 测试对象与文件用途 |
+| --- | --- |
+| `agent_loop/business/` | 用户目标、多轮引用、任务批次和工具衔接的隔离场景 |
+| `agent_loop/smoke/` | runtime、API及回答等代表路径；目录名不表示使用真实模型 |
+| `agent_loop/contracts/` | schema、证据、预算、适配、Trace和故障边界；部分测试使用受控前端子进程 |
+| `agent_loop/support/` | loop专属替身、模拟模型和Trace场景 |
+| `tools/catalog/` | 当前JSON为单工具实验标注；分类型runner、检查器、专项手册与覆盖索引。已有分批真实实验；预期争议及适用版本以专项手册为准 |
+| `tools/orders/` | 订单身份、用户归属、建议及查询行为的隔离测试 |
+| `tools/knowledge/` | 政策／知识／网页检索的工具契约和合成检索场景 |
+| `tools/execution/` | 工具执行、并发和目标流转相关隔离场景 |
+| `application/` | API、认证、记忆、配置、入口选择及共用应用行为；旧命名不单独决定是否作废 |
+| `archives/` | 历史测试ZIP的原本地存放位置；原 `legacy/` 已按用户要求打包移除，压缩包不随仓库分发 |
+| `integration/` | 显式真实PostgreSQL验证，可能写入和清理隔离数据 |
+| `trace_demo.py` | 合成场景追踪演示；平台接收验证不等于真实模型业务验收 |
+
+真实工具实验结果采用以下阅读层次；其他既有测试不为统一外观强行改目录：
+
+```text
+results/<批次>/
+  report.md             给人看的摘要、逐例结论、失败原因和限制
+  evidence/             冻结输入、独立数据、环境、原始调用与Trace
+  checks/
+    automatic.jsonl     程序逐项比较和追踪检查
+    semantic.jsonl      有身份标识的独立语义判断、依据和理由
+    history/            复检时保存旧分析与报告
+```
+
+catalog的results已忽略，保留 `.gitkeep`。其他模块的忽略配置须单独核对，不假设一概忽略。
+不提交密钥、令牌和无关隐私。结果缺失时不能借“可重跑”声称原批次通过。
+
+## 5. 现有运行入口与隔离保护
+
+从仓库根目录使用已有 `backend/.venv`，不为运行测试自动安装依赖或启动服务。
+
+| 入口 | 范围与影响 |
+| --- | --- |
+| `make agent-loop-test` | loop三个隔离集合 |
+| `make tools-test` | `tools` 下pytest测试；不执行catalog显式runner |
+| `make application-test` | 应用隔离测试 |
+| `make backend-test` | 默认隔离集合与Ruff |
+| `make check` | 上述检查加前端构建，不含真实实验 |
+| `make legacy-test` | 原测试目录已归档，当前不可用；根Makefile保留未改，恢复兼容测试后才可使用 |
+| `make integration-test ARGS=--isolated` | 真实隔离PostgreSQL，包含写操作，须确认目标与授权 |
+| catalog `run_*.py --live` | 显式单工具实验，具体prepare/run及绑定方式见专项手册 |
+| `make trace-demo` | 合成场景发送本地Phoenix并核对API接收；不是真实LLM实验 |
+
+单文件离线示例（不是本次执行记录）：
+
+```bash
+backend/.venv/bin/python tests/run.py tests/application/auth/test_auth_service.py -q
+```
+
+根 `pytest.ini` 默认收集 `agent_loop`、`tools`、`application`；不默认收集legacy和integration。
+`tests/run.py` 在收集前装载 `support/offline.py`，阻断网络、真实数据库及真实凭据读取，
+关闭第三方插件自动加载，仅显式加载已审查插件。
+Python子进程继承 `support/bootstrap/sitecustomize.py`；受控Node子进程使用 `node_offline.cjs`。
+不得关闭这些保护来解决测试失败；新增子进程、插件或fixture要审查导入与数据副作用。
+
+`trace_demo.py --offline` 仅内存采集；平台模式有该进程专用的本地Phoenix例外，不能挪用于默认测试。
+integration入口要求认可的 `AGENT_LOOP_TEST_DATABASE_URL` 隔离目标；回滚也不等于只读。
+真实模型、数据库和Phoenix实验不得混入默认pytest或make check。
+
+## 6. 当前测试审计与维护决定
+
+以下为2026-10-22、`refactor/agent-loop` 工作区的静态审计，不是执行成绩。
+归档前盘点105个 `test_*.py` 模块：loop 31、application 26、tools 10、legacy 38。
+显式 `app.*`／`tests.*` 导入的本地模块路径扫描未发现缺失，但未证明符号、fixture、断言或运行有效。
+
+| 对象 | 已确认情况 | 处理决定 |
+| --- | --- | --- |
+| 本README | 原单文件例子指向已删除的catalog测试，混有阶段历史成绩，缺少显式实验职责说明 | 已重写；不复制旧成绩作为当前证据 |
+| `support/tool_plan_fixtures.py::search_plan` | 仍生成当前SearchPlan禁止的name/keywords，且未提供模型必需的unresolved_requirements | 待按引用链迁移；保留用例意图，不从生产schema默认值反推测试预期 |
+| `support/tool_planning.py::scripted_review` | 仍返回checks，当前ToolPlanReview禁止额外字段、使用verdict/reason | 待迁移共用模拟复核及相关断言；默认approve仅为执行替身，不是语义验收 |
+| 同文件 `Repository` | 仅有旧load签名；当前商品引擎还需要load_identity、aggregate_prices及sku_ids筛选 | 按实际引用场景补齐独立替身，不能只改模型JSON便宣称完成迁移 |
+| 引用上述辅助模块的测试 | 包括订单、工具执行、LLM反馈、规划执行、local Trace和部分legacy场景 | 逐项判断受影响分支；不能一律认定整文件失效或删除 |
+| catalog原13个pytest文件 | 任务开始前已处于删除状态 | 保留已有工作区状态；新增真实实验不等于离线契约覆盖已经补齐 |
+| loop、认证、权限、其他工具及隔离设施 | 抽读可见明确契约或业务职责，未证明全部适配当前代码 | 保留；后续按影响选择性验证，不宣称当前全部通过 |
+| legacy／integration | 静态审计时均有显式入口；随后legacy按用户授权归档移除 | integration保留；legacy归档不表示所有断言失效 |
+
+兼容字段需要准确区分：SearchPlan目前仍保留unsupported_requirements和clarification_requirements；
+不能把它们与已经禁止的name/keywords一起笼统认作不存在。
+共用fixture迁移尚未完成；上述静态审计本身未运行测试，后续商品实验不能替代这些隔离测试的迁移验收。
+
+后续迁移顺序：模拟计划／复核契约 → repository替身 → 直接引用者及其断言 →
+相关离线检查 → 真实单工具实验。旧失败先分类为fixture过时、业务缺陷或证据不足，不能以删用例消除失败。
+
+删除须有逐项依据：能力已退役、断言对应规则已被明确废弃，或存在覆盖相同意图的有效替代。
+删除前核对引用和默认入口，保留必要的历史缺陷意图；重复fixture也不能只凭名称相似合并。
+上述审计没有证据支持“多数测试都失效”或整目录清空。随后用户单独授权将legacy打包删除；这属于历史测试归档，不表示其中所有断言已失效。
+
+### legacy归档记录
+
+2026-10-22，按用户授权将 `tests/legacy/` 打包并删除原目录。
+原本地压缩包路径：`archives/pc-ecommerce-agent-tests-legacy-20261022-225401.zip`。
+2026-10-23整理提交时该路径已不存在；外置位置未核验，不提供失效下载链接。
+包内保存102个原文件（含已有缓存），附 `MANIFEST.json` 逐文件SHA256与 `RESTORE.md`；
+ZIP CRC与逐文件内容核验通过后才删除原目录。压缩包不纳入版本库；忽略规则防止重新放回原目录时误提交。
+ZIP SHA256：`810eb253b2cca6c9f3cacd68eef14d6c7089867d5f97b741002ef246bb0c14c5`。
+
+这是legacy测试目录快照，不含共用support、生产代码或完整依赖，不保证独立可运行。
+恢复应在独立目录核验后使用兼容项目版本，不覆盖当前工作区。原已跟踪文件也可从归档前Git版本恢复；缓存与包内附加材料不在Git中。归档操作未运行测试。
+根Makefile的legacy-test入口和pytest排除项未修改；默认测试不收集此目录。
+前述105模块为归档前盘点，移除38个legacy测试模块后现存67个；其余测试保留。

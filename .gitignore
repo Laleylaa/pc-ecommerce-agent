@@ -118,5 +118,12 @@ Desktop.ini
 # Layout migration: local snapshots, generated evaluations and trace exports
 /artifacts/
 
+# 商品工具测试运行产物；保留目录占位文件
+/tests/tools/catalog/results/*
+!/tests/tools/catalog/results/.gitkeep
+
 # 待手动移到项目外的本地历史档案包
 /pc-ecommerce-agent-history-*.zip
+
+# 本地历史测试档案，不随测试源码提交
+/tests/archives/*.zip

@@ -1,0 +1,1127 @@
+{
+  "version": "selection_ranking-design-2-natural-names-1",
+  "type": "selection_ranking",
+  "design_status": "not_executed",
+  "common_hard": [
+    [
+      "ok",
+      "eq",
+      true
+    ],
+    [
+      "output.contract_version",
+      "eq",
+      "4"
+    ]
+  ],
+  "common_semantic": [
+    {
+      "id": "intent",
+      "criterion": "按逐例目标区分找候选、查事实、列版本；所有所问字段保留，失败路径不得伪装为查询成功。",
+      "evidence": [
+        "冻结输入与逐例标注",
+        "实际计划和工具输出"
+      ]
+    },
+    {
+      "id": "identity",
+      "criterion": "逐例对象、编号来源和范围不能被替换或扩大；相似身份不得报价；身份层级不由筛后数量决定。",
+      "evidence": [
+        "独立原始行",
+        "输入/规划",
+        "对象定位事件",
+        "facts或products"
+      ]
+    },
+    {
+      "id": "constraints",
+      "criterion": "逐例条件、操作符、强度、否定与排序完整保留；不新增现货要求；所有条件在同一SKU成立。",
+      "evidence": [
+        "每次计划输出",
+        "conditions与condition_checks",
+        "SQL原始行及规格来源"
+      ]
+    },
+    {
+      "id": "population",
+      "criterion": "按逐例预期核对适用集合、价格/数量、排序和窗口、完整性；未知不算否定，列表为空不自动算无匹配。",
+      "evidence": [
+        "预先独立SQL依据",
+        "筛选/聚合/窗口事件",
+        "输出校验前与正式结果"
+      ]
+    },
+    {
+      "id": "review",
+      "criterion": "读取所有规划、复核、修正和校验记录；approve不代替人工判断。必要证据缺失判无法判定；已明确违反必要标准则失败并保留其他缺口。",
+      "evidence": [
+        "完整Trace",
+        "错误/尝试记录",
+        "预标注trace_route"
+      ]
+    }
+  ],
+  "baseline_policy": "独立只读SQL只在显式--prepare时执行；eligible不成立或缺绑定则未执行。oracle值在工具调用前冻结；运行前重读必须一致。不要用工具返回生成预期。",
+  "cases": [
+    {
+      "id": "sr-01",
+      "input": {
+        "query": "Keychron 星轴 K01 机械键盘里，黑色而且价格正好204元的版本有吗，多少钱？"
+      },
+      "intent": "黑色SKU385价格199，价格204的SKU386为白色；不能跨SKU拼条件；lookup不得用替代价。",
+      "semantic_expectation": "黑色SKU385价格199，价格204的SKU386为白色；不能跨SKU拼条件；lookup不得用替代价。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。 商品名称保留品牌、型号及明确版本；品牌可保留在名称或等价brand硬条件中；不得从型号数字猜target编号。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "lookup"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "set_eq",
+          [
+            "price"
+          ]
+        ],
+        [
+          "output.status",
+          "eq",
+          "no_match"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "no_matching_sku"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "empty"
+        ],
+        [
+          "output.products",
+          "eq",
+          []
+        ],
+        [
+          "output.facts",
+          "eq",
+          null
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.query_plan.category",
+          "one_of",
+          [
+            null,
+            "键盘"
+          ]
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ]
+      ],
+      "condition_expectation": [
+        {
+          "key": "color",
+          "operator": "eq",
+          "values": [
+            "黑色"
+          ],
+          "strength": "requirement",
+          "numeric": false,
+          "accepted_values": [
+            [
+              "黑色"
+            ],
+            [
+              "black"
+            ]
+          ]
+        },
+        {
+          "key": "price",
+          "operator": "eq",
+          "values": [
+            "204"
+          ],
+          "strength": "requirement",
+          "numeric": true
+        }
+      ],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33) AND (SELECT specs_json->>'color'='黑色' FROM sku WHERE id=385) AND (SELECT specs_json->>'color'='白色' FROM sku WHERE id=386) AND NOT EXISTS(SELECT 1 FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id IN(385,386) AND lower(trim(k.name)) IN('color','颜色') AND v.value<>(SELECT specs_json->>'color' FROM sku WHERE id=a.sku_id)) AND (SELECT count(*)=1 FROM sku WHERE spu_id=33 AND price=204)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN (33,41)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "黑色SKU385价格199，价格204的SKU386为白色；不能跨SKU拼条件；lookup不得用替代价。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "黑色SKU385价格199，价格204的SKU386为白色；不能跨SKU拼条件；lookup不得用替代价。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ],
+      "allowed_identity_brand": "Keychron"
+    },
+    {
+      "id": "sr-02",
+      "input": {
+        "query": "Keychron 星轴 K01 机械键盘的版本里，只要不超过254元的，最好不超过204元，没有也可以，按价格从高到低列3个。",
+        "limit": 3
+      },
+      "intent": "硬price<=254，软price<=204；偏好优先于价格降序，再截3个；不满足软偏好的SKU396仍可返回。",
+      "semantic_expectation": "硬price<=254，软price<=204；偏好优先于价格降序，再截3个；不满足软偏好的SKU396仍可返回。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。 商品名称保留品牌、型号及明确版本；品牌可保留在名称或等价brand硬条件中；不得从型号数字猜target编号。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "variants"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "required_optional_set",
+          {
+            "required": [
+              "variants"
+            ],
+            "optional": [
+              "price"
+            ]
+          }
+        ],
+        [
+          "output.status",
+          "eq",
+          "success"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "matches_found"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "products"
+        ],
+        [
+          "output.products.*.sku_id",
+          "ordered_eq",
+          [
+            386,
+            385,
+            396
+          ]
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_desc"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          12
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.query_plan.category",
+          "one_of",
+          [
+            null,
+            "键盘"
+          ]
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ]
+      ],
+      "condition_expectation": [
+        {
+          "key": "price",
+          "operator": "lte",
+          "values": [
+            "254"
+          ],
+          "strength": "requirement",
+          "numeric": true
+        },
+        {
+          "key": "price",
+          "operator": "lte",
+          "values": [
+            "204"
+          ],
+          "strength": "preference",
+          "numeric": true
+        }
+      ],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN (33,41)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "硬price<=254，软price<=204；偏好优先于价格降序，再截3个；不满足软偏好的SKU396仍可返回。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "硬price<=254，软price<=204；偏好优先于价格降序，再截3个；不满足软偏好的SKU396仍可返回。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ],
+      "allowed_identity_brand": "Keychron"
+    },
+    {
+      "id": "sr-03",
+      "input": {
+        "query": "在这些型号里找键盘，按价格从低到高给我1款。",
+        "scope": {
+          "spu_ids": [
+            33,
+            34
+          ]
+        },
+        "limit": 1
+      },
+      "intent": "可信scope内两个型号整体候选先排序再截1款；选择最低适用价格更低的SPU33。",
+      "semantic_expectation": "可信scope内两个型号整体候选先排序再截1款；选择最低适用价格更低的SPU33。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "set_eq",
+          []
+        ],
+        [
+          "output.status",
+          "eq",
+          "success"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "matches_found"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "products"
+        ],
+        [
+          "output.products.*.spu_id",
+          "ordered_eq",
+          [
+            33
+          ]
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          1
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          2
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ],
+        [
+          "output.query_plan.category",
+          "eq",
+          "键盘"
+        ]
+      ],
+      "condition_expectation": [],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33) AND (SELECT count(*)=12 AND min(s.price)=212 AND bool_and(s.status=1 AND p.status=1 AND p.category_id=(SELECT id FROM category WHERE name='键盘')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=34)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN(33,34)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "可信scope内两个型号整体候选先排序再截1款；选择最低适用价格更低的SPU33。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "可信scope内两个型号整体候选先排序再截1款；选择最低适用价格更低的SPU33。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ],
+      "context_note": "“这些型号”指调用方提供的已选商品卡片集合；scope为可信上下文，不由用户说编号。"
+    },
+    {
+      "id": "sr-04",
+      "input": {
+        "query": "帮我找一下Keychron 星轴 K01 机械键盘。"
+      },
+      "intent": "普通找候选使用search；卡片只预览1个SKU但全型号匹配计数12、价格199～254，不把预览当全集。",
+      "semantic_expectation": "普通找候选使用search；卡片只预览1个SKU但全型号匹配计数12、价格199～254，不把预览当全集。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。 商品名称保留品牌、型号及明确版本；品牌可保留在名称或等价brand硬条件中；不得从型号数字猜target编号。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "set_eq",
+          []
+        ],
+        [
+          "output.status",
+          "eq",
+          "success"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "matches_found"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "products"
+        ],
+        [
+          "output.products.*.spu_id",
+          "set_eq",
+          [
+            33
+          ]
+        ],
+        [
+          "output.products.0.series_sku_count",
+          "eq",
+          12
+        ],
+        [
+          "output.products.0.candidate_sku_ids",
+          "set_eq",
+          [
+            385
+          ]
+        ],
+        [
+          "output.products.0.variant_details_complete",
+          "eq",
+          false
+        ],
+        [
+          "output.products.0.series_min_price",
+          "decimal_eq",
+          "199"
+        ],
+        [
+          "output.products.0.series_max_price",
+          "decimal_eq",
+          "254"
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ],
+        [
+          "output.query_plan.category",
+          "one_of",
+          [
+            null,
+            "键盘"
+          ]
+        ]
+      ],
+      "condition_expectation": [],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN (33,41)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "allowed_identity_brand": "Keychron",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "普通找候选使用search；卡片只预览1个SKU但全型号匹配计数12、价格199～254，不把预览当全集。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "普通找候选使用search；卡片只预览1个SKU但全型号匹配计数12、价格199～254，不把预览当全集。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sr-05",
+      "input": {
+        "query": "Keychron 星轴 K01 机械键盘有哪些版本？按价格从低到高列50个。",
+        "limit": 50
+      },
+      "intent": "50请求合法，执行上限20而实际仅12；不得编造20个，也不能说本次有被窗口隐藏的版本。",
+      "semantic_expectation": "50请求合法，执行上限20而实际仅12；不得编造20个，也不能说本次有被窗口隐藏的版本。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。 商品名称保留品牌、型号及明确版本；品牌可保留在名称或等价brand硬条件中；不得从型号数字猜target编号。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "variants"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "required_optional_set",
+          {
+            "required": [
+              "variants"
+            ],
+            "optional": [
+              "price"
+            ]
+          }
+        ],
+        [
+          "output.status",
+          "eq",
+          "success"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "matches_found"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "products"
+        ],
+        [
+          "output.requested_count",
+          "eq",
+          50
+        ],
+        [
+          "output.limit",
+          "eq",
+          20
+        ],
+        [
+          "output.limit_capped",
+          "eq",
+          true
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          12
+        ],
+        [
+          "output.products.*.sku_id",
+          "ordered_eq",
+          [
+            385,
+            386,
+            387,
+            388,
+            389,
+            390,
+            391,
+            392,
+            393,
+            394,
+            395,
+            396
+          ]
+        ],
+        [
+          "output.diagnostic_codes",
+          "contains",
+          "display_limit_capped"
+        ],
+        [
+          "output.is_exhaustive",
+          "eq",
+          true
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.query_plan.category",
+          "one_of",
+          [
+            null,
+            "键盘"
+          ]
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ]
+      ],
+      "condition_expectation": [],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN (33,41)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "50请求合法，执行上限20而实际仅12；不得编造20个，也不能说本次有被窗口隐藏的版本。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。 必须列版本；可附带价格，不因多出price失败；不得遗漏版本、改变筛选、排序或返回范围。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "50请求合法，执行上限20而实际仅12；不得编造20个，也不能说本次有被窗口隐藏的版本。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ],
+      "allowed_identity_brand": "Keychron"
+    },
+    {
+      "id": "sr-06",
+      "input": {
+        "query": "在这些型号里找价格不超过198元的键盘，按价格从低到高给我1款。",
+        "scope": {
+          "spu_ids": [
+            33
+          ]
+        },
+        "limit": 1
+      },
+      "intent": "无严格匹配，普通search可给同身份范围、仅价格这一维不同的替代；仍保留price<=198硬要求，结果不能标exact。",
+      "semantic_expectation": "无严格匹配，普通search可给同身份范围、仅价格这一维不同的替代；仍保留price<=198硬要求，结果不能标exact。 必须结合运行前hard、condition_expectation、oracle与trace_route逐项判读；反向行为判失败。",
+      "acceptance": "允许空格/顺序与审计理由措辞变化，不允许改变对象、条件、所问字段或范围；额外条件不接受，除明确标注的品牌等价身份。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.query_plan.requested_fields",
+          "set_eq",
+          []
+        ],
+        [
+          "output.status",
+          "eq",
+          "partial"
+        ],
+        [
+          "output.reason_code",
+          "eq",
+          "alternatives_found"
+        ],
+        [
+          "output.result_type",
+          "eq",
+          "products"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "alternative"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          true
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          0
+        ],
+        [
+          "output.products.*.spu_id",
+          "set_eq",
+          [
+            33
+          ]
+        ],
+        [
+          "output.products.0.candidate_sku_ids",
+          "set_eq",
+          [
+            385
+          ]
+        ],
+        [
+          "output.query_plan.disposition",
+          "eq",
+          "ready"
+        ],
+        [
+          "output.query_plan.unresolved_requirements",
+          "eq",
+          []
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.query_plan.target",
+          "eq",
+          null
+        ],
+        [
+          "output.query_plan.category",
+          "eq",
+          "键盘"
+        ]
+      ],
+      "condition_expectation": [
+        {
+          "key": "price",
+          "operator": "lte",
+          "values": [
+            "198"
+          ],
+          "strength": "requirement",
+          "numeric": true
+        }
+      ],
+      "oracle_sql": "SELECT jsonb_build_object('eligible',coalesce(((SELECT count(*)=12 AND array_agg(s.id ORDER BY s.id)=ARRAY[385,386,387,388,389,390,391,392,393,394,395,396]::bigint[] AND bool_and(s.price=199+(s.id-385)*5 AND s.status=1 AND p.status=1 AND p.title='Keychron 星轴 K01 机械键盘' AND p.category_id=(SELECT id FROM category WHERE name='键盘')) AND bool_and(p.brand_id=(SELECT id FROM brand WHERE name='Keychron')) FROM sku s JOIN spu p ON p.id=s.spu_id WHERE p.id=33)),false),'rows',coalesce(jsonb_agg(jsonb_build_object('sku_id',s.id,'spu_id',p.id,'sku_title',s.title,'spu_title',p.title,'brand',b.name,'category',(SELECT name FROM category WHERE id=p.category_id),'price',s.price::text,'stock',s.stock,'sku_status',s.status,'spu_status',p.status,'specs_json',s.specs_json,'attributes',(SELECT coalesce(jsonb_agg(jsonb_build_object('key',k.name,'value',v.value) ORDER BY k.name,v.value),'[]'::jsonb) FROM goods_attribute_relation a JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id WHERE a.sku_id=s.id)) ORDER BY s.id),'[]'::jsonb)) FROM sku s JOIN spu p ON p.id=s.spu_id JOIN brand b ON b.id=p.brand_id WHERE p.id IN (33,41)",
+      "binding_required": [],
+      "data_status": "designed_not_verified",
+      "trace_route": "model",
+      "comparison_notes": "eq精确比较；set_eq忽略顺序但保留成员数；ordered_eq要求顺序；decimal_eq/decimal_list_eq只接受数字及元、人民币、RMB、CNY、￥、¥等值形式；contains必须包含；contains_mapping逐键值包含；one_of预先列出允许值。条件列表无序一一对应，operator/strength精确；条件值仅接受accepted_values中的预声明等价形式。路径*投影列表，.0读取首项。",
+      "semantic_checks": [
+        {
+          "id": "intent",
+          "criterion": "无严格匹配，普通search可给同身份范围、仅价格这一维不同的替代；仍保留price<=198硬要求，结果不能标exact。",
+          "fail_if": "操作或所问字段与hard不一致；用户目标被替换。",
+          "evidence": [
+            "input.query",
+            "hard",
+            "实际规划/复核输出",
+            "正式result"
+          ]
+        },
+        {
+          "id": "identity",
+          "criterion": "核对本例input内名称/编号与scope交集；固定编号须经本例oracle_sql核对。对象身份以原请求为准，不以筛后数量改层级。",
+          "fail_if": "改变型号数字/品牌、编造target、扩大scope、将未确认身份直接报价。",
+          "evidence": [
+            "input",
+            "baseline原始行及绑定来源",
+            "对象定位事件",
+            "query_plan.target/search_text",
+            "facts.target/products/identity_suggestions"
+          ]
+        },
+        {
+          "id": "constraints",
+          "criterion": "逐一核对condition_expectation的条件、operator、strength及预允许值；额外条件只允许allowed_identity_brand。核对所问字段与排序。",
+          "fail_if": "丢条件、增加现货等限制、软变硬、硬变软、跨SKU拼配置、把事实询问改成筛选。",
+          "evidence": [
+            "condition_expectation",
+            "hard",
+            "每次计划及复核",
+            "独立原始行/specs/attributes",
+            "可用的condition_checks"
+          ]
+        },
+        {
+          "id": "population",
+          "criterion": "无严格匹配，普通search可给同身份范围、仅价格这一维不同的替代；仍保留price<=198硬要求，结果不能标exact。 依据独立快照逐项核对集合、数量、上下限、完整性及窗口；本例不适用的维度说明原因。",
+          "fail_if": "范围扩大、未知记作不满足、部分统计当完整、预览当全集、未先排序就截断。",
+          "evidence": [
+            "baseline准备与preflight快照",
+            "hard逐项实际值",
+            "筛选/聚合/窗口事件",
+            "输出校验前值及正式result"
+          ]
+        },
+        {
+          "id": "review",
+          "criterion": "本例预期路径为model；核对所有实际尝试、模型规划/复核、程序校验及case/batch/trace关联。",
+          "fail_if": "把模型approve当验收、忽略已发生修正/失败、以缺失Trace推断未记录的过程。必要证据缺失标无法判定，已有明确失败优先。",
+          "evidence": [
+            "完整原始Trace",
+            "executions用量/预算/错误",
+            "automatic.trace_checks",
+            "environment及尝试历史"
+          ]
+        }
+      ],
+      "context_note": "“这些型号”指调用方提供的已选商品卡片集合；scope为可信上下文，不由用户说编号。"
+    }
+  ],
+  "revision_note": "用户授权修正：用户话语改为商品名称；版本枚举允许附带价格。旧批次快照与判定不改写，本版本未运行。",
+  "previous_version": "selection_ranking-design-2"
+}
