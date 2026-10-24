@@ -1,10 +1,9 @@
-"""One source requirement owns its predicates, declarations and validation outcome."""
+"""Report executable plan entries without inferring requirements from audit prose."""
 
 from dataclasses import dataclass, field
 
 from app.schemas.catalog_search import SearchCondition, SearchPlan
 from app.tools.catalog_search.outcomes import QueryIssue, ResultReason
-from app.tools.catalog_search.rules import compact_text
 
 
 @dataclass
@@ -18,8 +17,6 @@ class PlannedRequirement:
         path = tuple(issue.details.get("path", ()))
         return (
             any(path[: len(p)] == p for p in self.paths)
-            or compact_text(self.source)
-            in {compact_text(s) for s in issue.details.get("requirements", [])}
             or (
                 issue.reason == ResultReason.CONFLICTING_CONDITIONS
                 and any(c.key == issue.details.get("field") for c in self.conditions)
@@ -28,13 +25,12 @@ class PlannedRequirement:
 
 
 def planned_requirements(plan: SearchPlan) -> list[PlannedRequirement]:
-    # Exact source identity, allowing only the same normalization as source validation.
-    # Do not guess semantic equivalence using substrings or strip negation/units.
-    by_source: dict[str, PlannedRequirement] = {}
+    # Paths identify plan entries; audit notes cannot establish semantic identity.
+    entries: list[PlannedRequirement] = []
 
     def add(source: str, path: tuple[str | int, ...]) -> PlannedRequirement:
-        row = by_source.setdefault(compact_text(source), PlannedRequirement(source))
-        row.paths.append(path)
+        row = PlannedRequirement(source, paths=[path])
+        entries.append(row)
         return row
 
     for index, condition in enumerate(plan.conditions):
@@ -61,55 +57,29 @@ def planned_requirements(plan: SearchPlan) -> list[PlannedRequirement]:
             row = add(source, (name, index))
             if reason not in row.declared_reasons:
                 row.declared_reasons.append(reason)
-    return list(by_source.values())
+    return entries
 
 
-def declaration_issues(plan: SearchPlan, existing: list[QueryIssue]) -> list[QueryIssue]:
-    """Attach declarations to requirements; do not repeat a known capability failure."""
-    unresolved: dict[ResultReason, list[str]] = {}
-    errors: list[QueryIssue] = []
+def declaration_issues(plan: SearchPlan) -> list[QueryIssue]:
+    """Keep unresolved declarations blocking; prose is not a classification validator."""
+    issues = []
     for requirement in planned_requirements(plan):
-        known = {issue.reason for issue in existing if requirement.owns(issue)}
-        # Conflicting classifications are model output errors, not two user problems.
-        reasons = set(requirement.declared_reasons)
-        if len(reasons) > 1 or (
-            ResultReason.REQUIREMENT_NEEDS_CLARIFICATION in reasons
-            and ResultReason.FILTER_DATA_UNAVAILABLE in known
-        ):
-            errors.extend([
-                QueryIssue(
-                    ResultReason.INVALID_PLAN,
-                    "同一原文要求被归入不同原因；保留原要求并给出唯一准确归类。",
-                    {"path": list(requirement.paths[-1]),
-                     "error_code": "conflicting_requirement_classification"},
-                )
-            ])
-            continue
         for reason in requirement.declared_reasons:
-            if reason in known or (
-                reason == ResultReason.REQUEST_NOT_SUPPORTED
-                and ResultReason.FILTER_DATA_UNAVAILABLE in known
-            ):
-                continue
-            unresolved.setdefault(reason, []).append(requirement.source)
-    return errors + [
-        QueryIssue(
-            reason,
-            (
+            message = (
                 "请将以下要求具体化为参数："
                 if reason == ResultReason.REQUIREMENT_NEEDS_CLARIFICATION
                 else "以下要求无法执行："
             )
-            + "；".join(sources)
-            + "。未执行查询。",
-            {"requirements": sources},
-        )
-        for reason, sources in unresolved.items()
-    ]
+            issues.append(QueryIssue(
+                reason,
+                message + requirement.source + "。未执行查询。",
+                {"requirements": [requirement.source], "path": list(requirement.paths[0])},
+            ))
+    return issues
 
 
 def requirement_assessment(plan: SearchPlan, issues: list[QueryIssue]) -> dict:
-    """Assess source requirements once, preserving every predicate and source path."""
+    """Describe plan executability, not semantic coverage of the user's request."""
     items = []
     for index, requirement in enumerate(planned_requirements(plan)):
         related = [issue for issue in issues if requirement.owns(issue)]
@@ -120,8 +90,6 @@ def requirement_assessment(plan: SearchPlan, issues: list[QueryIssue]) -> dict:
             "state": "blocked" if related else "executable",
             "reasons": list(dict.fromkeys(issue.reason.value for issue in related)),
         }
-        # A single source span may express a range or several predicates. Keep
-        # their links and fields instead of silently discarding all but the first.
         fields = list(dict.fromkeys(c.key for c in requirement.conditions))
         strengths = list(dict.fromkeys(c.strength for c in requirement.conditions))
         if fields:
@@ -143,4 +111,4 @@ def requirement_assessment(plan: SearchPlan, issues: list[QueryIssue]) -> dict:
         if executable
         else "none"
     )
-    return {"scope": "extracted_requirements", "coverage": coverage, "items": items}
+    return {"scope": "plan_entries", "coverage": coverage, "items": items}

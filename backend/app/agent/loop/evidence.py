@@ -49,7 +49,7 @@ class EvidenceRecord(BaseModel):
         output = self.result.output
         blockers = []
         name = self.invocation.tool_name
-        if name == "catalog_search":
+        if name in {"catalog_search", "catalog_lookup"}:
             if output["status"] not in {
                 ResultStatus.SUCCESS, ResultStatus.NO_MATCH, ResultStatus.NOT_FOUND,
             }:
@@ -152,6 +152,7 @@ class EvidenceStore:
         output = record.result.output or {}
         fields = {
             "catalog_search": ("products",),
+            "catalog_lookup": ("products", "lookup_summary"),
             "catalog_facets": ("items",),
             "order_lookup": ("order", "candidates", "analysis_orders", "suggestions"),
             "policy_search": ("documents",),

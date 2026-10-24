@@ -15,7 +15,7 @@ Allowed structural fields:
 - operation: total_count, list, detail, or match_orders
 - requested_fields: a non-empty array of snake_case requirement names
 - filters: time_field, start_at (inclusive), end_at (exclusive), statuses, product_terms
-- filter_evidence: original query spans for every filtering requirement
+- filter_evidence: optional audit notes, not required quotations or execution inputs
 - unresolved_requirements: every requirement that cannot be executed; never silently omit filters
 Statuses: 1待付款, 2待发货, 3已发货, 4已完成, 5已关闭. Multiple statuses mean OR.
 Time fields: created_at=下单, pay_at=付款, delivery_at=发货. Use caller current_time and timezone
@@ -31,7 +31,11 @@ the program; arbitrary model/version names remain literal terms. Do not infer sp
 Only recorded specification VALUES are searched, not JSON keys. Numeric item-price/quantity
 predicates are unavailable; preserve them in unresolved_requirements, not product_terms.
 Unsupported or ambiguous filtering requirements go to unresolved_requirements; do not widen query.
-Explicitly submit all required decisions, including an empty filter structure when no filters apply.
+Explicitly submit the required decisions; use filters={{}} when no filters apply.
+Unused optional filter fields may be omitted. Keep all actual time/status/product restrictions.
+The program validates structure, field capabilities, trusted identities and executable constraints.
+You are responsible for request fidelity; quoted text cannot prove it. Do not produce per-filter
+proofs. Audit notes are optional and are never checked as substrings of the original query.
 Do not output limit or offset. The caller owns the return-count limit and continuation offset.
 
 The Order Tool can expose only these fields:

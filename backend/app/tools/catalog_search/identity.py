@@ -1,12 +1,16 @@
 """Resolve catalog identities without dropping names or widening caller scopes."""
 
-from app.repositories.catalog_search import CatalogRecord
+from typing import TypeVar
+
+from app.repositories.catalog_search import CatalogIdentityRecord, CatalogRecord
 from app.schemas.catalog_search import SearchScope
 from app.tools.catalog_search.outcomes import LookupStatus
-from app.tools.catalog_search.rules import CatalogNameMatcher
+from app.tools.catalog_search.text_matching import CatalogTextMatcher
+
+Record = TypeVar("Record", CatalogRecord, CatalogIdentityRecord)
 
 
-def within_scope(record: CatalogRecord, scope: SearchScope) -> bool:
+def within_scope(record: Record, scope: SearchScope) -> bool:
     product = record.product
     return (not scope.sku_ids or product.sku_id in scope.sku_ids) and (
         not scope.spu_ids or product.spu_id in scope.spu_ids
@@ -14,8 +18,8 @@ def within_scope(record: CatalogRecord, scope: SearchScope) -> bool:
 
 
 def locate_available(
-    records: list[CatalogRecord], scope: SearchScope,
-) -> tuple[LookupStatus, list[CatalogRecord]]:
+    records: list[Record], scope: SearchScope,
+) -> tuple[LookupStatus, list[Record]]:
     in_scope = [record for record in records if within_scope(record, scope)]
     active = [record for record in in_scope if record.active]
     status = (
@@ -28,8 +32,8 @@ def locate_available(
 
 
 def locate_target(
-    records: list[CatalogRecord], scope: SearchScope, name: str | None,
-) -> tuple[LookupStatus, list[CatalogRecord]]:
+    records: list[Record], scope: SearchScope, name: str | None,
+) -> tuple[LookupStatus, list[Record]]:
     """Records were read by explicit ID; a name further constrains that identity.
 
     Keep absence, availability and caller-scope failures distinct. A conflicting
@@ -38,7 +42,7 @@ def locate_target(
     status, active = locate_available(records, scope)
     if status != "found" or not name:
         return status, active
-    named = CatalogNameMatcher(records).resolve(name, records)
+    named = CatalogTextMatcher(records).resolve(name, records)
     if not named:
         return "identity_mismatch", []
     return locate_available(named, scope)

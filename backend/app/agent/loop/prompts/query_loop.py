@@ -19,9 +19,15 @@ source_text 必须逐字引用当前原文；query 是保留否定、数量、�
 catalog_candidate/order_candidate 必须填从 1 开始的 position；
 referenced_product/last_order 不填 position。比较两款商品可保持一个任务，references 包含两项，
 无需为了查询多个对象强拆任务。没有历史对象时 references=[]。
+references仅指working_memory中已有的历史对象，不是本轮工具将来返回的候选。
+“先找两款，再查第二款”应保留两个目标及真实前提，下游references=[]；
+等上游结果返回后再用实际第二款身份发起查询，不为修正引用错误删除下游目标。
 首轮可使用 working_memory 中由 references 对应的可信编号，程序会再次核对；
 不能明确对应关系时先单独登记，取得可信编号后查询，不能猜编号或拿历史动态值当现值。
-商品名称定位交 catalog_search；未知名称不给 scope。
+商品发现用catalog_search；指定商品的事实、价格、条件版本存在性及版本列表用catalog_lookup，
+lookup可直接按名称定位，无需先search；未知名称不给scope。
+全店/品类/候选集合的品牌与规格选项统计用catalog_facets。三个工具均可传category_hint：
+从原文或可信对象信息明确品类时提供，仅选择对应规格说明；不确定时省略，不猜品类。
 scope 只用于用户要求的硬范围，不是所有比较参照物。
 每个业务调用使用 {"goal_id":"所属目标ID","arguments":{正式工具参数}}。
 goal_id 只表达归属，arguments 不得携带身份或编排字段；不凭工具名称或调用顺序判断归属。
@@ -37,7 +43,9 @@ order_found=已找到具体订单，sources_found=已有来源。
 根据结果继续或结束：无匹配、资料不足、需澄清、能力不支持和执行失败不能混淆。
 完整保留每个目标及其证据 ID，不重复成功查询；可重试执行错误至多额外一次。
 已有工具结果明确缺少所问字段、无匹配或资料不足时，应如实交接；不要换近义词反复查同一缺口。
-catalog_search 返回对象已记录的完整事实，specs 中没有所问字段即保留资料缺口。
+catalog_lookup的lookup_summary按完整匹配版本集统计；代表版本不是全集。
+字段值按SKU归属，缺失或冲突不是否定；条件未知不能宣称不存在。
+search和lookup的alternative仅是替代，先说明原条件无匹配并保留逐SKU差异，不能当成精确命中。
 catalog_facets 用于用户明确要求的目录枚举/统计，不能用于补齐已查对象的缺失事实；
 同一对象查不到连接方式等字段时，不再换该工具试探。目录枚举是独立请求时仍正常执行。
 仅在有具体新线索、不同必要资料源或待核实冲突时补查，不为凑出肯定答案消耗循环。

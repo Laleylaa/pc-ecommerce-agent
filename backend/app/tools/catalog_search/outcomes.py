@@ -38,6 +38,7 @@ class ResultReason(StrEnum):
     TARGET_INACTIVE = "target_inactive"
     TARGET_OUTSIDE_SCOPE = "target_outside_scope"
     IDENTITY_MISMATCH = "identity_mismatch"
+    IDENTITY_CONFIRMATION_REQUIRED = "identity_confirmation_required"
     INVALID_PLAN = "invalid_plan"
     CONFLICTING_CONDITIONS = "conflicting_conditions"
 
@@ -55,7 +56,9 @@ class ResultAction(StrEnum):
 
 
 QueryState = Literal["not_executed", "completed"]
-LookupStatus = Literal["found", "not_found", "inactive", "outside_scope", "identity_mismatch"]
+LookupStatus = Literal[
+    "found", "not_found", "inactive", "outside_scope", "identity_mismatch", "ambiguous", "similar",
+]
 
 
 @dataclass(frozen=True)
@@ -147,6 +150,13 @@ _POLICIES = (
         ResultAction.CLARIFY_QUERY,
         "请明确查询对象和有效条件。",
         ("not_executed",),
+    ),
+    ResultPolicy(
+        ResultStatus.CLARIFICATION_REQUIRED,
+        ResultReason.IDENTITY_CONFIRMATION_REQUIRED,
+        ResultAction.CLARIFY_QUERY,
+        "名称有多个可能对象或仅找到相似名称，请确认候选；尚未认定其满足条件，不引用候选价格。",
+        ("completed",),
     ),
     ResultPolicy(
         ResultStatus.SPLIT_REQUIRED,
@@ -254,10 +264,13 @@ def completed_policy(
     named_target_missing: bool = False,
     alternative_count: int = 0,
     object_fact_count: int = 0,
+    identity_pending: bool = False,
 ) -> ResultPolicy:
     """Classify completed query facts, independently of product quality and pagination."""
     if min(total_matches, returned_count, unknown_count) < 0 or returned_count > total_matches:
         raise ValueError("invalid query counts")
+    if identity_pending:
+        return policy_for(ResultReason.IDENTITY_CONFIRMATION_REQUIRED)
     if total_matches:
         policy = policy_for(ResultReason.MATCHES_FOUND)
         if not returned_count:

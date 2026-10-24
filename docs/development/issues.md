@@ -1,5 +1,7 @@
 # 新架构问题台账
 
+2026-10-23当前商品三工具改动、工具选择评测及小修验证见[AL-024](#al-024)；领域行为与端到端验收仍未完成。
+
 建立于 2026-10-19，适用 `refactor/agent-loop`。源码起点 `1051e5c`；本次整理P0—P3A实现、分类测试及共享台账供本地提交。P3 10/11、P3A 11/12，阶段未放行，默认legacy。2026-10-20新增P4本地可视化Trace计划（AL-016），原P4切换清理顺延为P5；两阶段均未实施。
 旧台账已封存于本地历史 ZIP 的 `archive/evals/issues-before-agent-loop.md`，不自动迁入；归档不代表已修复。当前问题以本页自包含记录为准。
 
@@ -101,8 +103,9 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 
 ## AL-004：混合表达的商品名称含类目词，现有领域匹配未命中
 
-- 类型/状态：已复现商品工具名称识别缺陷，开放、后续处理；用户已确认移出当前编排重构的修复范围，不作为继续编排开发的前置条件。对应端到端商品查询仍未通过，不因延期转为成功。
+- 类型/状态：已复现商品工具名称识别缺陷；2026-10-22用户另行授权搜索模块实施，已修改、未测试、未验收，保持开放。此前延期决定是历史阶段范围，不代表本轮仍禁止修改。
 - 发现方：P3 独立保留集；主责：商品工具的领域规划／名称识别；配合：Agent 侧提供调用与结果证据。
+- 本轮实现：`refactor/agent-loop` / `e19b0d1`工作区；[文本匹配](../../backend/app/tools/catalog_search/text_matching.py)统一检索品牌、品类、SPU/SKU名称，复用受控别名、大小写/全半角和型号分隔规范化；类目不再必须出现在标题。完整标题优先、部分名称跨字段匹配；相似度只产生待确认名称，不自动替换型号数字。[引擎](../../backend/app/tools/catalog_search/engine.py)统一范围、身份确认、逐SKU筛选、排序及窗口。`lookup/variants`命中多个SPU需确认；一般搜索允许多候选。契约/消费方及联合验收见AL-019。以下复现与延期描述属于此前版本，不是本轮结果。
 - 用户决定（2026-10-19）：本例将 `Keychron K8` 表述为 `Keychron K8 键盘` 是合理补充，不把补上类目词本身认定为编排缺陷。先记录 issue，商品工具后续处理；当前继续聚焦查询循环、程序证据交接、独立回答及编排验证，不为此在 Agent 添加删词或名称匹配补丁。
 - 输入：`告诉我Keychron K8在店里的售价，顺便看看我最近那笔订单到哪了。`；合成目录 SPU 11 名称 `Keychron K8`，SKU 101 白色蓝牙 260 元、102 黑色 USB 230 元，分类为键盘。
 - 实际：新链路将商品查询表达为 `Keychron K8 键盘`，正式规划器输出 `name="Keychron K8 键盘"`，`CatalogNameMatcher` 将不在商品标题中的“键盘”保留为名称条件，返回 not_found。单订单响应修复后 3/3 重现；相同数据旧链路 3/3 能查到 K8。新回答如实说明本次未命中，订单部分正常；事实忠于工具不等于商品需求完成。
@@ -111,7 +114,7 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 - 首次合批后复验：`20261019T165711Z-comparison-395d6d60.json` 中 named_product 第 2／3 次均以 `name="Keychron K8 键盘"` 返回 not_found，共 2 次；holdout_mixed 3 次正常命中。领域规则及 fixture 未改，失败频率变化不代表缺陷修复；上述失败继续完整计入成本并按业务失败记录。
 - P3-11 最新复验：`20261020T064559Z-comparison-65f2ebd8.json` 的 named_product 3/3、holdout_mixed 第 1／3 次均以 `name="Keychron K8 键盘"` 返回 not_found，共 5 次商品目标失败；旧侧这些商品查询均能命中。新回答如实说明未查到，混合请求中的订单部分正常，不能将忠于工具结果当作商品需求已完成。原决定和工具算法未变，本轮没有修复或删除失败例。
 - P3A 当前复验：固定同批 108 次中的新侧 holdout_mixed 第 2／3 次仍因 `name="Keychron K8 键盘"` 漏检；named_product 3 次命中。证据为 `20261020T082844Z-comparison-cbc49c5c.json`，漏检与全部用量保留；频率变化不是工具修复。
-- 后续工具任务：处理型号与类目词的语义分工及名称匹配容错，避免合理类目词导致已有商品漏检。是否采用宽松匹配及其边界留给该工具任务确定；本次没有引入新匹配模式。真实型号／版本限定词、硬条件和 scope 仍须保留，不能把容错变成任意扩大查询。
+- 后续验收：验证上述匹配实现与保留范围，尤其未知型号、型号近似、同型号不同品牌、版本限定、无效/范围外对象；相似度阈值是未评测初值。真实型号／版本限定词、硬条件和scope仍须保留，不能把容错变成任意扩大查询。
 - 关闭条件：后续商品工具任务在根 business 增加独立型号／类目／限定词回归，并重跑此失败例；已有商品正常命中，未知型号、不同版本与真实限定条件不被混淆。当前保留原始失败记录和预期，不修改 fixture 掩盖问题、不删除验收用例。
 
 ## AL-005：人工请求确认展示与实际提交的订单编号不一致
@@ -161,10 +164,9 @@ P5保留可运行legacy及Make切换；默认切换仍须原质量与成本条�
 
 ## AL-009：属性词重复进入商品标题关键词，遗漏替代候选
 
-- 类型／状态：P3A 复用 P3 场景发现的领域规划质量问题，开放；用户随后明确“先不管工具侧
-  问题”，本轮暂缓工具修复、继续验证框架；失败仍计账，不等于业务验收通过。
-  严格预算无匹配的结论正确，问题是可提供的替代候选被遗漏。
+- 类型／状态：P3A发现的领域规划质量问题；2026-10-22用户另行授权工具搜索实施，已修改、未测试、未验收，保持开放。此前暂缓决定已被本轮授权取代。严格预算无匹配的结论正确，问题是可提供的替代候选被遗漏。
 - 发现方：P3A 真实模型对照；主责：商品工具规划／语义复核；配合：Agent 查询表达与评测。
+- 本轮实现：[SearchPlan](../../backend/app/schemas/catalog_search.py)删除name/keywords两路输入，统一search_text；[规划Prompt](../../backend/app/tools/prompts/catalog_search.py)升级v23，名称/标题类型词用于文本检索，已结构化规格只放conditions。不通过程序删词补丁推测语义；原keywords硬过滤链已移除，但模型是否仍误把属性写入search_text必须通过独立表达复验，不能仅凭字段重命名关闭问题。预算、否定、偏好及替代规则继续在同一SKU上执行。契约迁移和验收见AL-019；以下为历史证据。
 - 输入及版本：`alternative_budget` 的白色、蓝牙、100 元内键盘需求，分支
   `refactor/agent-loop`、HEAD `1051e5c` 加本轮未提交 P3A，deepseek-flash、温度 0、
   合成商品数据。未修改正式工具、fixture 或冻结场景。
@@ -493,11 +495,93 @@ ZIP 待用户手动移出项目且由 Git 忽略；README 保留迁移与恢复�
 <a id="al-018"></a>
 ## AL-018：计划复核的依据格式校验阻塞正确计划，造成额外模型调用
 
-- 类型／状态：已确认的复核契约问题，**待处理**；用户2026-10-22要求先登记，不修改复核逻辑。
+- 类型／状态：已确认的复核契约问题；2026-10-22按用户后续授权完成工具校验简化的代码修改，**未测试、未验收，保持开放**。此前“仅登记”决定已被本轮实施授权取代。
 - 发现方：用户通过Phoenix人工排错；主责：工具计划生成/复核；配合：编排预算、隔离测试和追踪。
-- 版本与位置：`refactor/agent-loop`，基点`2bccfda`未提交工作区；[structured_planning.py](../../backend/app/tools/structured_planning.py)的`_validate_review`/`generate_tool_plan`，[复核schema](../../backend/app/schemas/tool_plan_review.py)、[复核Prompt](../../backend/app/tools/prompts/plan_review.py)。
+- 版本与位置：本轮修改基于`refactor/agent-loop` / `e19b0d1`，未提交工作区；[structured_planning.py](../../backend/app/tools/structured_planning.py)的`generate_tool_plan`、[复核schema](../../backend/app/schemas/tool_plan_review.py)、[复核Prompt](../../backend/app/tools/prompts/plan_review.py)。原`_validate_review`的原文/路径检查已删除；最初发现版本为`2bccfda`后的工作区。
 - 复现证据：正式请求trace `02bc8b2ba6c61227540ba2eab3600578`，会话946。复核输入的`original_request.query`为“500元以内的机械键盘，按价格从低到高排序”，另有`limit=2`；候选`requested_limit=2`。第一次复核approve，以“limit 2”为数量检查依据，被“evidence必须是query原文片段”规则拒绝。第二次换为整句query，数量判断未变即通过；该句本身不包含数量2。实际工具内部1次规划+2次复核，增加的一次仅修正复核报告，不是纠正商品查询计划。
 - 根因与边界：复核被要求核对完整请求，但程序只接受query字符串来源；原文子串与JSON Pointer存在性不证明语义判断正确。形式约束给辅助说明增加了阻塞执行能力。不能因此删除身份、权限、字段/操作符能力、范围、预算等必要执行边界，也不能把本例推断为所有复核均无用。
-- 待评估方向：简化复核输出为结论及具体差异；评估取消通过项强制逐字引用/路径要求，不再仅为解释格式重跑模型。数量/范围等可直接比较的结构化字段交给程序；语义忠实度仍需模型或效果验收。独立复核是否默认必经需另行评估收益，不能直接将每个工具改为嵌套ReAct；外层已有工具结果反馈循环。
+- 本轮确认口径：程序只校验结构、字段/参数合法性、权限/可信来源、确定性业务规则与执行预算；模型负责请求语义。原文摘录与说明文字不能证明理解正确。默认独立复核及原调用/修正/传输重试预算保留，是否取消复核另行评估；没有引入工具内Agent循环。
+- 最小复核契约：仅`verdict=approve|revise|uncertain`与可选`reason`（最多2000字符）；approve可只提交结论，revise必须提供非空修正反馈，uncertain停止。程序不核验反馈文字的语义，不再接收旧checks/evidence/plan_paths报告。JSON结构、类型、枚举、重复键与有界修正仍有效。复核仍读完整original_request和候选计划，limit/scope等结构化参数不必在query中重复；输出结构通过不代表语义通过。
+- 计划校验同步：[商品schema](../../backend/app/schemas/catalog_search.py)保留必要执行决策，条件evidence、preference_evidence、category_evidence、sort_evidence改为可选审计说明；[商品校验](../../backend/app/tools/catalog_search/validation.py)删除名称/关键词/说明的原文包含检查，但保留明确编号来源、字段/操作符/单位、scope与确定性冲突检查；[订单规划](../../backend/app/tools/orders.py)不再要求filter_evidence或检查原文子串，嵌套过滤可省略未使用字段，仍保留身份、字段能力和过滤结构。商品目录复用同一校验；默认值、可选空字段和旧兼容列表不再全部强制由模型复述。
+- 诊断交接：[要求诊断](../../backend/app/tools/catalog_search/requirements.py)按计划路径关联，不按说明文字归并/推断“同一要求”，不再因此判分类冲突；`requirement_assessment.scope=plan_entries`，coverage只说明计划条目可执行情况，不证明原始需求覆盖。未处理要求仍阻止执行，`unresolved_requirements.evidence`仍需有内容以说明具体未处理事项，但允许转述。Phoenix摘要同步为verdict及reason预览，不再展示checks数量。校验简化阶段未改公开五工具名称、API/前端、匹配/排序算法和数据库结构；随后搜索算法调整另见AL-004/AL-009/AL-019。
+- 未验证及接入：按用户要求本轮没有运行测试、Lint、构建、导入检查、真实模型或数据库；仅人工阅读差异及调用方搜索。旧复核checks模拟输出、强制摘录/全字段断言、按原文归并的诊断预期尚未迁移，包括`tests/support/tool_planning.py`、`tests/support/tool_plan_fixtures.py`、商品复核/修正/阶段测试和追踪模拟场景。搜索设计随后已获准实施（AL-019）；仍须与用户共同确定测试方案后执行，不删除旧失败用例或把本轮修改标为验收通过。
 - 关闭条件：确定并实施最小复核契约；用本例证明不因合法结构化依据产生额外修正；保留预算/AND-OR/否定/遗漏条件等历史语义纠错场景及执行安全边界，验证拒绝、修正、无法判定与调用预算；如改变默认复核策略，真实效果/成本验证须另行授权。完成后更新Prompt/schema/实现及对应测试，不能只删失败断言。
+- 2026-10-22埋点对齐及单次真实观察：保持三类程序节点和原有事件粒度；复核节点schema改为ToolPlanReview、plan_schema标明SearchPlan，check_scope提前写入节点，格式接受与model_verdict分开；复核理由使用reason及限长预览，数量窗口同步requested_count/limit/limit_capped/returned_count。没有恢复已删除的原文摘录/引用路径校验，也没有新增逐商品、SQL或函数节点。
+- 本次真实证据：用户明确授权仅对齐埋点并发起一次真实请求，不开始测试工作。通过正式catalog_search绑定、真实deepseek-flash及现有商品库只读事务，查询“查一下 Keychron 星轴 K01 机械键盘的价格。”并传limit=50。trace `110843928ed472c5f5a49cf4b09f7985`已由Phoenix API读回7节点（根+工具+2模型+3校验），耗时约1.896秒，规划/复核各1次，复核仅返回`{"verdict":"approve"}`即通过，corrections=0。请求50、执行上限20、实际返回1个SPU/12个匹配SKU；模型消息与工具输出未截断。只说明本次记录及该请求行为，不是回归、效果评测或聊天端验收；数据含1个冲突SKU的提示仍保留。
+- 随后按用户纠正补齐完整链路：前述tool_direct不能代表完整聊天trace。通过正式FastAPI登录和`/api/chat`路由（进程内ASGI传输，无依赖替换），使用文档中的演示账号、真实模型和数据库完成会话948，HTTP200；写入正常登录/会话/审计记录。trace `81ab1a9cec2300bd3fce9e21eafd37b6`已由Phoenix API读回10节点：根、工具、3类程序校验、5次模型调用（调度2、规划1、复核1、回答1）。工具后调度和回答节点完整；全部10节点均有Metadata，工具的窗口/复核/材料投影摘要及回答的证据/答案预览均保留；消息和业务投影无截断。未修改采集实现或历史trace，未运行测试；此次只确认完整链路采集，不作为业务回归验收。
+- 后续埋点补充（尚未运行验证）：按用户要求，在现有“工具输出校验”节点进入结构/契约校验前记录返回值Input；保留原Output校验结论，不增加节点或事件。仅追踪开启时序列化，复用脱敏与32768字符快照限制；无法序列化时记录capture_status=unavailable及异常类型，继续原校验。历史trace不回填，本次未运行测试或追加真实请求；上面的完整聊天trace属于本次Input补充之前，不能当作该字段的验证证据。
+- 调用准备失败保留：此前临时直调入口缺少tool_scope，被预算保护在HTTP前拦截，trace `4325680202d84da8f0d026bb51e25a0f`记录LoopLimit，实际模型HTTP次数0；补齐正式预算上下文后完成上述请求，没有放宽预算或改业务规则。历史trace未修改。此次没有编写/运行测试、Lint或构建，没有调用聊天API或写商城数据；其余AL-018/019验收仍待后续。
 - 当前不包含：商品明细因16000字符投影被移除的问题属于另一交接缺口（AL-016记录的现象、AL-001后续核对）；不以本条关闭替代其修复。
+
+
+<a id="al-019"></a>
+## AL-019：搜索模块新契约、展示数量及消费方待联合验收
+
+- 类型／状态：工具模块重构与功能接入；2026-10-22已实施，初次实施阶段只做源码阅读、调用方搜索与diff空白检查。随后按用户单独授权完成一次真实工具请求及Phoenix读回，见AL-018；未编写/运行测试、Lint或构建，未完成联合验收。未提交，保持开放。
+- 发现方／主责：本轮工具设计；主责商品工具，配合新旧编排、结果投影及隔离/效果评测。基点`refactor/agent-loop` / `e19b0d1`，关联缺陷AL-004、AL-009，校验边界关联AL-018。
+- 分层：[service](../../backend/app/tools/catalog_search/service.py)负责计划/校验和执行入口；[engine](../../backend/app/tools/catalog_search/engine.py)负责完整候选池、身份/条件、排序与窗口；[text_matching](../../backend/app/tools/catalog_search/text_matching.py)是纯多字段名称匹配；[matching](../../backend/app/tools/catalog_search/matching.py)复用共享字段规则判断同SKU条件；[repository](../../backend/app/repositories/catalog_search.py)仍只读取/映射事实；[presentation](../../backend/app/tools/catalog_search/presentation.py)组装结果，不重新选择候选。不引入通用搜索框架、额外模型或数据库扩展。
+- 读取边界：当前沿用一次至多10000个SKU的完整读取，超限明确停止，不能先取文本Top-K再筛规格并宣称穷尽。普通搜索先限制品类/scope；指定名称身份发现可在scope外读以区分outside_scope，只有范围内有效对象可输出。型号背景仍独立读取，不能冒充匹配版本事实。大规模索引/性能未评测，不宣称这是无界目录检索方案。
+- 最小计划接入：公开工具仍是catalog_search(query, category_hint, scope, limit)；内部SearchPlan的name/keywords迁移为search_text，旧模拟计划不能继续原样使用。catalog_facets保留自身name语义，复用相同文本匹配的确认路径，不消费模糊候选。字段/条件和别名仍取现有catalog_fields。
+- 最小结果接入：v3增量增加identity_suggestions、requested_count、display_cap、limit_capped。相似/歧义结果为clarification_required / identity_confirmation_required；suggestions无价格或规格，只用于确认完整名称，conditions_verified=false，products为空、matching_complete/is_exhaustive=false。不得计作product_found或自动把suggestion编号注入scope；不作为已展示正式商品写入工作记忆。
+- 数量口径：[limits](../../backend/app/tools/catalog_search/limits.py)集中单次展示上限20、身份建议上限5。正整数请求超过20合法，按20截断并报告请求数、执行上限和实际返回数；显式limit优先，其次规划提取requested_limit，最后默认3。query loop适配及工具绑定保留“未填写limit”与“显式limit=3”的区别；非法类型/非正整数仍拒绝。不自动多次调用绕过上限。
+- 消费方：工具说明、共用回答事实规则、规范化结果、查询投影/兼容查询摘要和Phoenix摘要已同步。相似候选要求用户确认完整名称；本轮未增加“第二个相似建议”的专用工作记忆指代能力。正式商品卡片契约未变。
+- 既有交接限制：AL-001关联的16000字符投影仍可能移除大结果的商品明细。本轮只保留新增数量/身份元数据，没有修复该投影算法；工具返回20项不能当作聊天端已能展示20项的验收证据。正式对话数量及内容出口须单独验证和处理该缺口。
+- 待确认测试方向：先迁移旧name/keywords和复核checks fixtures，再验证纯匹配、同SKU筛选/替代、范围/身份、数量及停止契约；随后在明确授权环境中做独立自然语言真实规划/复核与只读数据库评测，最后验证新旧编排、确认前阻断及回答/卡片。全部实际执行待用户确认统一方案，不引用历史通过数。
+- 关闭条件：AL-004/009历史失败及独立表达通过，未知型号/错配无误确认，禁止跨SKU拼条件，50→20及不足20的实际数量说明正确，正式入口保留数量优先级，名称建议不能解锁依赖；完成AL-018相关fixtures迁移和选择性回归。离线、真实工具与端到端证据分开；明确大结果投影及后续指代能力边界，不以工具实现完成代替联合验收。
+
+## AL-020：商品工具操作分类不稳定，精确条件询问曾返回替代结果
+
+- 类型／状态：业务行为与操作契约问题；2026-10-23登记，开放。
+- 发现方：单工具真实实验及用户复检；主责：商品工具；配合：业务验收与测试。
+- 适用版本：`refactor/agent-loop`，HEAD `e19b0d1d` 加未提交工作区；商品规划Prompt v23/v24、真实deepseek-flash。不是聊天端验收。
+- 触发与实际：“Keychron 星轴 K01 机械键盘里，黑色而且价格正好204元的版本有吗，多少钱？”同版用例对照中，v23计划为search，返回199元代表版本及替代候选；v24计划为variants，返回无匹配。独立数据不存在同时满足黑色和204元的SKU。两次模型复核均approve。
+- 当前问题：search、lookup、variants在带条件事实询问中的归属尚未形成无歧义的验收口径；不能仅凭操作名判定业务错误。精确条件询问返回不满足条件的替代结果是已观察到的业务偏差。候选、事实与版本明细的适用返回边界仍待确认。
+- 证据：修改前Trace `3c8b7c8cd5a84761089a46ebc98c5737`；修改后Trace `3872d69deaed0e0d6af36f8d6c714a72`。源码定位：[操作说明](../../backend/app/tools/prompts/catalog_search.py)、[执行与替代分支](../../backend/app/tools/catalog_search/engine.py)。本条包含必要输入和差异，不依赖忽略的本地产物才能理解问题。
+- 关闭条件：确认操作及精确匹配边界；独立表达验证目标和条件保留、不擅自扩大报价范围。操作名变化本身不作为关闭证据。
+
+## AL-021：无线前提询价的规划与复核反复修改，最终未执行查询
+
+- 类型／状态：语义处理与能力边界问题；2026-10-23登记，开放；关联AL-018。
+- 发现方：单工具真实实验及源码复核；主责：商品规划与复核；配合：字段能力定义、测试。
+- 触发与实际：“Dell 锐屏 D01 显示器 黑色标准版如果支持无线的话，多少钱？”初始计划将wireless放入requested_fields，与price一起询问，条件仅有color。复核反复要求将无线移入或移出unresolved_requirements；修改前5次模型请求后以repeated_plan终止，修改后6次请求后耗尽修正预算，均未进入商品查询。
+- 已核实前提：商品SKU1153存在，独立核对价格699元；规格JSON及属性表均没有无线记录。同时当前字段定义没有将显示器列为wireless可筛选品类，程序对“显示器＋wireless条件”会返回filter_data_unavailable。商品存在、品类筛选能力不足、单商品资料缺失不是同一状态。
+- 预期：保留无线前提；能力不足或无法确认应有明确业务结论，不能删除前提后无条件报价，不能宣称商品不支持无线，不能因复核意见反复推翻而耗尽预算。
+- 证据：修改前Trace `e265dd8366297340f687fcd9a1051cad`；修改后批次 `20261022T163138Z-data_boundaries-7bee96` 的db-01。源码定位：[字段定义](../../backend/app/tools/catalog_fields.py)、[品类能力校验](../../backend/app/tools/catalog_search/validation.py)、[规格说明](../../backend/app/tools/prompts/catalog_search_specs.py)。当前按品类提供说明的机制仍存在；说明不代表具体商品实际有记录。
+- 关闭条件：明确字段能力与记录缺失的判定，保留用户前提，独立复验取得正确停止或查询结果；不能仅凭模型approve关闭。
+
+## AL-022：商品测试的字段表示限制及数据前提导致误归类
+
+- 类型／状态：测试预期问题；2026-10-23用户复检确认，待修订；不是已证实的错价问题。
+- 发现方：用户复检；主责：商品测试；配合：工具契约与业务验收。
+- 触发与实际：price-03等用例在完整“黑色标准版”名称外重复提取color=黑色，实际对象与价格正确，但冻结预期只允许额外品牌条件，因而判失败。sr-06价格筛选搜索额外填写requested_fields=[price]，实际候选、范围和价格正确，也因冻结预期为空而失败。
+- 已确认口径：名称与等价筛选条件可以有不同表示，只要身份、条件、适用范围及业务结果正确；附带price字段本身不证明业务错误。requested_fields是正式SearchPlan字段，不是模型自创字段。
+- 数据前提问题：db-01原预期是查询后unknown=1及data_insufficient，但其显示器wireless条件不在当前品类筛选能力内，混入了能力不足场景，不能作为纯粹“单商品资料缺失”的验收用例，见AL-021。
+- 证据定位：[基础价格用例](../../tests/tools/catalog/price_lookup_cases.json)、[筛选排序用例](../../tests/tools/catalog/selection_ranking_cases.json)、[数据边界用例](../../tests/tools/catalog/data_boundaries_cases.json)、[检查器](../../tests/tools/catalog/check_catalog_cases.py)。本地历史报告保留运行前冻结标准下的结论，不能将其全部解释为业务错答。
+- 关闭条件：事前定义合法等价形式，分清字段表示与业务结果，纠正能力与数据前提；新版本验收保留旧快照、原判定及修订原因，不覆盖历史结果。
+
+## AL-023：商品字段说明残留旧计划字段名，字段用途存在理解偏差
+
+- 类型／状态：Prompt与计划契约一致性问题；2026-10-23登记，开放。
+- 发现方：源码复核及真实规划输出；主责：商品工具Prompt；配合：schema、字段能力与测试。
+- 当前不一致：[规格说明](../../backend/app/tools/prompts/catalog_search_specs.py)的键盘品类说明仍使用name/keywords；当前[SearchPlan](../../backend/app/schemas/catalog_search.py)的名称入口为search_text。主Prompt已经使用search_text，品类说明仍出现旧术语。
+- 已观察行为：价格筛选被同时填入requested_fields；无线前提被当作所问事实，并在品类能力说明与缺失事实处理之间反复修改，分别见AL-022、AL-021。
+- 机制现状：category_hint仍控制优先品类说明，无hint时提供全品类；当前调用还保留其他品类备用说明。字段说明包含类型、操作符和适用品类，但不提供具体商品记录完整性的保证。
+- 关闭条件：正式计划、通用说明、品类说明与复核对字段名称及用途一致；区分筛选条件、所问事实、附带展示内容、品类能力及实际记录缺失，使用独立表达复验。
+
+<a id="al-024"></a>
+## AL-024：商品三工具职责与完整版本汇总接入，待验证
+
+- 2026-10-24提交前检查：首次选择装置、独立scope契约与规划/复核上下文专项共20项离线检查通过；修正1条依赖旧Prompt章节标题的测试断言。变更文件Ruff、Python/JSON语法与差异检查通过；提交前生产整理仅涉及导入/格式，AST及导入绑定等价，Prompt/description字符串不变。未重跑真实模型、访问数据库或完成领域/端到端验收；下方117次为此前同业务实现的首次选择评测。
+
+- 2026-10-24首次选择新验收：按用户指令删除本地11个v1/v2错误批次及2份汇总后，v3四类39例各3次，deepseek-flash/temperature=0，程序＋当前Codex独立LLM语义复检117通过，0失败/无法判定/未执行。117次均仅一次HTTP200响应，业务/控制工具执行为0，无工具反馈或数据库访问；结束时源码指纹一致。正式入口为[首次选择测试](../../tests/agent_loop/business/tool_selection/REVIEW.md)，本地忽略产物为`tests/agent_loop/business/tool_selection/results/summary-20261024-first-selection.md`及`20261024T055024Z-*`四个分类报告。只验证工具职责选择与目的覆盖，不验收参数改写、领域执行或后续循环，不关闭本条领域缺口。生产实现和预标注本轮未改。旧版越界评测的结果、失效引用及成绩叙述已清理，不作为当前工具选择验收证据。
+
+- 测试范围：仅判断输入对应的首次工具选择，不执行工具、不返回反馈。v3四类39例；程序检查首轮工具集合，语义复检判断routing/coverage，不以参数、次数、恢复或控制协议判路由失败。移除旧反馈/依赖组及业务结果替身。10项首次选择装置检查与7项独立生产契约回归已离线通过；真实模型结果见上方。
+
+- 类型／状态：用户确认的业务边界调整；2026-10-23已修改源码，后续完成v3首次工具选择评测及独立小修契约验证，领域行为与端到端仍未验收。发现／主责：商品工具；配合：主流程、新旧消费方、测试。基点`refactor/agent-loop` / `62268acc`，保留既有未提交工作。
+- 用户决定：商品发现用`catalog_search`；指定商品事实、条件存在性、数量、价格范围及版本列表统一用`catalog_lookup`；`catalog_facets`只统计全店/品类/可信候选集合的目录选项。指定商品名称可直接交lookup，不要求search→facets。search和lookup均允许另附明确标注的替代，不能混入精准数量和价格范围。这取代AL-020旧报告中“必须lookup、只要返回替代就是错误”的分类口径；历史结果不改写。
+- 规划：三工具继续复用`structured_planning.generate_tool_plan`的程序校验、语义复核及原预算。商品发现/查询采用各自固定operation的计划schema；旧variants操作改为lookup的version_view=list，默认summary。目录单独提供复核上下文，不再夹带计划输出schema。已知category_hint仅装配对应品类规格，无/未知hint使用全品类兜底；hint不构成筛选或记录证明。
+- 执行／结果：商品结果升级contract_version=5，保留卡片接口，lookup新增lookup_summary。统计完整严格匹配的在售SKU集合，返回exists（三态）、版本数、不同价位数、价格范围、所问字段的值及SKU标题归属、缺失/冲突计数和最多3个低/中/高价代表。中位采用价格排序后较低的中间位置，同价按SKU编号稳定排序；不足3个按真实数量去重。列表窗口不影响汇总，替代仍使用match_kind=alternative及condition_checks，严格计数保持0。原price-only执行分支已移除，历史facts字段仅作兼容结构保留，当前不生成。
+- 能力边界：直接询问无线保留所问事实；“如果支持无线才报价”保留硬前提，无法筛选时合法停止，不改成无条件报价。lookup定位后按实际品类补查条件能力，缺记录、明确否、能力不足保持区分。没有新增查询结果模型复核或工具内部自主循环；现有复核仍检查查库前计划语义，程序按记录判断match/mismatch/unknown。
+- 注册与消费：[contracts.py](../../backend/app/tools/contracts.py)为唯一工具描述及绑定入口，新增catalog.lookup；主循环从ToolCatalog生成SDK工具规范。更新可信ID检查、证据状态、卡片/记忆投影、结果规范化、回答规则与legacy名称/能力映射。新调用在构建catalog时获得新规范；未重启已运行服务或向真实会话发请求。
+- 小修与验证：SearchScope将SKU/SPU互斥条件导出到模型schema，冲突时保持`invalid_input`代码并提供不含原始查询的具体修正提示；references说明只引用已有历史对象，本轮未来候选用前提依赖衔接并保留下游目标。[独立生产契约回归](../../tests/agent_loop/contracts/test_selection_scope_contract.py)现有7项，经`tests/run.py`隔离验证通过，覆盖schema/运行时一致、修正提示和SDK反馈传递；不属于首次工具选择评分，也不证明真实工具反馈后的恢复效果。
+- 验证缺口／关闭条件：商品工具初次改动仅经源码与差异审阅，后续选择模块证据不代替领域验收。其余旧五工具列表、operation=variants、价格facts输出、完整全品类hint Prompt等fixtures/实验预期尚未迁移；不覆盖冻结报告。需后续授权验证注册、hint隔离与无hint兜底、三态能力事实、同SKU条件、替代标注、完整数量/价格与低中高样本、窗口与下游交接。AL-001的大结果投影会移除明细/summary，未在本轮扩大修改；端到端展示与legacy恢复分支均未验收。AL-018～023不因本轮源码修改自动关闭。

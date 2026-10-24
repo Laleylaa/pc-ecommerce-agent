@@ -13,10 +13,8 @@ from app.tools.catalog_fields import (
     preference_rank,
     same_recorded_value,
 )
-from app.tools.catalog_search.identity import locate_available, locate_target
 from app.tools.catalog_search.matching import check_record
-from app.tools.catalog_search.outcomes import ResultReason, completed_policy, policy_for
-from app.tools.catalog_search.rules import CatalogNameMatcher
+from app.tools.catalog_search.outcomes import ResultReason, policy_for
 from app.tools.schemas import (
     CatalogFacetInput,
     CatalogFacetItem,
@@ -65,31 +63,14 @@ async def execute_facets(
         "scope": request.scope,
         "query_plan": plan.model_dump(mode="json"),
     }
-    missing_object = plan.selection == "object" and not (plan.target or request.scope)
-    if missing_object and (
-        plan._query_issue is None or plan._query_issue.reason != ResultReason.INVALID_PLAN
-    ):
+    if plan.selection == "object" or plan.target is not None or plan.name:
         return CatalogFacetOutput(
-            **base,
-            result_type="empty",
-            is_exhaustive=False,
-            matching_complete=False,
-            diagnostics=[
-                ToolDiagnostic(
-                    code="product_identity_required" if plan.name else "query_needs_clarification",
-                    severity="warning",
-                    message="Resolve the product through catalog_search before reading its specs",
-                    recommended_action=(
-                        "resolve_product_with_catalog_search"
-                        if plan.name
-                        else "ask_user_to_identify_product"
-                    ),
-                    details={
-                        **(plan._query_issue.details if plan._query_issue else {}),
-                        "phase": "requirements",
-                    },
-                )
-            ],
+            **base, result_type="empty", is_exhaustive=False, matching_complete=False,
+            diagnostics=[ToolDiagnostic(
+                code="request_not_supported",
+                message="指定商品的事实、规格和版本请使用catalog_lookup，可直接传名称或可信编号。",
+                recommended_action="use_catalog_lookup",
+            )],
         )
     if issue := plan._query_issue:
         diagnostic = policy_for(issue.reason).diagnostic(issue.message)
@@ -113,7 +94,7 @@ async def execute_facets(
                 },
             }))],
         )
-    if not plan.supported and not missing_object:
+    if not plan.supported:
         policy = policy_for(ResultReason(plan.unsupported_code))
         return CatalogFacetOutput(
             **base,
@@ -129,49 +110,10 @@ async def execute_facets(
             ],
         )
     scope = request.scope or SearchScope()
-    read_scope = (
-        SearchScope(**{f"{plan.target.kind}_ids": [plan.target.id]})
-        if plan.target
-        else (SearchScope() if plan.name else scope)
-    )
-    # Read IDs independently of filters so a category mismatch cannot make a
-    # real object appear nonexistent, inactive or outside the caller's scope.
-    object_lookup = plan.target is not None or plan.selection == "object"
-    records = await repository.load(
-        None if object_lookup else normalize_category_hint(plan.category), read_scope,
-    )
-    status = "found"
-    if plan.target:
-        status, records = locate_target(records, scope, plan.name)
-    elif plan.name:
-        named = CatalogNameMatcher(records).resolve(plan.name, records)
-        status, records = locate_available(named, scope)
-    elif object_lookup:
-        status, records = locate_available(records, scope)
-    else:
-        records = [r for r in records if r.active]
-    if status != "found":
-        policy = completed_policy(
-            total_matches=0, returned_count=0, unknown_count=0, object_status=status,
-        )
-        return CatalogFacetOutput(
-            **base, result_type="empty", is_exhaustive=status == "not_found",
-            matching_complete=status == "not_found",
-            diagnostics=[ToolDiagnostic(**(policy.diagnostic() | {
-                "details": {
-                    "phase": "query_result",
-                    "target": plan.target.model_dump() if plan.target else None,
-                    "name": plan.name,
-                },
-            }))],
-        )
-    if object_lookup and plan.category:
-        category = normalize_category_hint(plan.category)
-        records = [r for r in records if r.product.category == category]
-    if scope.sku_ids:
-        records = [r for r in records if r.product.sku_id in scope.sku_ids]
-    if scope.spu_ids:
-        records = [r for r in records if r.product.spu_id in scope.spu_ids]
+    records = [
+        r for r in await repository.load(normalize_category_hint(plan.category), scope)
+        if r.active
+    ]
     conditions = list(plan.conditions)
     conditions.extend(
         SearchCondition(key=key, values=[value], evidence="trusted override")

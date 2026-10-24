@@ -155,8 +155,10 @@ def model_input_summary(body: dict, stage: str, attempt: int) -> None:
                    "projected_evidence_count": sum(bool(e.get("projection_truncated"))
                                                    for e in data.get("evidence", []))}
     if stage == "tool_review":
-        summary["candidate_plan"] = _pick(data.get("candidate_plan"),
-                                          ("operation", "category", "sort", "requested_limit"))
+        summary["candidate_plan"] = _pick(
+            data.get("candidate_plan"),
+            ("operation", "search_text", "category", "sort", "requested_limit"),
+        )
     metadata(purpose=PURPOSES.get(stage, "模型调用"), request_index=attempt,
              input_overview=summary, detail_location="Messages / Attributes / Events")
 
@@ -180,11 +182,15 @@ def model_output_summary(messages: list, categories: list[str], stage: str) -> N
                                           ("query", "category_hint", "limit", "offset"))
             actions.append(item)
     data = _message_object(messages[0]) if messages else {}
-    summary = _pick(data, ("operation", "category", "sort", "requested_limit", "verdict"))
+    summary = _pick(
+        data, ("operation", "search_text", "category", "sort", "requested_limit", "verdict"),
+    )
     if stage == "tool_planning":
         summary["condition_count"] = len(data.get("conditions", []))
     elif stage == "tool_review":
-        summary["check_count"] = len(data.get("checks", []))
+        if isinstance(data.get("reason"), str):
+            summary["reason_preview"] = data["reason"][:240]
+            summary["preview_truncated"] = len(data["reason"]) > 240
     elif stage == "answer":
         summary.update(_pick(data, ("covered_goal_ids", "evidence_ids")))
         if isinstance(data.get("response"), str):
@@ -209,6 +215,7 @@ def payload(kind: str, value: object) -> None:
                     metadata(tool_result={"ok": value.get("ok"),
                              **_pick(output, ("status", "reason_code", "match_kind",
                                               "returned_count", "total_match_count",
+                                              "requested_count", "limit", "limit_capped",
                                               "is_exhaustive", "selection_scope")),
                              "error": _pick(value.get("error"), ("code", "retryable"))})
         except Exception:
@@ -246,14 +253,17 @@ def program_event(name: str, *, outcome: str, related_model: bool = False, **dat
                                     "retained_product_count"))})
         elif name == "排序与返回窗口":
             metadata(result_window=_pick(data, ("sort", "selection_scope", "total_count",
-                                                "offset", "limit", "returned_count")))
+                                                "offset", "requested_count", "limit",
+                                                "limit_capped", "returned_count")))
         elif outcome == "rejected":
             metadata(last_validation_rejection={"event": name,
                      **_pick(data, ("phase", "attempt", "feedback")),
                      "model_span_id": attrs.get("model_span_id", "unknown")})
         elif name == "计划复核结论":
             metadata(review_result={"verdict": outcome,
-                     **_pick(data, ("attempt", "corrections", "next_action"))})
+                     **_pick(data, ("attempt", "corrections", "next_action")),
+                     "reason_preview": str(data.get("reason", ""))[:240],
+                     "reason_truncated": len(str(data.get("reason", ""))) > 240})
     except Exception:
         log.warning("Trace program event lost; business continues", exc_info=False)
 

@@ -21,6 +21,10 @@ from app.tools.schemas import CatalogToolRuntimeContext, ToolError, ToolExecutio
 class AdmissionError(ValueError):
     """Stable rejection code; do not echo trusted context or exception payloads."""
 
+    def __init__(self, code: str, *, feedback: str | None = None):
+        super().__init__(code)
+        self.feedback = feedback
+
 
 @dataclass(frozen=True)
 class QueryOperation:
@@ -76,7 +80,11 @@ class QueryToolAdapter:
             raise AdmissionError("invalid_input") from exc
         operation = QueryOperation(
             operation_id=f"op_{uuid4().hex}", goal_id=goal_id, tool_name=tool_name,
-            arguments=public.model_dump(mode="json", exclude_none=True),
+            arguments=public.model_dump(
+                mode="json", exclude_none=True,
+                # Keep an omitted search count distinguishable from an explicit default value.
+                exclude_unset=tool_name in {"catalog_search", "catalog_lookup"},
+            ),
         )
         self._operations[operation.operation_id] = operation
         self._attempts[operation.operation_id] = []

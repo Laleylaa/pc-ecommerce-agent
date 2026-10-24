@@ -104,11 +104,12 @@ class OrderQueryPlan(BaseModel):
         "operation",
         "requested_fields",
         "filters",
-        "filter_evidence",
         "unresolved_requirements",
     )
     filters: OrderFilters = Field(default_factory=OrderFilters)
-    filter_evidence: list[str] = Field(default_factory=list)
+    filter_evidence: list[str] = Field(
+        default_factory=list, description="Optional audit notes; not executable filter evidence.",
+    )
     unresolved_requirements: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
@@ -166,25 +167,6 @@ class LLMOrderQueryPlanner:
         payload["timezone"] = "Asia/Shanghai"
 
         def validate(plan: OrderQueryPlan) -> dict:
-            if plan.filters.active and not plan.filter_evidence:
-                raise OutputValidationError(
-                    "Filters require original query evidence", path=("filter_evidence",)
-                )
-            if any(
-                not evidence.strip() or evidence not in (request.query or "")
-                for evidence in plan.filter_evidence
-            ):
-                raise OutputValidationError(
-                    "Filter evidence must occur in the original query", path=("filter_evidence",)
-                )
-            if (
-                plan.operation == "match_orders"
-                and not plan.filters.product_terms
-                and not plan.unresolved_requirements
-            ):
-                raise OutputValidationError(
-                    "Purchase matching needs product_terms or an explicit unresolved requirement"
-                )
             assessed = validate_order_query_plan(
                 plan, order_id=request.order_id or _extract_order_id(request.query)
             )

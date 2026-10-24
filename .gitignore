@@ -122,6 +122,10 @@ Desktop.ini
 /tests/tools/catalog/results/*
 !/tests/tools/catalog/results/.gitkeep
 
+# Agent loop 工具选择模块的本地批次证据与报告
+/tests/agent_loop/business/tool_selection/results/*
+!/tests/agent_loop/business/tool_selection/results/.gitkeep
+
 # 待手动移到项目外的本地历史档案包
 /pc-ecommerce-agent-history-*.zip
 

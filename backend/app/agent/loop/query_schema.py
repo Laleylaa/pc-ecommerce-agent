@@ -15,6 +15,8 @@ class StrictModel(BaseModel):
 
 
 class CandidateReference(StrictModel):
+    """An existing candidate in prepared working_memory, never a future tool result."""
+
     kind: Literal["catalog_candidate", "order_candidate"]
     position: int = Field(ge=1, le=20)
 
@@ -40,7 +42,13 @@ class QueryGoal(StrictModel):
     query: SourceText
     disposition: RouteDisposition
     prerequisites: list[GoalPrerequisite] = Field(default_factory=list, max_length=8)
-    references: list[ContextReference] = Field(default_factory=list, max_length=20)
+    references: list[ContextReference] = Field(
+        default_factory=list, max_length=20,
+        description=("Only existing historical objects in working_memory. For a candidate "
+                     "that will be returned by this turn's upstream goal, leave references "
+                     "empty, declare the prerequisite, and use its observed identity in a "
+                     "later tool call. Keep the downstream goal registered."),
+    )
 
 
 class GoalRegistration(StrictModel):

@@ -89,7 +89,7 @@ def validate_identities(
         orders.update(item["id"] for item in output.get("candidates", []))
         orders.update(item["id"] for item in output.get("analysis_orders", []))
         # Relaxed order suggestions are deliberately not trusted automatic inputs.
-    if name in {"catalog_search", "catalog_facets"}:
+    if name in {"catalog_search", "catalog_lookup", "catalog_facets"}:
         requested = explicit_product_ids(arguments.get("query", ""))
         scope = arguments.get("scope") or {}
         for kind in ("sku", "spu"):

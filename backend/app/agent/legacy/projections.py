@@ -28,16 +28,19 @@ def apply_tool_output(
     call: PlannedToolCall,
     execution: ToolExecutionResult,
 ) -> None:
-    if call.name == "catalog_search":
+    if call.name in {"catalog_search", "catalog_lookup"}:
         state["catalog_tool_succeeded"] = _catalog_execution_completed(
             execution.model_dump(mode="python")
         )
     if not execution.ok or not execution.output:
         return
     output = execution.output
-    if call.name == "catalog_search":
+    if call.name in {"catalog_search", "catalog_lookup"}:
         state["products"] = [_product_card(product) for product in output.get("products", [])]
-        if call.name == "catalog_search" and output.get("query_state", "completed") == "completed":
+        if (
+            call.name in {"catalog_search", "catalog_lookup"}
+            and output.get("query_state", "completed") == "completed"
+        ):
             output = {
                 **output,
                 "query_plan": {
@@ -98,20 +101,20 @@ def rebuild_tool_projections(state: AgentState) -> None:
         if not isinstance(execution, dict):
             continue
         output = execution.get("output")
-        if name == "catalog_search":
+        if name in {"catalog_search", "catalog_lookup"}:
             saw_catalog_result = True
             catalog_completed = catalog_completed or _catalog_execution_completed(execution)
         if not execution.get("ok") or not isinstance(output, dict):
             continue
 
-        if name == "catalog_search":
+        if name in {"catalog_search", "catalog_lookup"}:
             for item in output.get("products", []):
                 product = _product_card(item)
                 if product.sku_id in seen_sku_ids:
                     continue
                 seen_sku_ids.add(product.sku_id)
                 products.append(product)
-            if name == "catalog_search":
+            if name in {"catalog_search", "catalog_lookup"}:
                 parsed["product_search"] = _catalog_search_projection(output)
         elif name in {"policy_search", "knowledge_search"}:
             evidence.extend(
@@ -159,11 +162,12 @@ def _rebuild_from_task_artifacts(state: AgentState) -> None:
             continue
         tool_name = str(artifact.get("source_tool_name") or "")
         if not artifact.get("usable") and not (
-            (tool_name == "catalog_search" and value.get("query_state") == "completed")
+            (tool_name in {"catalog_search", "catalog_lookup"}
+             and value.get("query_state") == "completed")
             or (tool_name == "order_lookup" and value.get("result_type") == "order_suggestions")
         ):
             continue
-        if tool_name == "catalog_search":
+        if tool_name in {"catalog_search", "catalog_lookup"}:
             saw_catalog = True
             for item in value.get("products", []):
                 product = _product_card(item)
@@ -171,7 +175,7 @@ def _rebuild_from_task_artifacts(state: AgentState) -> None:
                     continue
                 seen_sku_ids.add(product.sku_id)
                 products.append(product)
-            if tool_name == "catalog_search":
+            if tool_name in {"catalog_search", "catalog_lookup"}:
                 parsed["product_search"] = _catalog_search_projection(value)
         elif tool_name in {"policy_search", "knowledge_search"}:
             evidence.extend(
@@ -202,7 +206,7 @@ def _catalog_execution_completed(execution: dict[str, Any]) -> bool:
     output = execution.get("output")
     if not isinstance(output, dict):
         return False
-    if output.get("contract_version") == "3":
+    if output.get("contract_version") in {"3", "4", "5"}:
         return output.get("query_state") == "completed"
     diagnostics = output.get("diagnostics")
     if not isinstance(diagnostics, list):

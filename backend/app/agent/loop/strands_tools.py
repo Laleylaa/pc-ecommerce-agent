@@ -71,8 +71,18 @@ class StrandsToolBindings:
             call = GoalToolCall.model_validate(tool["input"], strict=True)
             arguments = bound.contract.public_input_model.model_validate(
                 call.arguments, strict=True,
-            ).model_dump(mode="json", exclude_none=True)
+            ).model_dump(
+                mode="json", exclude_none=True,
+                exclude_unset=tool["name"] in {"catalog_search", "catalog_lookup"},
+            )
         except ValidationError as exc:
+            if any(error["type"] == "scope_type_conflict" for error in exc.errors()):
+                raise AdmissionError(
+                    "invalid_input",
+                    feedback=("arguments.scope: sku_ids and spu_ids cannot both be nonempty. "
+                              "Keep only the ID kind of the referenced object; do not remove "
+                              "a user-required scope or change SKU/SPU granularity."),
+                ) from exc
             raise AdmissionError("invalid_input") from exc
         return call.model_copy(update={"arguments": arguments})
 

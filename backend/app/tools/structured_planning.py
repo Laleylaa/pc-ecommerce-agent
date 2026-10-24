@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import re
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -54,7 +53,7 @@ def scoped_plan_cache(plans: dict[tuple[type[BaseModel], bool], BaseModel]):
 
 
 def output_schema(schema: type[BaseModel], required: tuple[str, ...]) -> dict:
-    """Use the plan's field definitions while requiring explicit model decisions."""
+    """Use field definitions and require only the plan's execution decisions."""
     result = schema.model_json_schema()
     result["required"] = sorted(set(result.get("required", [])) | set(required))
     for nested in _nested_models(schema):
@@ -163,35 +162,6 @@ def require_decisions(
                     )
 
 
-def _validate_review(review: ToolPlanReview, payload: dict, candidate: dict) -> None:
-    source = re.sub(r"\s+", "", payload.get("query", "")).casefold()
-    for index, check in enumerate(review.checks):
-        evidence = re.sub(r"\s+", "", check.evidence).casefold()
-        if not evidence or evidence not in source:
-            raise OutputValidationError(
-                "Review evidence must quote the original query",
-                path=("checks", index, "evidence"),
-            )
-        for pointer in check.plan_paths:
-            value = candidate
-            try:
-                if not pointer.startswith("/"):
-                    raise ValueError("JSON Pointer must start with /")
-                for part in pointer[1:].split("/"):
-                    part = part.replace("~1", "/").replace("~0", "~")
-                    if isinstance(value, list):
-                        if not part.isdecimal():
-                            raise ValueError("Invalid list index")
-                        value = value[int(part)]
-                    else:
-                        value = value[part]
-            except (KeyError, IndexError, TypeError, ValueError) as exc:
-                raise OutputValidationError(
-                    "Review path must reference the candidate plan",
-                    path=("checks", index, "plan_paths"),
-                ) from exc
-
-
 async def generate_tool_plan(
     model: Any,
     *,
@@ -203,6 +173,7 @@ async def generate_tool_plan(
     trusted: dict | None = None,
     timeout_seconds: float = 60.0,
     review: bool = False,
+    review_context: str | None = None,
 ) -> Plan:
     """Program validation -> semantic review -> bounded correction -> final validation.
 
@@ -295,7 +266,14 @@ async def generate_tool_plan(
         try:
             with validation_step(
                 "计划校验" if phase == "plan" else "复核输出校验",
-                related_model=True, schema=schema.__name__, phase=phase, attempt=attempt + 1,
+                related_model=True,
+                schema=schema.__name__ if phase == "plan" else ToolPlanReview.__name__,
+                plan_schema=schema.__name__, phase=phase, attempt=attempt + 1,
+                check_scope=(
+                    "计划结构、字段/参数、可信来源及确定性业务约束；不认证请求语义"
+                    if phase == "plan" else
+                    "复核结论结构与必要反馈；不检查原文摘录、引用路径或说明文字的语义"
+                ),
             ):
                 data = parse_object(response.content)
                 if phase == "plan":
@@ -305,9 +283,9 @@ async def generate_tool_plan(
                     candidate = plan.model_dump(mode="json")
                 else:
                     assessment = ToolPlanReview.model_validate(data)
-                    _validate_review(assessment, original, candidate)
                     metadata(model_verdict=assessment.verdict,
-                             check_scope="复核结构与引用规则；通过不等于计划获准执行")
+                             reason_preview=assessment.reason[:240],
+                             reason_truncated=len(assessment.reason) > 240)
             if phase == "plan":
                 if tracing_active():
                     changed = {
@@ -330,7 +308,8 @@ async def generate_tool_plan(
                 if not review:
                     return cache_and_return()
                 review_messages = [
-                    SystemMessage(content=build_review_prompt(prompt)),
+                    SystemMessage(content=build_review_prompt(
+                        prompt if review_context is None else review_context)),
                     HumanMessage(content=json.dumps({
                         "original_request": original,
                         "candidate_plan": candidate,
@@ -347,7 +326,7 @@ async def generate_tool_plan(
             )
             program_event("计划复核结论", outcome=assessment.verdict, related_model=True,
                           schema=schema.__name__, attempt=attempt + 1,
-                          corrections=repairs, next_action=(
+                          corrections=repairs, reason=assessment.reason, next_action=(
                               "final_validation" if assessment.verdict == "approve" else
                               "stop" if assessment.verdict == "uncertain" or repairs >= max_repairs
                               else "repair_plan"))

@@ -39,10 +39,10 @@ TASK_PLANNING_EXAMPLES = [
         }]},
         "output": {
             "tasks": [
-                {"id": "task_1", "goal_id": "goal_1", "tool_name": "catalog_search",
+                {"id": "task_1", "goal_id": "goal_1", "tool_name": "catalog_lookup",
                  "arguments": {"query": "查询Keychron K8的价格与连接方式"},
                  "depends_on": [], "answer_role": "user_facing"},
-                {"id": "task_2", "goal_id": "goal_1", "tool_name": "catalog_search",
+                {"id": "task_2", "goal_id": "goal_1", "tool_name": "catalog_lookup",
                  "arguments": {"query": "查询罗技K380的价格与连接方式"},
                  "depends_on": [], "answer_role": "user_facing"},
             ],

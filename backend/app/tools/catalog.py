@@ -26,6 +26,7 @@ from app.schemas.catalog import (
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
     ProductReference,
+    QueryText,
     SearchCondition,
     SearchPlan,
     UnresolvedCatalogRequirement,
@@ -287,16 +288,15 @@ class CatalogQueryPlanner(Protocol):
 class FacetQueryPlan(BaseModel):
     _query_issue: QueryIssue | None = PrivateAttr(default=None)
     _requirement_assessment: dict = PrivateAttr(default_factory=dict)
-    _category_evidence: str | None = PrivateAttr(default=None)
     model_config = ConfigDict(extra="forbid")
     model_required_fields: ClassVar[tuple[str, ...]] = (
-        "selection", "facet", "category", "brand", "spec_key", "name", "target", "filters",
-        "conditions", "min_price", "max_price", "count_scope", "supported",
-        "unsupported_reason", "unsupported_requirements",
-        "clarification_requirements",
+        "selection", "facet", "conditions", "count_scope", "supported",
+        "unresolved_requirements",
     )
     selection: Literal["catalog", "object"] = "catalog"
-    name: str | None = SearchPlan.model_fields["name"]
+    name: QueryText | None = Field(
+        default=None, description="误投目录工具的指定对象名称，保留以返回catalog_lookup转交提示。",
+    )
     target: ProductReference | None = SearchPlan.model_fields["target"]
     conditions: list[SearchCondition] = Field(default_factory=list)
     unresolved_requirements: list[UnresolvedCatalogRequirement] = (
@@ -782,26 +782,18 @@ class LLMCatalogQueryPlanner:
             key: value for key, value in payload["explicit_overrides"].items()
             if key in request.model_fields_set
         }
-        from app.tools.prompts.catalog_facets import build_facets_prompt
+        from app.tools.prompts.catalog_facets import (
+            build_facets_prompt,
+            build_facets_review_context,
+        )
 
         def validate(plan: FacetQueryPlan) -> dict | None:
-            if (
-                not plan.supported
-                and not (plan.unresolved_requirements or plan.unsupported_requirements
-                         or plan.clarification_requirements or plan.conditions)
-                and plan.selection != "object"
-            ):
-                raise OutputValidationError(
-                    "Do not classify a request from unsupported_reason prose. Preserve its "
-                    "source in unresolved_requirements with a structured reason.",
-                    path=("unresolved_requirements",),
-                )
             if (
                 plan.filters or plan.brand is not None
                 or plan.min_price is not None or plan.max_price is not None
             ):
                 raise OutputValidationError(
-                    "Submit model-generated filters as typed conditions with source evidence; "
+                    "Submit model-generated filters as typed conditions; "
                     "brand, filters and price overrides are reserved for caller-supplied arguments",
                     path=("conditions",),
                 )
@@ -813,6 +805,7 @@ class LLMCatalogQueryPlanner:
         plan = await generate_tool_plan(
             self.chat_model, schema=FacetQueryPlan, required=FacetQueryPlan.model_required_fields,
             prompt=build_facets_prompt(FacetQueryPlan, request.category_hint),
+            review_context=build_facets_review_context(request.category_hint),
             payload=_json_safe(payload), validate=validate,
             review=self.review,
             trusted={
@@ -3640,12 +3633,6 @@ def _validate_catalog_facet_plan(
 ) -> FacetQueryPlan:
     # Capability checks may reject additional fields, but cannot turn an explicit
     # unsupported result shape back into an executable metadata query.
-    if plan.category and plan._category_evidence is None:
-        # Preserve the source spelling through canonicalization and repeated validation.
-        plan._category_evidence = (
-            plan.category if plan.category.casefold() in plan.query.casefold()
-            else normalize_category_hint(plan.category)
-        )
     category = _canonical_category(plan.category)
     plan.category = category
     plan.filters, normalization_debug = _normalize_catalog_filters_with_debug(
@@ -3686,8 +3673,7 @@ def _validate_catalog_facet_plan(
 
     probe = SearchPlan(
         category=(normalize_category_hint(plan.category) or plan.category) if plan.query else None,
-        category_evidence=plan._category_evidence,
-        name=plan.name, target=plan.target, conditions=plan.conditions,
+        search_text=plan.name, target=plan.target, conditions=plan.conditions,
         unresolved_requirements=plan.unresolved_requirements,
         clarification_requirements=plan.clarification_requirements,
         unsupported_requirements=plan.unsupported_requirements,

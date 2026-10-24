@@ -20,15 +20,13 @@ from app.tools.catalog_search.rules import (
     FIELD_DEFINITIONS,
     FILTER_FIELDS,
     NUMERIC_UNITS,
-    compact_name,
-    compact_text,
     equal,
     normalize,
     number,
 )
 
 
-def invalid_plan(message: str, path: tuple = (), code: str = "invalid_evidence") -> QueryIssue:
+def invalid_plan(message: str, path: tuple = (), code: str = "invalid_plan") -> QueryIssue:
     return QueryIssue(
         ResultReason.INVALID_PLAN,
         message,
@@ -56,60 +54,14 @@ def raise_plan_errors(issue: QueryIssue | None) -> None:
     raise OutputValidationError(issue.message, issues=errors)
 
 
-def _source_issues(plan: SearchPlan, query: str) -> list[QueryIssue]:
-    issues = []
-    source = compact_text(query)
-
-    def check(value: str, path: tuple, message: str) -> None:
-        if not compact_text(value) or compact_text(value) not in source:
-            issues.append(invalid_plan(message, path))
-
-    if plan.name:
-        if any(
-            not compact_name(p) or compact_name(p) not in compact_name(query)
-            for p in plan.name.split()
-        ) or not compact_name(plan.name):
-            issues.append(
-                invalid_plan("name含有输入中没有的词段；保留原名称，不改字或翻译。", ("name",))
-            )
-    for i, word in enumerate(plan.keywords):
-        if not compact_name(word) or compact_name(word) not in compact_name(query):
-            issues.append(invalid_plan("keywords须保留原文词段", ("keywords", i)))
-    if plan.category:
-        check(
-            plan.category_evidence or plan.category,
-            ("category_evidence",),
-            "category_evidence不在输入中；未明确品类时应为null",
-        )
-    if plan.sort != "relevance":
-        check(plan.sort_evidence or "", ("sort_evidence",), "非默认排序须提供原文依据")
-    for i, c in enumerate(plan.conditions):
-        check(c.evidence, ("conditions", i, "evidence"), "conditions.evidence必须引用原文")
-        if c.strength == "preference":
-            check(
-                c.preference_evidence or "",
-                ("conditions", i, "preference_evidence"),
-                "preference_evidence必须引用原文可让步表达",
-            )
-    for field in ("clarification_requirements", "unsupported_requirements"):
-        for i, value in enumerate(getattr(plan, field)):
-            check(value, (field, i), "未处理要求必须逐字引用当前query原文")
-    for i, requirement in enumerate(plan.unresolved_requirements):
-        check(
-            requirement.evidence, ("unresolved_requirements", i, "evidence"),
-            "未处理要求必须逐字引用当前query原文",
-        )
-    return issues
-
-
 def collect_plan_issues(
     plan: SearchPlan,
     request: CatalogSearchRequest,
     *,
     allow_scope_aggregation: bool = False,
 ) -> list[QueryIssue]:
-    # Stopping dispositions do not exempt model-authored content from validation.
-    issues = _source_issues(plan, request.query)
+    # Check executable structure/capability, never certify intent through quoted prose.
+    issues: list[QueryIssue] = []
     query_refs = explicit_product_ids(request.query)
     if target := plan.target:
         scope_ids = getattr(request.scope, f"{target.kind}_ids")
@@ -128,13 +80,13 @@ def collect_plan_issues(
                 )
             )
     scope_count = len(set(request.scope.sku_ids or request.scope.spu_ids))
-    if plan.disposition == "ready" and not plan.name and not plan.target:
+    if plan.disposition == "ready" and not plan.search_text and not plan.target:
         if (
             not allow_scope_aggregation
             and scope_count > 1
             and (
                 plan.operation != "search"
-                or not (plan.category or plan.conditions or plan.keywords)
+                or not (plan.category or plan.conditions or plan.search_text)
             )
         ):
             issues.append(
@@ -143,7 +95,7 @@ def collect_plan_issues(
                     "多个范围编号仅用于共同条件搜索，读取资料请按对象拆分。",
                 )
             )
-        if plan.operation in {"lookup", "variants"}:
+        if plan.operation == "lookup":
             if scope_count == 0:
                 issues.append(
                     QueryIssue(
@@ -155,17 +107,6 @@ def collect_plan_issues(
                 plan.target = ProductReference(
                     kind=kind, id=(request.scope.sku_ids or request.scope.spu_ids)[0]
                 )
-    if (
-        plan.disposition == "ready"
-        and plan.operation == "variants"
-        and plan.target
-        and plan.target.kind != "spu"
-    ):
-        issues.append(
-            QueryIssue(
-                ResultReason.QUERY_NEEDS_CLARIFICATION, "版本枚举需要明确SPU，不能用SKU代替型号。"
-            )
-        )
     valid_conditions = []
     for i, c in enumerate(plan.conditions):
         key = c.key
@@ -174,7 +115,7 @@ def collect_plan_issues(
             if key in FACT_FIELDS or key in SearchPlan.model_fields:
                 issues.append(
                     invalid_plan(
-                        f"{key}不是筛选字段；标题用name/keywords，事实询问用requested_fields。"
+                        f"{key}不是筛选字段；名称检索用search_text，事实询问用requested_fields。"
                         "保留原要求，不删除条件。",
                         (*path, "key"),
                         "invalid_filter_field",
@@ -237,7 +178,7 @@ def collect_plan_issues(
             valid_conditions.append(c)
     # Check all independently decidable contradictions; do not stop at the first field.
     issues.extend(_conflicts(plan.model_copy(update={"conditions": valid_conditions})))
-    issues.extend(declaration_issues(plan, issues))
+    issues.extend(declaration_issues(plan))
     if (
         plan.disposition == "unsupported"
         and not plan.unsupported_requirements

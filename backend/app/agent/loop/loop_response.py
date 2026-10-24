@@ -62,7 +62,10 @@ def response_state(
             continue
         output = record.result.output or {}
         name = record.invocation.tool_name
-        if name == "catalog_search" and output.get("query_state") == "completed":
+        if (
+            name in {"catalog_search", "catalog_lookup"}
+            and output.get("query_state") == "completed"
+        ):
             if output.get("status") in {"success", "partial", "no_match", "not_found"}:
                 catalog_completed = True
                 for value in output.get("products", []):

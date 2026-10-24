@@ -9,6 +9,7 @@ from app.schemas.catalog_search import SearchScope
 
 RouteCapability = Literal[
     "catalog_search",
+    "catalog_lookup",
     "catalog_facets",
     "order_lookup",
     "policy_search",
@@ -102,7 +103,10 @@ class RoutedTask(BaseModel):
         if self.result_selector is not None and self.produces != "ranked_product":
             raise ValueError("result_selector requires produces=ranked_product")
         sources = {requirement.source for requirement in self.input_requirements}
-        if "catalog_candidates" in sources and self.capability != "catalog_search":
+        if (
+            "catalog_candidates" in sources
+            and self.capability not in {"catalog_search", "catalog_lookup"}
+        ):
             raise ValueError("catalog_candidates require a catalog capability")
         if "order_candidates" in sources and self.capability != "order_lookup":
             raise ValueError("order_candidates require order_lookup")
@@ -114,6 +118,7 @@ class RoutedTask(BaseModel):
                     raise ValueError("each order candidate lookup must select exactly one position")
         expected_artifacts: dict[str, set[TaskArtifact]] = {
             "catalog_search": {"products", "ranked_product"},
+            "catalog_lookup": {"products", "ranked_product"},
             "catalog_facets": {"facets"},
             "order_lookup": {"order"},
             "policy_search": {"documents"},
@@ -276,6 +281,7 @@ class RequestRoutePlan(BaseModel):
 def _default_artifact_for_capability(capability: Any) -> TaskArtifact:
     defaults: dict[str, TaskArtifact] = {
         "catalog_search": "products",
+        "catalog_lookup": "products",
         "catalog_facets": "facets",
         "order_lookup": "order",
         "policy_search": "documents",

@@ -599,7 +599,7 @@ def validate_execution(
                     for error in exc.errors(include_url=False)
                 ],
             ) from exc
-        if task.tool_name == "catalog_search":
+        if task.tool_name in {"catalog_search", "catalog_lookup"}:
             # Read effective defaults from the contract without adding omitted arguments.
             result_limits[task.id] = public_input.limit
         elif task.tool_name == "order_lookup":
@@ -668,7 +668,7 @@ def validate_execution(
         if scoped:
             if scoped - allowed_products:
                 raise PlanValidationError(f"{task.id}: scope IDs are outside the trusted goal")
-            if task.tool_name in {"catalog_search", "catalog_facets"} and any(
+            if task.tool_name in {"catalog_search", "catalog_lookup", "catalog_facets"} and any(
                 b.source == "task_output" for b in task.bindings
             ):
                 raise PlanValidationError(f"{task.id}: choose direct scope OR task_output bindings")
@@ -682,7 +682,7 @@ def validate_execution(
                 )
             else:
                 producers = {
-                    "product": {"catalog_search"},
+                    "product": {"catalog_search", "catalog_lookup"},
                     "order": {"order_lookup"},
                 }
                 if tasks[binding.ref].tool_name not in producers[binding.kind]:
@@ -694,7 +694,7 @@ def validate_execution(
             if binding.source == "context" and binding.positions not in ([], [1]):
                 raise PlanValidationError(f"{task.id}: context binding represents a single object")
             expected = {
-                "product": {"catalog_search", "catalog_facets"},
+                "product": {"catalog_search", "catalog_lookup", "catalog_facets"},
                 "order": {"order_lookup"},
             }
             if task.tool_name not in expected[binding.kind]:
@@ -704,7 +704,7 @@ def validate_execution(
     # All producer arguments are validated before cross-task checks, regardless of array order.
     for task in plan.tasks:
         deferred = [b for b in task.bindings if b.source == "task_output"]
-        if task.tool_name in {"catalog_search", "catalog_facets"} and {
+        if task.tool_name in {"catalog_search", "catalog_lookup", "catalog_facets"} and {
             "candidate_versions", "parent_model",
         } <= {b.selection for b in deferred}:
             raise PlanValidationError(
@@ -745,7 +745,7 @@ def validate_context_product_bindings(task: ToolTask, objects: dict[str, dict]) 
     except ValueError as exc:
         raise PlanValidationError(f"{task.id}: invalid context binding: {exc}") from exc
     query_ids = explicit_product_ids(str(task.arguments.get("query", "")))
-    if task.tool_name in {"catalog_search", "catalog_facets"}:
+    if task.tool_name in {"catalog_search", "catalog_lookup", "catalog_facets"}:
         query_ids |= scope_ids(task.arguments.get("scope"))
     selected_ids = {(v["entity_scope"], identity) for v in values for identity in v["ids"]}
     # Optional context bindings prove only their own objects. Other submitted IDs may
@@ -912,7 +912,7 @@ def bind_arguments(
     if not deferred:
         return args
     values = bound_inputs(state, task.model_copy(update={"bindings": deferred}))
-    if task.tool_name in {"catalog_search", "catalog_facets"} and values:
+    if task.tool_name in {"catalog_search", "catalog_lookup", "catalog_facets"} and values:
         scopes = {v["entity_scope"] for v in values}
         if len(scopes) != 1:
             raise ValueError("search cannot combine SKU and SPU scopes")

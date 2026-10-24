@@ -1,0 +1,231 @@
+{
+  "version": "tool-selection-v3",
+  "measurement": "initial_tool_selection",
+  "group": "mixed_goals",
+  "cases": [
+    {
+      "id": "mg-01",
+      "input": {
+        "message": "键盘有哪些品牌？再推荐三款300元以内的键盘。",
+        "context": "none"
+      },
+      "business_purpose": "目录加发现",
+      "expected_tool_sets": [
+        [
+          "catalog_facets",
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-02",
+      "input": {
+        "message": "查Keychron 星轴 K01 机械键盘的价格，也看看店内键盘有哪些配列。",
+        "context": "none"
+      },
+      "business_purpose": "对象事实加集合枚举",
+      "expected_tool_sets": [
+        [
+          "catalog_facets",
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-03",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘多少钱？另推荐两款500元以下的显示器。",
+        "context": "none"
+      },
+      "business_purpose": "跨品类对象加发现",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup",
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-04",
+      "input": {
+        "message": "查Keychron 星轴 K01 机械键盘价格，列店里键盘的品牌，再推荐两款无线鼠标。",
+        "context": "none"
+      },
+      "business_purpose": "三个工具组合",
+      "expected_tool_sets": [
+        [
+          "catalog_facets",
+          "catalog_lookup",
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-05",
+      "input": {
+        "message": "比较Keychron 星轴 K01 机械键盘和Logitech 星轴 L02 机械键盘的价格、无线支持情况。",
+        "context": "none"
+      },
+      "business_purpose": "两个已知对象",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-06",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘多少钱？拆封后退货的通用规则是什么？",
+        "context": "none"
+      },
+      "business_purpose": "商品加政策",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup",
+          "policy_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-07",
+      "input": {
+        "message": "看看我最近的订单，再推荐两款无线鼠标。",
+        "context": "none"
+      },
+      "business_purpose": "订单加商品发现",
+      "expected_tool_sets": [
+        [
+          "catalog_search",
+          "order_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "mg-08",
+      "input": {
+        "message": "店里键盘有哪些连接方式？顺便解释蓝牙和2.4G连接有什么区别。",
+        "context": "none"
+      },
+      "business_purpose": "店铺选项加通用知识",
+      "expected_tool_sets": [
+        [
+          "catalog_facets",
+          "knowledge_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    }
+  ]
+}

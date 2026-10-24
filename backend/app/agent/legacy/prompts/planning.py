@@ -104,7 +104,7 @@ TASK_PLANNER_PROMPT = """
 只处理提供的 tool_planning 目标，逐个完整覆盖；不能改变准入、增加用户目标或删改硬条件。
 依据正式工具说明和 schema 拆任务、选择工具、生成完整自包含 query、公开参数和依赖。
 每个 task 对应一个工具调用。工具名和 arguments 必须符合工具 schema，不输出内部计划/SQL/规格字典。
-catalog_search、catalog_facets、policy_search、knowledge_search的query必填且不能是纯空白，
+catalog_search、catalog_lookup、catalog_facets、policy_search、knowledge_search的query必填且不能是纯空白，
 保留该任务的对象、目的及相关条件；scope、limit或document_type不能代替query。
 order_lookup仅获取一个已知order_id的已有详情时可省略query或传null；涉及订单选择、统计、
 筛选或其他具体处理要求时必须提交非空白query。不能同时省略order_id和query，不能用空串代替。
@@ -116,18 +116,16 @@ order_lookup仅获取一个已知order_id的已有详情时可省略query或传n
 blocked_reason必须包含非空白的原因；全部目标都有工具任务时，blocked_goals可以为空数组。
 【工具选择与目标覆盖】
 逐项核对goal中需要获得的信息，为每个独立信息需求选择相应工具；query保留文字不等于已覆盖需求。
-“有哪些品牌/品类/规格可选”“布局/颜色/连接方式有哪些选项”属于catalog_facets；
-“这款有什么规格/有哪些规格”属于catalog_facets，指定商品范围后列维度和取值；
-已知编号直接提交query或scope；只有名称且未定位时先用catalog_search定位商品，
-再用task_output商品绑定将身份交给catalog_facets，不猜编号、不把全店选项冒充该款规格。
-“找哪些商品满足条件、查商品价格库存和单项参数事实”属于catalog_search。
+全店/品类/候选集合的品牌、规格选项统计属于catalog_facets。
+指定商品的规格、颜色、能力、价格、条件版本存在性和版本列表属于catalog_lookup。
+catalog_lookup直接接收名称或可信编号，不先search再facets；找候选与推荐属于catalog_search。
 “这个商品的布局是什么”是对象事实查询，不等于“全店有哪些布局”。
 用户同时要商品候选与目录选项时，两项都规划；不要只把“看看选项”塞进搜索query。
 目录query保留对选项集合适用的明确条件（如白色、蓝牙、预算）；不添加静音等未表达要求，
 用途仍完整保留在商品query中，不声称目录选项证明办公适用性。
 catalog_search 一次一个目标、一套共同条件、一个范围。分别读取或比较A和B时，按对象拆成独立搜索任务；
 多品牌共同筛选不拆。保留要求/偏好原词。名称定位交给搜索，不猜编号。
-catalog_search/catalog_facets都可提供category_hint：有可靠品类依据时提供，仅选择字段说明，
+catalog_search/catalog_lookup/catalog_facets都可提供category_hint：有可靠品类依据时提供，仅选择字段说明，
 不确定省略；不能用hint代替query条件或商品scope。
 【返回数量】
 用户明确要求返回N个对象且符合工具schema范围时，必须填写arguments.limit=N；
@@ -139,7 +137,7 @@ query保留数量不能替代该参数。仅用户未指定数量时才省略lim
 输入goal包含query、source_text及context_refs。context_objects是LLM1选中的只读历史信息，
 不能更改编号、entity_scope或关系，不能新增历史对象，也不因有引用就强制使用scope。
 scope只由LLM2根据完整query和结构化对象决定，不因query出现商品编号、历史引用或category_hint就自动填写。
-catalog_search的query明确编号或名称时可省略scope；catalog_facets明确编号时也可省略scope。
+catalog_search/catalog_lookup的query明确编号或名称时可省略scope。
 只有名称且尚未定位的对象规格请求，按前述规则先搜索，再用task_output绑定目录范围；不猜编号。
 scope仅表示本任务的硬候选范围，如“只在刚才这三款里筛选”；由你完整提交，程序不自动补已知scope。
 “SKU1多少钱”对象固定，可提交SKU1范围；“找比SKU1便宜的商品”以SKU1为参照，不限到SKU1。

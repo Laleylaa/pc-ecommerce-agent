@@ -54,7 +54,7 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
         facts = artifact.get("value")
         result = _result_details(state, source_tool_call_id, facts, ledger_entry)
         handling = _task_handling(semantic_outcome, result, state)
-        if source_tool_name in {"catalog_search", "order_lookup"} and isinstance(
+        if source_tool_name in {"catalog_search", "catalog_lookup", "order_lookup"} and isinstance(
             facts, Mapping
         ):
             facts = without_pagination_controls(facts)
@@ -242,8 +242,9 @@ def _supporting_task_records(
             and source and source == entry.get("tool_call_id")
         )
         facts = artifact.get("value")
-        if artifact.get("source_tool_name") in {"catalog_search", "order_lookup"} and isinstance(
-            facts, Mapping,
+        if (
+            artifact.get("source_tool_name") in {"catalog_search", "catalog_lookup", "order_lookup"}
+            and isinstance(facts, Mapping)
         ):
             facts = without_pagination_controls(facts)
         result = _result_details(state, str(source or ""), facts, entry)
@@ -367,7 +368,10 @@ def _response_contract(
             "required": ["说明本次没有检索到能支持结论的资料"],
             "forbidden": ["断言本店没有该政策或商品不存在该能力", "用常识补写本店承诺"],
         }
-    if source_tool_name == "catalog_search" and _mapping(facts).get("contract_version") == "3":
+    if (
+        source_tool_name in {"catalog_search", "catalog_lookup"}
+        and _mapping(facts).get("contract_version") in {"3", "4", "5"}
+    ):
         data = _mapping(facts)
         kind = data.get("match_kind")
         required = ["按 status/reason_code 说明结果；资料缺失不等于不支持，未执行不等于无匹配。"]

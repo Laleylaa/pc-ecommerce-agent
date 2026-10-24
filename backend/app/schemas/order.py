@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
@@ -14,13 +14,6 @@ class OrderFilters(BaseModel):
     Product terms must occur in the same purchased item, not across items.
     """
 
-    model_required_fields: ClassVar[tuple[str, ...]] = (
-        "time_field",
-        "start_at",
-        "end_at",
-        "statuses",
-        "product_terms",
-    )
     model_config = ConfigDict(extra="forbid")
 
     time_field: Literal["created_at", "pay_at", "delivery_at"] = "created_at"

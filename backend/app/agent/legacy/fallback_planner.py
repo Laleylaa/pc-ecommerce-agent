@@ -50,7 +50,7 @@ def fallback_routed_tool_decision(
     for subquery in subqueries:
         query = subquery.query
         capability = str(subquery.capability)
-        if capability == "catalog_search":
+        if capability in {"catalog_search", "catalog_lookup"}:
             name = capability
             arguments = {"query": query, "limit": 3}
         elif capability == "catalog_facets":

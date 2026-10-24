@@ -56,9 +56,9 @@ _CATALOG_EXAMPLES = {
 _COMMON_RULES = """你在解析单目标商品查询，以下是字段说明，不是商品事实或可售配置。
 category_hint只帮助选取说明，不能作为新增筛选条件、替代原文或证明商品品类。
 没有可靠hint时使用统一说明；只按原文明确品类填写category，不凭型号猜测。
-若hint与请求不符，不得删除要求或改用相近字段；正式Prompt同时提供其他品类的备用说明。
-用于发现商品的规格硬要求保留conditions，标题词按name/keywords分工；事实询问保留requested_fields。
-未记录参数：事实询问仍定位商品并标记缺失；硬筛选标记filter_data_unavailable，不能改成询问。
+若hint与请求不符，不得删除要求或改用相近字段；hint不是筛选依据；不要因所选说明缺字段而宣称商品不支持。
+用于发现商品的规格硬要求保留conditions，标题词保留在工具的名称字段；事实询问保留requested_fields。
+字段体系没有筛选能力时标记filter_data_unavailable；具体商品是否缺记录只能查询后判断。
 所有条件须在同一个SKU上成立；记录示例不是取值白名单，也不表示能任意组合。
 同一字段同时满足多个能力时分成多个eq条件（AND）；任一满足才用in（OR）。
 不能为绕过冲突校验把同时满足改为in；否定条件保留ne/not_in。
@@ -94,7 +94,7 @@ conditions=[{"key":"connection_type","operator":"eq","values":["蓝牙"],"streng
 _CATEGORY_NOTES = {
     "鼠标": "DPI是最高灵敏度记录，weight_g是重量；不能据此保证游戏性能。无线不等于蓝牙。",
     "键盘": "switches是红轴、茶轴等实际轴体，不能用机械代替；机械键盘是标题类型词，"
-    "无具体型号时放keywords，有具体型号时保留在name。style是配列；"
+    "保留在名称检索文本，不当作轴体条件。style是配列；"
     "系列名含轴字、版本名含无线不证明对应规格，明确轴体/连接要求仍用规格条件。"
     "backlit为背光模式；tenkeyless为有无独立数字键区，不反推具体配列。",
     "耳机": "type表示佩戴类型，enclosure_type表示声学结构，两者不可互换。"

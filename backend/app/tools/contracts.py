@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, get_type_hints
+from typing import Any, Literal, Protocol, get_type_hints
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from pydantic_core import PydanticSerializationError
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError
-from app.core.loop_tracing import validation_step
+from app.core.loop_tracing import payload, tracing_active, validation_step
 from app.core.tracing import trace_event
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import (
@@ -293,6 +293,7 @@ class RegistryToolExecutor:
 
 LLM_SAFE_TOOL_NAMES = (
     "catalog_search",
+    "catalog_lookup",
     "catalog_facets",
     "order_lookup",
     "policy_search",
@@ -324,6 +325,7 @@ def build_tool_catalog(
     order_planner: OrderQueryPlanner | None = None,
     catalog_session_factory: async_sessionmaker[AsyncSession] | None = None,
     catalog_search_planner: SearchPlanner | None = None,
+    catalog_lookup_planner: SearchPlanner | None = None,
     tool_session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> ToolCatalog:
     if catalog_session_factory is None:
@@ -333,11 +335,16 @@ def build_tool_catalog(
     catalog_planner = catalog_planner or build_catalog_planner(settings)
     order_planner = order_planner or build_order_planner(settings)
     catalog_search_planner = catalog_search_planner or _build_search_planner(settings)
+    catalog_lookup_planner = catalog_lookup_planner or _build_search_planner(
+        settings, operation="lookup",
+    )
 
     def database_handler(name: str, bound_session: AsyncSession) -> ToolHandler:
-        if name == "catalog_search":
+        if name in {"catalog_search", "catalog_lookup"}:
             return CatalogSearchService(
-                CatalogSearchRepository(bound_session), catalog_search_planner,
+                CatalogSearchRepository(bound_session),
+                catalog_lookup_planner if name == "catalog_lookup" else catalog_search_planner,
+                operation="lookup" if name == "catalog_lookup" else "search",
             ).search  # type: ignore[return-value]
         if name == "catalog_facets":
             return CatalogToolService(
@@ -363,7 +370,7 @@ def build_tool_catalog(
     web = WebSearchToolService(settings.tavily_api_key.get_secret_value())
     handlers: dict[str, ToolHandler] = {
         name: isolated_handler(name) if tool_session_factory else database_handler(name, session)
-        for name in ("catalog_search", "catalog_facets", "order_lookup")
+        for name in ("catalog_search", "catalog_lookup", "catalog_facets", "order_lookup")
     }
     handlers.update({
         "policy_search": knowledge.search_policy,  # type: ignore[dict-item]
@@ -387,7 +394,9 @@ def build_catalog_search_tool(
     return BoundTool(contract, service.search)
 
 
-def _build_search_planner(settings: Settings) -> SearchPlanner:
+def _build_search_planner(
+    settings: Settings, *, operation: Literal["search", "lookup"] = "search",
+) -> SearchPlanner:
     model = (
         build_chat_model(settings, temperature=0, max_retries=0)
         if settings.catalog_llm_planner_enabled
@@ -398,7 +407,7 @@ def _build_search_planner(settings: Settings) -> SearchPlanner:
         model.max_retries = 0
         model.root_client.max_retries = 0
         model.root_async_client.max_retries = 0
-    return CatalogSearchPlanner(model)
+    return CatalogSearchPlanner(model, operation=operation)
 
 
 def build_catalog_planner(settings: Settings | None = None) -> CatalogQueryPlanner | None:
@@ -438,6 +447,10 @@ async def execute_bound_tool(
     try:
         public_input = contract.public_input_model.model_validate(arguments)
         internal_input = public_input.model_dump(mode="json", exclude_none=True)
+        if (contract.llm_name in {"catalog_search", "catalog_lookup"}
+                and "limit" not in public_input.model_fields_set):
+            # Preserve the difference between caller selection and the schema default.
+            internal_input.pop("limit", None)
         runtime = ToolRuntimeContext.model_validate(runtime_context)
         for field_name in contract.runtime_fields:
             internal_input[field_name] = getattr(runtime, field_name)
@@ -498,8 +511,23 @@ async def execute_bound_tool(
 
     await trace_event("tool_handler_output", tool_name=contract.llm_name, output=output)
     try:
-        with validation_step("工具输出校验", tool_name=contract.llm_name,
-                             schema=contract.output_model.__name__):
+        with validation_step(
+            "工具输出校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
+            check_scope="工具输出结构、字段及确定性结果一致性；不判定用户目标完成",
+        ):
+            if tracing_active():
+                try:
+                    captured = (
+                        output.model_dump(mode="json") if isinstance(output, BaseModel) else output
+                    )
+                    payload("input", captured)
+                except Exception as exc:
+                    # Observability must not change validation or hide its original failure.
+                    payload("input", {
+                        "capture_status": "unavailable",
+                        "error_type": type(exc).__name__,
+                        "notice": "待校验结果无法序列化；原校验继续执行",
+                    })
             if not isinstance(output, BaseModel):
                 raise TypeError("tool handler must return a structured output model")
             validated_output = contract.output_model.model_validate(
@@ -528,39 +556,50 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
             parallel_safe=True,
             registry_name="catalog.search",
             description=(
-                "Execute ONE self-contained catalog query with ONE shared set of constraints "
-                "and ONE scope, within the admitted goal. If the user requests N candidates, "
-                "set limit=N; writing N in query is not enough. Omit limit only when the user "
-                "specifies no count (default: at most 3). User-controlled catalog pagination "
-                "and automatic continuation excluding previous results are not supported. "
-                "A nonblank query is required even with scope. "
-                "Locate ONE SKU/SPU by ID or ONE name/model, or search by "
-                "shared conditions. Multiple explicit objects require separate calls. "
-                "Match real SKUs, group matching variants by model. "
-                "No implicit stock preference. Optional scope contains sourced IDs, "
-                "never raw history; it is a hard candidate boundary, not another lookup target. "
-                "A clear query ID/name needs no scope. Do not restrict to a historical "
-                "reference merely because it is mentioned as a comparison anchor. "
-                "Optional category_hint selects specification guidance only, never a filter; "
-                "omit it when category is uncertain. Product names need no category hint. "
-                "Returns complete recorded product facts regardless of requested fields, "
-                "with match_kind and per-SKU condition_checks. Exact matches come first; "
-                "Hard conditions determine eligibility; soft preferences rank all eligible "
-                "candidates before the return limit, without discarding nonpreferred candidates. "
-                "Exact means all hard conditions are confirmed on the same SKU; preferences "
-                "remain visible in per-SKU checks. Only a conclusive empty hard-condition search "
-                "can return same-category alternatives "
-                "differing in at most one condition dimension. Preferences require explicit "
-                "user willingness to compromise; ordinary specifications are requirements. "
-                "total_match_count counts exact matches; candidate_count counts the selected "
-                "pool. partial/object_facts are not exact matches. "
-                "with missing/conflicting fields and object status. Check status; "
-                "split_required/clarification_required/unsupported/invalid_query are not "
-                "no-match results. invalid_query reports conflicting structured conditions; "
-                "the caller decides whether to explain or ask the user."
-                " Broad purposes requiring concrete parameters return "
-                "clarification_required/requirement_needs_clarification without executing "
-                "filters or retrying. Unsupported capabilities and missing facts remain distinct."
+                "Find or recommend products across the catalog or a sourced candidate scope. "
+                "Use for shared filters and ranking, including a name as a discovery constraint. "
+                "For facts, conditional availability, prices or variants of ONE specified product, "
+                "use catalog_lookup. For catalog brands/categories/specification options, use "
+                "catalog_facets. Pass a self-contained query preserving every hard condition, "
+                "negation and preference. category_hint selects only that category's specification "
+                "guide; it never filters products. Omit when uncertain. scope is a sourced hard "
+                "boundary, not a comparison anchor; never invent IDs. Set limit to the requested "
+                "count; default 3, capped at 20 with explicit count metadata. Returns model cards "
+                "with matching-SKU counts and prices; previews are not the full population. "
+                "Check status, match_kind, condition_checks and matching_complete. Alternatives "
+                "are explicitly marked and do not count as exact matches. Unknown facts are not "
+                "negative facts. identity_suggestions require confirmation and cannot be quoted. "
+                "Read only; no automatic pagination or purchase operations."
+            ),
+            public_input_model=CatalogSearchPublicInput,
+            internal_input_model=CatalogSearchRequest,
+            output_model=CatalogSearchResult,
+            runtime_fields=(),
+            timeout_seconds=75.0,
+        ),
+        ToolContract(
+            llm_name="catalog_lookup",
+            parallel_safe=True,
+            registry_name="catalog.lookup",
+            description=(
+                "Read ONE specified product and its versions by name, explicit SKU/SPU ID, "
+                "or sourced scope. Use for price, stock, specifications, "
+                "wireless/support questions, "
+                "whether matching versions exist, version counts, price ranges and version lists. "
+                "Combine these facts in one query; no preliminary search is needed for a name. "
+                "Use catalog_search to discover products across a collection; use catalog_facets "
+                "for collection-wide options. Preserve the complete question and any prerequisite "
+                "such as 'price only if wireless'. category_hint selects specification guidance "
+                "only, never a filter; omit when uncertain. Never infer IDs from model numbers. "
+                "Separate independent named objects into calls. Default returns lookup_summary "
+                "over ALL confirmed matching active versions, including existence, SKU count, "
+                "price range, distinct price count and cheapest/middle/most expensive examples. "
+                "Explicit version lists use limit (default 3, cap 20); summary statistics never "
+                "use the display window. Field values retain SKU attribution and missing/conflict "
+                "counts. Partial wireless support is not whole-model support. Alternatives may "
+                "be returned with match_kind=alternative and per-SKU differences; they never "
+                "contribute to the exact summary. Unknown prerequisites do not establish a quote. "
+                "Unconfirmed identity suggestions contain no usable prices. Read only."
             ),
             public_input_model=CatalogSearchPublicInput,
             internal_input_model=CatalogSearchRequest,
@@ -573,28 +612,16 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
             parallel_safe=True,
             registry_name="catalog.facets",
             description=(
-                "List catalog metadata and counts such as available brands in a category, "
-                "product categories sold by a brand, specification keys, or available values "
-                "for a specification. Query-first usage is supported: pass the user utterance "
-                "and the tool will infer facet, category, brand, and spec_key when possible. "
-                "A nonblank query is required to specify the requested metadata. "
-                "For example, '键盘有哪些布局可选' asks for specification values; "
-                "'这款有什么规格' belongs here: use an explicit ID or sourced scope "
-                "and list recorded dimensions and their SKU-associated values. "
-                "Unknown product names must first be resolved by catalog_search, then bound "
-                "through a product task_output scope. "
-                "Name-only object specs do not scan the store. "
-                "Optional category_hint selects guidance only; optional nonempty scope contains "
-                "sourced SKU/SPU IDs and limits the candidate set. Never guess IDs. "
-                "Scope is chosen by the task planner only for an intended fixed candidate range, "
-                "not automatically from every mentioned identity or category hint. "
-                "Hard conditions filter SKUs; soft preferences rank options without removing "
-                "values contributed by nonpreferred eligible SKUs. Broad purposes return "
-                "requirement_needs_clarification diagnostics for orchestration "
-                "to ask for parameters. "
-                "Do not use it for product lists. Check diagnostics: unsupported requests "
-                "are not valid empty queries. Parsing failures return execution errors "
-                "without replacing the query with a fallback."
+                "List categories, brands, specification dimensions or available specification "
+                "values and counts across the catalog or a sourced candidate collection. "
+                "Use for 'which keyboard layouts are available under 500 yuan'. "
+                "For ONE product's specs, colors, wireless support, versions or prices use "
+                "catalog_lookup; for product candidates use catalog_search. Pass a complete "
+                "query with filters; category_hint selects only the relevant specification guide, "
+                "not a product filter. Omit uncertain hints. scope may restrict an already sourced "
+                "candidate collection. Returns option values and SKU/SPU counts, not inventory "
+                "quantities or product quotes. Values are not proof that combinations exist; "
+                "retain source identities and missing/conflicting evidence. Read only."
             ),
             public_input_model=CatalogFacetPublicInput,
             internal_input_model=CatalogFacetInput,
@@ -708,9 +735,12 @@ def _error_result(
             message=str(message or error_messages.get(code, "tool execution failed")),
             retryable=retryable,
             recommended_action=actions.get(code, "stop"),
-            phase=("plan_validation" if code in {
-                "planning_output_invalid", "planning_review_inconclusive", "invalid_input",
-            } else "execution") if name in {"catalog_search", "catalog_facets"} else None,
+            phase=(
+                ("plan_validation" if code in {
+                    "planning_output_invalid", "planning_review_inconclusive", "invalid_input",
+                } else "execution")
+                if name in {"catalog_search", "catalog_lookup", "catalog_facets"} else None
+            ),
             details=details or {},
         ),
     )

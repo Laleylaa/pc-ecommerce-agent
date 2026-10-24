@@ -567,13 +567,16 @@ def _extract_task_artifact(
     usable = outcome.has_usable_information
     reason = outcome.reason
 
-    if name == "catalog_search" and output.get("contract_version") == "3":
+    if (
+        name in {"catalog_search", "catalog_lookup"}
+        and output.get("contract_version") in {"3", "4", "5"}
+    ):
         value = dict(output)
         value["query_plan"] = {
             **dict(output.get("query_plan") or {}),
             "query": _mapping(call.get("arguments")).get("query"),
         }
-    elif usable and name == "catalog_search":
+    elif usable and name in {"catalog_search", "catalog_lookup"}:
         products = [dict(item) for item in output.get("products", []) if isinstance(item, Mapping)]
         if task.produces == "ranked_product":
             query_plan = _mapping(output.get("query_plan"))
@@ -645,7 +648,7 @@ def _extract_task_artifact(
             for item in documents if usable
         ]
 
-    if name in {"catalog_search", "order_lookup"} and isinstance(value, dict):
+    if name in {"catalog_search", "catalog_lookup", "order_lookup"} and isinstance(value, dict):
         value = without_pagination_controls(value)
 
     if usable and not evidence:
@@ -653,6 +656,7 @@ def _extract_task_artifact(
     artifact_type = (
         {
             "catalog_search": "products",
+            "catalog_lookup": "products",
             "catalog_facets": "facets",
             "order_lookup": "order",
             "policy_search": "documents",

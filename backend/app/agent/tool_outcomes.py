@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.tools.catalog_search.outcomes import ResultReason, ResultStatus
 
 CLARIFICATION_REASONS = {
+    ResultReason.IDENTITY_CONFIRMATION_REQUIRED.value: "相似或有歧义候选中的完整商品名称",
     "order_confirmation_required": "确认放宽条件找到的候选是否为要找的订单",
     ResultReason.IDENTITY_MISMATCH.value: "相互一致的商品名称与编号",
     ResultReason.QUERY_NEEDS_CLARIFICATION.value: "明确的查询对象或范围",
@@ -61,7 +62,10 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
         )
 
     result_type = _optional_string(output.get("result_type"))
-    if name == "catalog_search" and output.get("contract_version") == "3":
+    if (
+        name in {"catalog_search", "catalog_lookup"}
+        and output.get("contract_version") in {"3", "4", "5"}
+    ):
         status, reason = output.get("status"), str(output.get("reason_code") or "invalid_plan")
         if status in {ResultStatus.SUCCESS, ResultStatus.PARTIAL}:
             return _usable(call_id, name, result_type, reason)
@@ -104,7 +108,7 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
 
     # A missing scenario mapping is a qualified catalog no-match, even though the
     # Tool plan retains generic unsupported markers for its own diagnostics.
-    if name == "catalog_search" and _has_diagnostic(
+    if name in {"catalog_search", "catalog_lookup"} and _has_diagnostic(
         output,
         "usage_mapping_unavailable",
     ):
@@ -131,7 +135,7 @@ def normalize_tool_result(result: Mapping[str, Any]) -> ToolOutcome:
             reason="query_not_supported_by_tool",
         )
 
-    if name == "catalog_search":
+    if name in {"catalog_search", "catalog_lookup"}:
         products = output.get("products")
         return _collection_outcome(
             call_id,
@@ -245,7 +249,10 @@ def _usable(call_id: str, name: str, result_type: str | None, reason: str) -> To
 def _is_unsupported(name: str, output: Mapping[str, Any]) -> bool:
     if _has_diagnostic(output, "unsupported_query"):
         return True
-    if name == "catalog_search" and output.get("ranking_strategy") == "unsupported_query":
+    if (
+        name in {"catalog_search", "catalog_lookup"}
+        and output.get("ranking_strategy") == "unsupported_query"
+    ):
         return True
     query_plan = output.get("query_plan")
     if not isinstance(query_plan, Mapping):

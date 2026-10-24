@@ -4,6 +4,7 @@ from app.agent.legacy.routing import RequestRoutePlan, RoutedTask, ready_tool_su
 
 _DIRECT_CAPABILITIES = {
     "catalog_search",
+    "catalog_lookup",
     "catalog_facets",
     "order_lookup",
     "policy_search",
@@ -49,7 +50,7 @@ def _direct_capability_is_safe(subquery: RoutedTask) -> bool:
         return False
 
 
-    if capability == "catalog_search" and subquery.input_requirements:
+    if capability in {"catalog_search", "catalog_lookup"} and subquery.input_requirements:
         return (
             not subquery.depends_on
             and len(subquery.input_requirements) == 1
@@ -79,7 +80,7 @@ def _direct_capability_is_safe(subquery: RoutedTask) -> bool:
 
 def _default_arguments(subquery: RoutedTask) -> dict[str, int | str]:
     capability = str(subquery.capability)
-    if capability == "catalog_search":
+    if capability in {"catalog_search", "catalog_lookup"}:
         return {"limit": 3}
     if capability == "catalog_facets":
         return {"limit": 20}

@@ -5,28 +5,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class RequirementReview(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evidence: str = Field(min_length=1, max_length=2000)
-    plan_paths: list[str] = Field(max_length=12)
-    status: Literal["matched", "unresolved", "missing", "mismatched"]
-    explanation: str = Field(min_length=1, max_length=1000)
-
-
 class ToolPlanReview(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     verdict: Literal["approve", "revise", "uncertain"]
-    checks: list[RequirementReview] = Field(min_length=1, max_length=32)
+    reason: str = Field(
+        default="", max_length=2000,
+        description="修正时说明具体差异；无法判断时说明疑点。通过可省略，不要求摘录或路径。",
+    )
 
     @model_validator(mode="after")
-    def consistent_verdict(self) -> "ToolPlanReview":
-        problems = any(c.status in {"missing", "mismatched"} for c in self.checks)
-        if self.verdict == "approve" and problems:
-            raise ValueError("approve cannot contain missing or mismatched requirements")
-        if self.verdict == "revise" and not problems:
-            raise ValueError("revise requires a specific missing or mismatched requirement")
-        if any(c.status in {"matched", "unresolved"} and not c.plan_paths for c in self.checks):
-            raise ValueError("matched/unresolved requirements need a plan path")
+    def require_repair_feedback(self) -> "ToolPlanReview":
+        # A repair needs feedback, but the program does not certify its semantics.
+        if self.verdict == "revise" and not self.reason:
+            raise ValueError("revise requires feedback for plan correction")
         return self

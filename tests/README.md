@@ -7,6 +7,7 @@
 - 复检已有结果：[通用复检手册](REVIEW.md)。
 - 商品单工具用例、数据前提、运行及复检：[catalog_search 手册](tools/catalog/REVIEW.md)。
 - 商品场景与缺口：[覆盖索引](tools/catalog/coverage.json)。
+- 主流程首次工具选择：[分类、预标注与运行/复检](agent_loop/business/tool_selection/REVIEW.md)；只采集首次模型响应，不执行工具或提供反馈。v3共39例各3次，2026-10-24程序＋独立LLM复检117通过（仅首次选择）；[本轮汇总](agent_loop/business/tool_selection/results/summary-20261024-first-selection.md)。v1/v2越界反馈循环结果已按用户要求删除。不纳入默认离线pytest真实模型执行。
 - 开发与数据边界：[仓库约束](../AGENTS.md)。
 
 ## 1. 测试如何分类

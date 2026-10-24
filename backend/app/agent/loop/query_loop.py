@@ -66,6 +66,10 @@ def project_record(
             "data_quality",
             "candidate_count",
             "unknown_sku_count",
+            "requested_count",
+            "display_cap",
+            "limit_capped",
+            "identity_suggestions",
         }
     }
     metadata["omitted_fields"] = sorted(set(output) - set(metadata))
@@ -314,7 +318,8 @@ class QuerySession:
                 self._operations = previous_operations
                 rejection(uses, str(exc.__cause__ or exc), {"cancel": code})
                 self.rejections.append(code)
-                event.cancel = code
+                feedback = exc.feedback if isinstance(exc, AdmissionError) else None
+                event.cancel = f"{code}: {feedback}" if feedback else code
 
         def after(event: AfterToolsEvent) -> None:
             if self.bindings.limit_reached:

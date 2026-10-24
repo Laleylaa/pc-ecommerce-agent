@@ -1,17 +1,19 @@
 """Natural language extraction only. SQL and candidate selection are never model-authored."""
 
 import re
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.rules.product_identity import PRODUCT_REFERENCE_PREFIX, product_reference_kind
 from app.schemas.catalog_search import (
+    CatalogDiscoveryPlan,
+    CatalogLookupPlan,
     CatalogSearchRequest,
     ProductReference,
     SearchPlan,
 )
 from app.tools.catalog_fields import explain_conditions
 from app.tools.catalog_search.validation import raise_plan_errors, validate_plan
-from app.tools.prompts.catalog_search import build_search_prompt
+from app.tools.prompts.catalog_search import build_search_prompt, build_search_review_context
 from app.tools.structured_planning import generate_tool_plan
 
 
@@ -34,12 +36,14 @@ def explicit_lookup(query: str) -> SearchPlan | None:
     ids = list(dict.fromkeys(int(value) for value in re.findall(r"\d+", match[2])))
     if len(ids) != 1:
         return SearchPlan(
-            disposition="split_required", reason="一次只定位一个商品，请由编排层拆分编号查询。"
+            operation="lookup", disposition="split_required",
+            reason="一次只定位一个商品，请由编排层拆分编号查询。"
         )
     fields = {"价格": "price", "库存": "stock", "参数": "specifications", "详情": "description"}
     versions = match[3] in {"有哪些版本", "所有版本"}
     return SearchPlan(
-        operation="variants" if versions else "lookup",
+        operation="lookup",
+        version_view="list" if versions else "summary",
         purpose="lookup",
         target=ProductReference(kind=kind, id=ids[0]),
         requested_fields=[fields.get(match[3], "variants" if versions else "specifications")],
@@ -47,17 +51,23 @@ def explicit_lookup(query: str) -> SearchPlan | None:
 
 
 class CatalogSearchPlanner:
-    def __init__(self, chat_model=None, *, review: bool = True):
+    def __init__(
+        self, chat_model=None, *, review: bool = True,
+        operation: Literal["search", "lookup"] = "search",
+    ):
         self.chat_model = chat_model
         self.review = review
+        self.operation = operation
+        self.schema = CatalogLookupPlan if operation == "lookup" else CatalogDiscoveryPlan
 
     async def plan(self, request: CatalogSearchRequest) -> SearchPlan:
-        if direct := explicit_lookup(request.query):
+        if self.operation == "lookup" and (direct := explicit_lookup(request.query)):
             return direct
         if self.chat_model is None:
             raise OSError("catalog natural-language planner is unavailable")
         # The hint routes system context; it is not user intent or a hard filter.
         payload = request.model_dump(mode="json", exclude={"category_hint"})
+        payload["limit_source"] = "explicit" if "limit" in request.model_fields_set else "default"
 
         def validate(plan: SearchPlan) -> dict:
             issue = validate_plan(plan, request)
@@ -67,9 +77,14 @@ class CatalogSearchPlanner:
 
         return await generate_tool_plan(
             self.chat_model,
-            schema=SearchPlan,
+            schema=self.schema,
             required=SearchPlan.model_required_fields,
-            prompt=build_search_prompt(category_hint=request.category_hint),
+            prompt=build_search_prompt(
+                category_hint=request.category_hint, operation=self.operation,
+            ),
+            review_context=build_search_review_context(
+                category_hint=request.category_hint, operation=self.operation,
+            ),
             payload=payload,
             validate=validate,
             review=self.review,

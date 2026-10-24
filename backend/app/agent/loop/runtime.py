@@ -55,6 +55,10 @@ class AgentLoopRuntime:
             catalog_search_planner=CatalogSearchPlanner(
                 text_model if self.settings.catalog_llm_planner_enabled else None,
             ),
+            catalog_lookup_planner=CatalogSearchPlanner(
+                text_model if self.settings.catalog_llm_planner_enabled else None,
+                operation="lookup",
+            ),
             catalog_session_factory=factory,
             tool_session_factory=factory,
         )

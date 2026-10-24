@@ -120,7 +120,10 @@ def _fallback_task_response(task: dict[str, Any]) -> tuple[str, bool]:
     if facts.get("result_type") == "order_count":
         return f"本次查询条件下共有 {facts['total_match_count']} 笔订单。", True
     tool = task["artifact"]["source_tool_name"]
-    if tool == "catalog_search" and facts.get("contract_version") == "3":
+    if (
+        tool in {"catalog_search", "catalog_lookup"}
+        and facts.get("contract_version") in {"3", "4", "5"}
+    ):
         material = _catalog_search_fallback(facts)
     elif tool == "catalog_facets":
         material = _catalog_facets_fallback_answer(facts)
@@ -145,8 +148,11 @@ def _safe_non_negative_int(value: Any) -> int:
 
 
 def _fallback_answer(state: AgentState) -> str:
-    catalog_output = _latest_successful_tool_output(state, "catalog_search")
-    if catalog_output and catalog_output.get("contract_version") == "3":
+    catalog_output = (
+        _latest_successful_tool_output(state, "catalog_lookup")
+        or _latest_successful_tool_output(state, "catalog_search")
+    )
+    if catalog_output and catalog_output.get("contract_version") in {"3", "4", "5"}:
         return _catalog_search_fallback(catalog_output)
     products = state.get("products", [])
     if products:
@@ -378,8 +384,11 @@ def _fallback_unavailable_answer(state: AgentState) -> str:
     outcomes = [normalize_tool_result(result) for result in _active_tool_results(state)]
     kinds = {outcome.outcome for outcome in outcomes}
     tool_names = {outcome.tool_name for outcome in outcomes}
-    catalog_output = _latest_successful_tool_output(state, "catalog_search")
-    if catalog_output and catalog_output.get("contract_version") == "3":
+    catalog_output = (
+        _latest_successful_tool_output(state, "catalog_lookup")
+        or _latest_successful_tool_output(state, "catalog_search")
+    )
+    if catalog_output and catalog_output.get("contract_version") in {"3", "4", "5"}:
         return _catalog_search_fallback(catalog_output)
     if catalog_output and _has_catalog_diagnostic(catalog_output, "usage_mapping_unavailable"):
         return (
@@ -397,7 +406,7 @@ def _fallback_unavailable_answer(state: AgentState) -> str:
         return "当前账号下没有找到对应订单。请核对订单号，或让我查询最近订单。"
     if tool_names <= {"policy_search", "knowledge_search"}:
         return "当前知识库没有找到足够依据，我不能凭模型常识补写答案。"
-    if tool_names <= {"catalog_search", "catalog_facets"}:
+    if tool_names <= {"catalog_search", "catalog_lookup", "catalog_facets"}:
         return "当前商品目录没有找到匹配信息。你可以补充型号，或放宽一个筛选条件。"
     return "本次查询没有得到可用于回答的信息，请补充更具体的商品、订单或政策问题。"
 

@@ -1,0 +1,277 @@
+{
+  "version": "tool-selection-v3",
+  "measurement": "initial_tool_selection",
+  "group": "intent_boundaries",
+  "cases": [
+    {
+      "id": "ib-01",
+      "input": {
+        "message": "有没有支持无线的键盘？给我看看。",
+        "context": "none"
+      },
+      "business_purpose": "无线是筛选条件",
+      "expected_tool_sets": [
+        [
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-02",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘有没有支持无线的版本？",
+        "context": "none"
+      },
+      "business_purpose": "无线版本存在性",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-03",
+      "input": {
+        "message": "店里的键盘连接方式有哪些，无线的有几款？",
+        "context": "none"
+      },
+      "business_purpose": "集合规格值与数量",
+      "expected_tool_sets": [
+        [
+          "catalog_facets"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-04",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘里，黑色而且价格正好204元的版本有吗，多少钱？",
+        "context": "none"
+      },
+      "business_purpose": "固定对象精确条件",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-05",
+      "input": {
+        "message": "Dell 锐屏 D01 显示器 黑色标准版如果支持无线的话，多少钱？",
+        "context": "none"
+      },
+      "business_purpose": "前提下询价",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-06",
+      "input": {
+        "message": "想找Keychron品牌的机械键盘，不限型号，200到400元。",
+        "context": "none"
+      },
+      "business_purpose": "品牌约束不等于单一对象",
+      "expected_tool_sets": [
+        [
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-07",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘有哪些版本？",
+        "context": "none"
+      },
+      "business_purpose": "对象版本枚举",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-08",
+      "input": {
+        "message": "给我推荐三款不同品牌的键盘。",
+        "context": "none"
+      },
+      "business_purpose": "多品牌候选推荐",
+      "expected_tool_sets": [
+        [
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-09",
+      "input": {
+        "message": "店里300元以下键盘能选到哪些颜色？",
+        "context": "none"
+      },
+      "business_purpose": "集合颜色枚举",
+      "expected_tool_sets": [
+        [
+          "catalog_facets"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "ib-10",
+      "input": {
+        "message": "Keychron 星轴 K01 机械键盘黑色标准版现在多少钱？",
+        "context": "none"
+      },
+      "business_purpose": "名称中的版本属性",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    }
+  ]
+}

@@ -44,6 +44,12 @@ def _catalog_search_projection(output: dict[str, Any]) -> dict[str, Any]:
         "returned_count",
         "is_exhaustive",
         "ranking_strategy",
+        "identity_suggestions",
+        "match_kind",
+        "matching_complete",
+        "requested_count",
+        "display_cap",
+        "limit_capped",
     ):
         if key in output:
             projection[key] = output[key]

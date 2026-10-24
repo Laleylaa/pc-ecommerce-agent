@@ -1,0 +1,251 @@
+{
+  "version": "tool-selection-v3",
+  "measurement": "initial_tool_selection",
+  "group": "context_scope",
+  "cases": [
+    {
+      "id": "cs-01",
+      "input": {
+        "message": "第二款现在多少钱，支持无线吗？",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "历史候选事实",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-02",
+      "input": {
+        "message": "只在刚才这两款里选更便宜的那款。",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "可信集合内筛选",
+      "expected_tool_sets": [
+        [
+          "catalog_search"
+        ],
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "两候选内选便宜者允许search，也允许lookup分别查价后比较；本测试只判工具类型，不评估后续比较。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-03",
+      "input": {
+        "message": "只统计刚才展示的这两个SKU组成的集合：有哪些颜色，每种颜色各包含几个SKU？不要展开它们所属型号的其他版本。",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "可信候选集合枚举",
+      "expected_tool_sets": [
+        [
+          "catalog_facets"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "明确已展示SKU集合的颜色枚举/计数，应选facets，不是逐型号lookup。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-04",
+      "input": {
+        "message": "第一款和第二款现在各多少钱？",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "多个历史对象",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-05",
+      "input": {
+        "message": "这次不看键盘了，找两款1000元以内的显示器。",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "换品类覆盖历史",
+      "expected_tool_sets": [
+        [
+          "catalog_search"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-06",
+      "input": {
+        "message": "帮我查星云 X99 的价格。",
+        "context": "none"
+      },
+      "business_purpose": "品类未知的名称",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-07",
+      "input": {
+        "message": "这款支持无线吗？",
+        "context": "none"
+      },
+      "business_purpose": "缺指代对象",
+      "expected_tool_sets": [
+        []
+      ],
+      "semantic_checks": {
+        "routing": "没有可解析对象时，应表达需澄清而不随意查询；可从首轮登记或文本识别澄清意图，不要求控制格式。",
+        "coverage": "不调用商品工具属于正确选择；不能把无对象误判为无商品或直接回答无线事实。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-08",
+      "input": {
+        "message": "SKU 9101 键盘的全部规格和价格是什么？",
+        "context": "none"
+      },
+      "business_purpose": "用户明确编号",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "根据用户业务目的判断每个已选工具职责是否合适；不得仅因名称在允许集合内就判语义通过。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    },
+    {
+      "id": "cs-09",
+      "input": {
+        "message": "刚才第一款和第二款各自所属型号有哪些版本、各有多少种颜色？",
+        "context": "keyboard_pair"
+      },
+      "business_purpose": "两个型号分别查询版本事实",
+      "expected_tool_sets": [
+        [
+          "catalog_lookup"
+        ]
+      ],
+      "semantic_checks": {
+        "routing": "两个型号各自版本及颜色属于指定对象事实，应选lookup，不是将两型号混成集合facets。",
+        "coverage": "核对当前输入的独立业务目的是否都选择了对应工具；不要求精确调用次数或登记目标拆法。"
+      },
+      "allowed_forms": [
+        "工具名称按集合比较，忽略顺序和同类工具调用次数。",
+        "保留完整原始参数供理解工具用途；不以query措辞、hint/scope/limit取值或控制协议格式判路由失败。",
+        "不同目的需要的工具必须覆盖；存在多种合理工具组合时，任选一组即可。"
+      ],
+      "evidence_required": [
+        "冻结输入、预标注及既有上下文",
+        "正式Prompt与全部注册工具描述/schema",
+        "首次模型响应及工具调用提议（不执行）"
+      ]
+    }
+  ]
+}

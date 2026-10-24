@@ -24,7 +24,8 @@ TASK_RECOVERY = """
 仍只调用submit_execution_plan，只规划输入goals。protected_tasks属于这些目标中必须
 原样保留的任务，请将其原样列入输出；其他目标的任务不输出，由Runtime保留并合并。
 核对反馈中的工具选择、参数、范围、缺失前置和依赖问题，提交有实质变化的完整局部计划。
-未知商品身份先通过catalog_search定位再绑定；不能靠换task id重试相同失败调用。
+指定商品名称可直接交catalog_lookup定位，商品发现使用catalog_search；\
+不能靠换task id重试相同失败调用。
 可引用readonly_tasks中已经存在的依赖，但不能修改它们；不沿用已失效的结果。
 无法修复且无protected_tasks的目标放blocked_goals；有保留任务时仍保留它们，
 不能用未执行的新任务假装完成。Runtime会验证、分配新任务id并合并，不自行恢复状态。

@@ -12,10 +12,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from app.core.llm_feedback import OutputValidationError
-from app.schemas.catalog import ProductCard
+from app.schemas.catalog import ProductCard, ProductVariantCard
 from app.tools.catalog_fields import hard_condition_verdict, normalize_category_hint
+from app.tools.catalog_search.limits import MAX_DISPLAY_COUNT, MAX_IDENTITY_SUGGESTIONS
 from app.tools.catalog_search.outcomes import (
     LookupStatus,
     QueryState,
@@ -38,13 +40,18 @@ CategoryHint = Annotated[
     Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=40)] | None,
     AfterValidator(normalize_category_hint),
     Field(
-        description="可选品类提示：鼠标/键盘/耳机/显示器/音箱/摄像头；仅选择规格说明，不是筛选条件。未知或空值使用统一说明。"
+        description="可选品类提示：鼠标/键盘/耳机/显示器/音箱/摄像头；只加载该品类规格说明，不是筛选条件。未知或空值使用全品类说明。"
     ),
 ]
 
 
 class SearchScope(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra={
+        "description": "Use SKU IDs OR SPU IDs, never both nonempty. Preserve object granularity.",
+        "not": {"required": ["sku_ids", "spu_ids"], "properties": {
+            "sku_ids": {"minItems": 1}, "spu_ids": {"minItems": 1},
+        }},
+    })
 
     sku_ids: list[PositiveId] = Field(default_factory=list, max_length=50)
     spu_ids: list[PositiveId] = Field(default_factory=list, max_length=50)
@@ -54,7 +61,9 @@ class SearchScope(BaseModel):
         if any(value <= 0 for value in self.sku_ids + self.spu_ids):
             raise ValueError("scope identifiers must be positive")
         if self.sku_ids and self.spu_ids:
-            raise OutputValidationError("use one scope type: sku_ids or spu_ids")
+            raise PydanticCustomError(
+                "scope_type_conflict", "use one scope type: sku_ids or spu_ids",
+            )
         self.sku_ids = list(dict.fromkeys(self.sku_ids))
         self.spu_ids = list(dict.fromkeys(self.spu_ids))
         return self
@@ -69,10 +78,9 @@ class CatalogSearchRequest(BaseModel):
     limit: int = Field(
         default=3,
         ge=1,
-        le=20,
         strict=True,
         description=(
-            "返回候选数量上限。用户明确要求N款时必须填写N，仅在query写数量不能替代此参数；"
+            "请求展示数量。用户要求N款时填写N；超过系统展示上限时截断并明确告知；"
             "仅未指定数量时省略，默认最多3款。"
         ),
     )
@@ -97,7 +105,7 @@ class ProductReference(BaseModel):
 
 class SearchCondition(BaseModel):
     model_required_fields: ClassVar[tuple[str, ...]] = (
-        "key", "operator", "values", "evidence", "strength", "preference_evidence",
+        "key", "operator", "values", "strength",
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -108,21 +116,20 @@ class SearchCondition(BaseModel):
         description="以上必须gte（含本数），以下必须lte（含本数）；gt仅超过，lt仅低于；不要把以上写成gt",
     )
     values: list[str] = Field(min_length=1, max_length=12)
-    evidence: str = Field(min_length=1, description="原始查询中表达该条件的原文")
+    evidence: str = Field(
+        default="", max_length=2000,
+        description="可选的要求说明，仅供审计；不是执行依据，不要求逐字摘录。",
+    )
     strength: Literal["requirement", "preference"] = "requirement"
     preference_evidence: str | None = Field(
-        default=None, description="仅preference填写原文中明确可让步的表达；普通规格默认requirement"
+        default=None, max_length=2000,
+        description="可选的偏好说明，仅供审计；普通规格默认requirement。",
     )
 
     @model_validator(mode="after")
     def validate_arity(self) -> "SearchCondition":
         if self.operator not in {"in", "not_in"} and len(self.values) != 1:
             raise OutputValidationError("this operator takes exactly one value", path=("values",))
-        if (self.strength == "preference") != bool(self.preference_evidence):
-            raise OutputValidationError(
-                "preferences require evidence; requirements must not have it",
-                path=("preference_evidence",),
-            )
         return self
 
 
@@ -130,23 +137,26 @@ class UnresolvedCatalogRequirement(BaseModel):
     """A preserved user requirement with an explicit reason it cannot execute."""
 
     model_config = ConfigDict(extra="forbid")
-    evidence: QueryText
+    evidence: QueryText = Field(description="无法执行的具体要求，可简要转述，不要求逐字摘录。")
     reason: Literal[
         "filter_data_unavailable", "requirement_needs_clarification", "request_not_supported",
     ]
 
 
 class SearchPlan(BaseModel):
-    # Model output must declare decisions; deterministic constructors retain defaults.
+    # Only execution decisions are mandatory on the wire; audit prose is optional.
     model_required_fields: ClassVar[tuple[str, ...]] = (
-        "operation", "disposition", "category", "name", "target", "keywords",
-        "conditions", "requested_fields", "unsupported_requirements", "clarification_requirements",
-        "sort", "purpose",
+        "operation", "disposition", "conditions", "requested_fields",
+        "unresolved_requirements",
     )
 
     model_config = ConfigDict(extra="forbid")
 
-    operation: Literal["search", "lookup", "variants"] = "search"
+    operation: Literal["search", "lookup"] = "search"
+    version_view: Literal["summary", "list"] = Field(
+        default="summary",
+        description="指定商品默认汇总并展示低/中/高价代表版本；明确列版本用list。",
+    )
     disposition: Literal["ready", "split_required", "clarification_required", "unsupported"] = (
         "ready"
     )
@@ -156,45 +166,53 @@ class SearchPlan(BaseModel):
         description="只取query明说的品类；名称查询通常null，不能从型号、面板、声道、功率或hint推断",
     )
     category_evidence: str | None = Field(
-        default=None, description="用户明确品类的原文，未说则null"
+        default=None, max_length=2000, description="可选的品类说明，仅供审计。"
     )
-    name: str | None = Field(
+    search_text: QueryText | None = Field(
         default=None,
-        description="具体型号/版本及其标题限定词；原文片段用空格连接，保留品牌，每段须来自query；泛标题类型词用keywords，不翻译品牌",
-    )
-    keywords: list[str] = Field(
-        default_factory=list,
-        max_length=8,
-        description="无具体名称时的标题包含词，如机械键盘；有name时标题限定并入name，不重复规格条件或把用途转成关键词",
+        description="名称检索文本：品牌、型号、标题类型词或版本名；不重复已结构化的规格条件，不猜型号。",
     )
     target: ProductReference | None = Field(
         default=None,
-        description="仅用于query中明确写出的SKU/SPU编号；可与同一对象的name共同限定身份，不要复制scope编号"
+        description="仅用于query中明确写出的SKU/SPU编号；可与同一对象的search_text共同限定身份，不要复制scope编号"
     )
     conditions: list[SearchCondition] = Field(default_factory=list, max_length=24)
     unresolved_requirements: list[UnresolvedCatalogRequirement] = Field(
         default_factory=list, max_length=12,
-        description="不能执行的要求及明确根因；逐字引用原文，不与conditions或旧声明列表重复",
+        description="不能执行的具体要求及明确原因，不删除要求；说明可简要转述。",
     )
     requested_fields: list[str] = Field(default_factory=list, max_length=24)
     unsupported_requirements: list[str] = Field(
         default_factory=list,
         max_length=12,
-        description="仅无法表达为conditions的具体筛选要求，逐字引用；不重复conditions或clarification_requirements。对象事实询问只放requested_fields",
+        description="兼容既有计划的未支持筛选要求；新计划使用unresolved_requirements，可省略本字段。",
     )
     clarification_requirements: list[QueryText] = Field(
         default_factory=list,
         max_length=12,
-        description="需要具体化为参数的用途/主观筛选要求，逐字引用query；能力缺失另记unsupported_requirements",
+        description="兼容既有计划的待澄清要求；新计划使用unresolved_requirements，可省略本字段。",
     )
     unsupported_reason: Literal[
         ResultReason.REQUEST_NOT_SUPPORTED, ResultReason.DATA_INSUFFICIENT,
         ResultReason.FILTER_DATA_UNAVAILABLE,
     ] = ResultReason.REQUEST_NOT_SUPPORTED
     sort: Literal["relevance", "price_asc", "price_desc", "sales", "stock"] = "relevance"
-    sort_evidence: str | None = Field(default=None, description="非默认排序依据的用户原文")
+    sort_evidence: str | None = Field(
+        default=None, max_length=2000, description="可选的排序说明，仅供审计。",
+    )
     purpose: Literal["search", "lookup", "recommendation"] = "search"
-    requested_limit: int | None = Field(default=None, ge=1, le=10000)
+    requested_limit: int | None = Field(default=None, ge=1, strict=True)
+
+
+class CatalogDiscoveryPlan(SearchPlan):
+    operation: Literal["search"] = "search"
+    purpose: Literal["search", "recommendation"] = "search"
+    version_view: Literal["summary"] = "summary"
+
+
+class CatalogLookupPlan(SearchPlan):
+    operation: Literal["lookup"] = "lookup"
+    purpose: Literal["lookup"] = "lookup"
 
 
 class FieldIssue(BaseModel):
@@ -219,11 +237,18 @@ class SearchProduct(ProductCard):
     condition_checks: list[ConditionCheck] = Field(default_factory=list)
     representative_sku_id: PositiveId | None = None
     description: str | None = None
-    candidate_sku_ids: list[int] = Field(default_factory=list)
+    candidate_sku_ids: list[int] = Field(
+        default_factory=list,
+        description="本次明细/预览中的SKU编号；完整匹配数量看series_sku_count。",
+    )
     model_sku_count: Count = 0
     model_min_price: Decimal | None = None
     model_max_price: Decimal | None = None
     field_issues: list[FieldIssue] = Field(default_factory=list)
+    variant_details_complete: bool = Field(
+        default=True,
+        description="SKU明细是否覆盖匹配范围；false时版本数量与价格汇总仍描述完整匹配集。",
+    )
 
     @model_validator(mode="after")
     def validate_identity_and_variants(self) -> "SearchProduct":
@@ -239,9 +264,13 @@ class SearchProduct(ProductCard):
                 raise ValueError("SPU compatibility SKU fields must identify their representative")
             if {v.sku_id for v in variants} != set(ids) or len(variants) != len(ids):
                 raise ValueError("SPU variants must exactly cover the matching subset")
-            if self.series_sku_count != len(ids):
-                raise ValueError("series count must match the variant list")
-            if self.series_total_stock != sum(v.stock for v in variants):
+            if self.series_sku_count is None or self.series_sku_count < len(ids):
+                raise ValueError("series count cannot be smaller than its detail preview")
+            if self.variant_details_complete != (self.series_sku_count == len(ids)):
+                raise ValueError("detail completeness must agree with the series count")
+            if self.variant_details_complete and self.series_total_stock != sum(
+                v.stock for v in variants
+            ):
                 raise ValueError("series stock must describe matching variants only")
             representative = next(v for v in variants if v.sku_id == self.sku_id)
             if (self.price, self.stock, self.sku_sales_count, self.image_url) != (
@@ -256,13 +285,48 @@ class SearchProduct(ProductCard):
                 for key, value in self.series_common_specs.items()
             ):
                 raise ValueError("common specs must hold for every matching variant")
-            if (self.series_min_price, self.series_max_price) != (
+            if self.variant_details_complete and (self.series_min_price, self.series_max_price) != (
                 min(v.price for v in variants),
                 max(v.price for v in variants),
             ):
                 raise ValueError("series prices must describe the matching variants")
-        if self.model_sku_count < len(ids):
+        if self.model_sku_count < (self.series_sku_count or len(ids)):
             raise ValueError("model count cannot be smaller than its matching subset")
+        return self
+
+
+class PriceFacts(BaseModel):
+    """A price aggregate over a resolved object, not a list of SKU candidates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: ProductReference
+    spu_id: PositiveId
+    title: str
+    brand: str
+    category: str
+    queried_fields: list[Literal["price"]] = Field(
+        default_factory=lambda: ["price"], min_length=1, max_length=1,
+    )
+    name_constraint: str | None = None
+    scope: SearchScope = Field(default_factory=SearchScope)
+    applied_conditions: list[SearchCondition] = Field(default_factory=list)
+    population: Literal["matching_active_versions"] = "matching_active_versions"
+    sku_count: PositiveId
+    min_price: Decimal
+    max_price: Decimal
+    complete: bool
+
+    @model_validator(mode="after")
+    def validate_range(self) -> "PriceFacts":
+        if self.min_price > self.max_price:
+            raise ValueError("price bounds must be ordered")
+        if self.target.kind == "sku" and (
+            self.sku_count != 1 or self.min_price != self.max_price
+        ):
+            raise ValueError("one SKU has one price")
+        if self.target.kind == "spu" and self.target.id != self.spu_id:
+            raise ValueError("SPU identity must agree with the aggregate")
         return self
 
 
@@ -288,16 +352,66 @@ class SearchDiagnostic(BaseModel):
     details: dict = Field(default_factory=dict)
 
 
+class IdentitySuggestion(BaseModel):
+    """A name to confirm, never a selected product or a condition-qualified result."""
+
+    model_config = ConfigDict(extra="forbid")
+    spu_id: PositiveId
+    title: str
+    brand: str
+    category: str
+    match_type: Literal["ambiguous", "similar"]
+    score: float = Field(ge=0, le=1)
+    matched_terms: list[str] = Field(default_factory=list)
+    unmatched_terms: list[str] = Field(default_factory=list)
+    conditions_verified: Literal[False] = False
+
+
+class CatalogVersionIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sku_id: PositiveId
+    title: str
+
+
+class LookupFieldValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: str
+    versions: list[CatalogVersionIdentity]
+
+
+class LookupFieldFacts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: str
+    values: list[LookupFieldValue] = Field(default_factory=list)
+    missing_sku_count: Count = 0
+    conflicted_sku_count: Count = 0
+
+
+class CatalogLookupSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    population: Literal["matching_active_versions"] = "matching_active_versions"
+    exists: bool | None
+    matching_complete: bool
+    matched_sku_count: Count
+    unknown_sku_count: Count
+    min_price: Decimal | None = None
+    max_price: Decimal | None = None
+    price_level_count: Count = 0
+    fields: list[LookupFieldFacts] = Field(default_factory=list)
+    representative_versions: list[ProductVariantCard] = Field(default_factory=list, max_length=3)
+
+
 class CatalogSearchResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    contract_version: Literal["3"] = "3"
+    contract_version: Literal["5"] = "5"
+    lookup_summary: CatalogLookupSummary | None = None
     match_kind: Literal["exact", "alternative", "object_facts", "none"] = "none"
     fallback_attempted: bool = False
     identity_match_count: Count | None = None
     candidate_sku_count: Count | None = None
     candidate_spu_count: Count | None = None
-    result_type: Literal["products", "empty"]
+    result_type: Literal["products", "facts", "empty"]
     status: ResultStatus
     reason_code: ResultReason
     recommended_action: ResultAction
@@ -306,6 +420,18 @@ class CatalogSearchResult(BaseModel):
     result_purpose: Literal["search", "lookup", "recommendation"] = "search"
     selection_scope: Literal["sku", "spu"] | None = None
     products: list[SearchProduct] = Field(default_factory=list)
+    facts: PriceFacts | None = Field(
+        default=None,
+        description="兼容历史价格事实；当前lookup统一返回lookup_summary和商品资料。",
+    )
+    identity_suggestions: list[IdentitySuggestion] = Field(
+        default_factory=list, max_length=MAX_IDENTITY_SUGGESTIONS,
+    )
+    requested_count: PositiveId | None = None
+    display_cap: int = Field(
+        default=MAX_DISPLAY_COUNT, strict=True, ge=MAX_DISPLAY_COUNT, le=MAX_DISPLAY_COUNT,
+    )
+    limit_capped: bool = False
     object_results: list[ObjectLookupResult] = Field(default_factory=list, max_length=1)
     returned_count: Count = 0
     total_match_count: Count | None = Field(
@@ -320,7 +446,7 @@ class CatalogSearchResult(BaseModel):
     matching_complete: bool | None = None
     is_exhaustive: bool | None = None
     offset: Count | None = None
-    limit: Annotated[int, Field(strict=True, ge=1, le=20)] | None = None
+    limit: Annotated[int, Field(strict=True, ge=1, le=MAX_DISPLAY_COUNT)] | None = None
     next_offset: Count | None = None
     data_quality: Literal["not_assessed", "clear", "issues"] = "not_assessed"
     conflicted_sku_count: Count | None = None
@@ -339,6 +465,35 @@ class CatalogSearchResult(BaseModel):
             retryable=self.retryable,
             query_state=self.query_state,
         )
+        if self.lookup_summary is not None:
+            summary = self.lookup_summary
+            if self.query_state != "completed" or self.query_plan.get("operation") != "lookup":
+                raise ValueError("lookup summary requires an executed object query")
+            if summary.matched_sku_count != self.matched_sku_count:
+                raise ValueError("summary cannot include alternative versions")
+            if summary.unknown_sku_count != self.unknown_sku_count:
+                raise ValueError("summary must retain unknown conditions")
+            if summary.matching_complete != self.matching_complete:
+                raise ValueError("summary completeness must match the full matching population")
+            expected_exists = True if summary.matched_sku_count else (
+                None if summary.unknown_sku_count else False
+            )
+            if summary.exists != expected_exists:
+                raise ValueError("existence must distinguish missing evidence from no match")
+            if not summary.matched_sku_count and (
+                summary.min_price is not None or summary.max_price is not None
+                or summary.price_level_count or summary.representative_versions or summary.fields
+            ):
+                raise ValueError(
+                    "empty exact population cannot contain facts or alternative prices"
+                )
+            if summary.matched_sku_count and (
+                summary.min_price is None or summary.max_price is None
+                or summary.min_price > summary.max_price
+                or not 1 <= summary.price_level_count <= summary.matched_sku_count
+                or len(summary.representative_versions) != min(3, summary.matched_sku_count)
+            ):
+                raise ValueError("nonempty exact population requires complete price statistics")
         if self.status == ResultStatus.INVALID_QUERY:
             conflicts = [d for d in self.diagnostics if d.code == self.reason_code]
             if not conflicts:
@@ -353,11 +508,22 @@ class CatalogSearchResult(BaseModel):
                         raise ValueError("conflict conditions must belong to the stated field")
                     if condition not in self.query_plan.get("conditions", []):
                         raise ValueError("conflict evidence must preserve planned conditions")
-        if self.returned_count != len(self.products):
+        if self.facts is not None and (self.products or self.identity_suggestions):
+            raise ValueError("object facts cannot be mixed with candidate lists")
+        if self.facts is not None:
+            if self.query_plan.get("operation") != "lookup":
+                raise ValueError("price facts require object lookup")
+            if self.selection_scope != self.facts.target.kind:
+                raise ValueError("price facts must preserve the resolved identity")
+            if self.facts.sku_count != self.matched_sku_count:
+                raise ValueError("price population must cover the complete eligible set")
+            if self.facts.complete != self.matching_complete:
+                raise ValueError("price completeness must preserve unknown matches")
+        if self.returned_count != len(self.products) + int(self.facts is not None):
             raise ValueError("returned count must match the returned collection")
-        kind = "products" if self.products else "empty"
+        kind = "facts" if self.facts is not None else "products" if self.products else "empty"
         if self.result_type != kind:
-            raise ValueError("products and identity candidates are distinct result types")
+            raise ValueError("result type must describe the returned material")
         counts = [
             self.total_match_count,
             self.matched_spu_count,
@@ -370,7 +536,12 @@ class CatalogSearchResult(BaseModel):
             self.candidate_sku_count,
         ]
         if self.query_state != "completed":
-            if any(value is not None for value in counts) or self.products:
+            if self.identity_suggestions or self.requested_count is not None or self.limit_capped:
+                raise ValueError("stopped query has no search suggestions or applied count")
+            if (
+                any(value is not None for value in counts)
+                or self.products or self.facts is not None
+            ):
                 raise ValueError("unexecuted matching cannot report matches or zero counts")
             if self.matching_complete is not None or self.is_exhaustive is not None:
                 raise ValueError("unexecuted matching has unknown completeness")
@@ -422,7 +593,10 @@ class CatalogSearchResult(BaseModel):
                 self.matched_sku_count if self.selection_scope == "sku" else self.matched_spu_count
             ):
                 raise ValueError("total count must use the selection granularity")
-            if self.matching_complete != (self.unknown_sku_count == 0):
+            identity_pending = bool(self.identity_suggestions)
+            if identity_pending and (self.products or self.match_kind != "none"):
+                raise ValueError("unconfirmed identities cannot be selected products")
+            if self.matching_complete != (self.unknown_sku_count == 0 and not identity_pending):
                 raise ValueError("matching completeness must reflect uncertain versions")
             if self.is_exhaustive != (
                 self.match_kind in {"exact", "none"}
@@ -445,10 +619,11 @@ class CatalogSearchResult(BaseModel):
                 alternative_count=self.candidate_count if self.match_kind == "alternative" else 0,
                 object_fact_count=self.candidate_count if self.match_kind == "object_facts" else 0,
                 unknown_count=self.unknown_sku_count,
+                identity_pending=bool(self.identity_suggestions),
                 object_status=self.object_results[0].status if self.object_results else None,
                 named_target_missing=(
                     self.reason_code == ResultReason.TARGET_NOT_FOUND
-                    and bool(self.query_plan.get("name"))
+                    and bool(self.query_plan.get("search_text") or self.query_plan.get("name"))
                     and not self.unknown_sku_count
                 ),
             )
@@ -491,6 +666,11 @@ class CatalogSearchResult(BaseModel):
             total = self.candidate_count
         if self.selection_scope is None or self.offset is None or self.limit is None:
             raise ValueError("executed result requires granularity and its applied window")
+        if self.requested_count is not None:
+            if self.limit != min(self.requested_count, self.display_cap):
+                raise ValueError("applied limit must respect requested count and display cap")
+            if self.limit_capped != (self.requested_count > self.display_cap):
+                raise ValueError("count truncation must reflect the display cap")
         if self.returned_count != min(self.limit, max(0, total - self.offset)):
             raise ValueError("page size must agree with offset, limit and total")
         expected_next = self.offset + self.returned_count

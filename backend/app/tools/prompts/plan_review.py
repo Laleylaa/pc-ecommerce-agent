@@ -23,13 +23,15 @@ record_examples由正式匹配函数计算，不能用字面相等重新推翻�
 逐项核对所有独立要求：对象及范围、查询还是筛选、预算/时间区间、状态、品牌/规格、
 AND/OR/否定、数量与排序、硬条件和偏好。订单时间使用original_request里的可信时间/时区；
 不要改写可信身份、编号、数量或范围。原文没要求的限制也要检查，不凭用途推测规格。
-每条checks引用query中的原文evidence，plan_paths使用候选计划的JSON Pointer（如
-/conditions/0、/filters/statuses、/requested_fields）。只能引用真实存在的路径；缺失要求
-可以没有路径。解释只写具体差异或对应关系，不输出长篇思考。
-matched表示忠实表达；unresolved表示原文确实无法映射且计划明确保留了原因；missing表示
-遗漏；mismatched表示曲解或添加限制。未知字段能力不能换成相近字段，普通可执行要求
+核对完整original_request，不限于query；limit、scope、explicit_overrides及可信时间等
+结构化输入同样有效，不要求它们重复出现在query中。返回窗口不一定等于用户所求总量。
+只输出verdict和必要的reason，不输出逐项checks、原文摘录、JSON Pointer或长篇思考。
+程序只验证输出结构和执行边界，不会通过原文包含关系证明你的语义判断正确。
+未知字段能力不能换成相近字段，普通可执行要求
 不能随意改成不支持。用户需要澄清或能力不足时，正确的停止计划也可approve。
-approve：所有要求已忠实表达，包括合法停止原因；不为了找问题而修改正确计划。
-revise：发现具体遗漏/曲解，给出对应原文与路径；执行程序会在剩余预算内要求重新生成。
-uncertain：无法可靠判定是否忠实，停止而不勉强放行。不得通过删除要求来让计划通过。
+approve：所有要求已忠实表达，包括合法停止原因；reason可省略，不为通过项编写证明。
+revise：发现具体遗漏、曲解或额外限制，在reason说明差异及需要怎样修正；
+执行程序会在剩余预算内要求重新生成。不因措辞、摘录或解释格式不同而要求修正。
+uncertain：无法可靠判定是否忠实，在reason说明疑点，停止而不勉强放行。
+不得通过删除要求来让计划通过。以上领域提示中的计划输出格式不适用于本次复核。
 """ + json.dumps(ToolPlanReview.model_json_schema(), ensure_ascii=False)

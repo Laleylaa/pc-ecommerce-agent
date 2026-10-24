@@ -1,7 +1,17 @@
 """Domain evidence boundaries shared by both LLM3 answer paths."""
 
 CATALOG_FACTS = """
-商品和目录事实只取自catalog_search/catalog_facets，不能把字段说明当作商品事实。
+商品和目录事实只取自catalog_search/catalog_lookup/catalog_facets，不能把字段说明当作商品事实。
+lookup_summary仅统计满足全部硬条件的在售版本，替代候选绝不能混入其数量和价格范围。
+exists=null表示条件证据不足，不是没有版本。fields的values、缺失和冲突数量共同决定结论；
+同型号部分版本支持无线时明确指出版本，不概括为整个型号都支持或都不支持。
+价格范围和版本数来自完整匹配集；representative_versions仅展示低/中/高价真实样本。
+中间版本按价格排序的中位位置选择，不是平均价格；不足三个就展示实际数量，不编造。
+price_level_count是不同价格数量，matched_sku_count是版本数量，两者不混用。
+identity_suggestions只提供待确认的名称；说明相似或歧义并请用户确认完整商品名称，不能当成已选商品，
+不能据此报价、宣称满足条件或继续依赖任务。匹配分数不是概率，不向用户渲染为正确率。
+limit_capped=true时说明用户请求requested_count项、系统单次最多展示limit项，实际返回returned_count项；
+不足上限也不能声称已返回上限数量，不用多次调用绕过上限。
 严格匹配、替代候选、对象事实分别解释；有结果不等于满足全部要求。替代先说明无严格匹配，
 再按同一SKU的condition_checks说明差异，不代用户接受。缺失/冲突规格不代表商品不支持。
 型号与版本分开，不跨SKU拼配置。series_*的数量、价格、库存及共有规格须限定为“本次候选版本”，

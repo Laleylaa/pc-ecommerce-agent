@@ -1,8 +1,9 @@
 """Read-only catalog access for the stateless search tool."""
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -27,11 +28,83 @@ class CatalogRecord:
     description: str = ""
 
 
+@dataclass
+class CatalogIdentityFields:
+    """Name-resolution columns only; absent business facts are never fabricated."""
+
+    sku_id: int
+    spu_id: int
+    title: str
+    spu_title: str
+    brand: str
+    category: str
+
+
+@dataclass
+class CatalogIdentityRecord:
+    product: CatalogIdentityFields
+    active: bool
+
+
+@dataclass(frozen=True)
+class CatalogPriceAggregate:
+    sku_count: int
+    min_price: Decimal | None
+    max_price: Decimal | None
+
+
 class CatalogSearchRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def load(self, category: str | None, scope: SearchScope) -> list[CatalogRecord]:
+    @staticmethod
+    def _restrict(statement: Select, category: str | None, scope: SearchScope) -> Select:
+        if category:
+            statement = statement.where(Category.name == category)
+        if scope.sku_ids:
+            statement = statement.where(Sku.id.in_(scope.sku_ids))
+        if scope.spu_ids:
+            statement = statement.where(Sku.spu_id.in_(scope.spu_ids))
+        return statement
+
+    async def load_identity(
+        self, category: str | None, scope: SearchScope,
+    ) -> list[CatalogIdentityRecord]:
+        statement = (
+            select(Sku.id, Sku.spu_id, Sku.title, Spu.title, Brand.name, Category.name,
+                   Sku.status, Spu.status)
+            .join(Spu, Sku.spu_id == Spu.id)
+            .join(Brand, Spu.brand_id == Brand.id)
+            .join(Category, Spu.category_id == Category.id)
+            .order_by(Sku.id)
+        )
+        rows = (await self.session.execute(
+            self._restrict(statement, category, scope).limit(10001)
+        )).all()
+        if len(rows) > 10000:
+            raise ValueError("catalog_scope_too_large")
+        return [
+            CatalogIdentityRecord(
+                CatalogIdentityFields(*row[:6]), active=row[6] == 1 and row[7] == 1,
+            )
+            for row in rows
+        ]
+
+    async def aggregate_prices(self, sku_ids: list[int]) -> CatalogPriceAggregate:
+        """Aggregate the engine's complete eligible set, never its display window."""
+        if not sku_ids:
+            return CatalogPriceAggregate(0, None, None)
+        statement = (
+            select(func.count(Sku.id), func.min(Sku.price), func.max(Sku.price))
+            .join(Spu, Sku.spu_id == Spu.id)
+            .where(Sku.id.in_(sku_ids), Sku.status == 1, Spu.status == 1)
+        )
+        count, minimum, maximum = (await self.session.execute(statement)).one()
+        return CatalogPriceAggregate(count, minimum, maximum)
+
+    async def load(
+        self, category: str | None, scope: SearchScope, *, sku_ids: list[int] | None = None,
+    ) -> list[CatalogRecord]:
         statement = (
             select(Sku, Spu, Brand, Category)
             .join(Spu, Sku.spu_id == Spu.id)
@@ -39,12 +112,11 @@ class CatalogSearchRepository:
             .join(Category, Spu.category_id == Category.id)
             .order_by(Sku.id)
         )
-        if category:
-            statement = statement.where(Category.name == category)
-        if scope.sku_ids:
-            statement = statement.where(Sku.id.in_(scope.sku_ids))
-        if scope.spu_ids:
-            statement = statement.where(Sku.spu_id.in_(scope.spu_ids))
+        statement = self._restrict(statement, category, scope)
+        if sku_ids is not None:
+            if not sku_ids:
+                return []
+            statement = statement.where(Sku.id.in_(sku_ids))
         rows = (await self.session.execute(statement.limit(10001))).all()
         if len(rows) > 10000:
             raise ValueError("catalog_scope_too_large")
