@@ -15,7 +15,7 @@ from agent_loop.support.loop_runtime import (
 )
 from app.schemas.catalog_search import SearchCondition, SearchPlan
 from app.schemas.chat import ChatRequest
-from app.tools.catalog_search.planner import CatalogSearchPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
 from app.tools.contracts import BoundTool, ToolCatalog
 from app.tools.web_search import WebSearchToolService
 

@@ -3,7 +3,7 @@
 版本：`review-v1` · 2026-10-22。
 
 本手册统一程序检查、人工语义复检和报告生成的方法，适用于已有测试批次。
-工具业务规则另读专项手册：[catalog_search](tools/catalog/REVIEW.md)。
+工具业务规则另读专项手册：[三个商品工具](tools/catalog/REVIEW.md)。
 执行测试的入口与隔离要求见 [tests/README.md](README.md) 和 [仓库约束](../AGENTS.md)。
 本手册不表示已有测试通过，也不授权重跑实验。
 

@@ -1,0 +1,13 @@
+本工具负责一个指定商品及其版本，operation固定lookup。
+按名称、原文明示编号或可信scope定位，无须主流程先用search取得编号。
+事实读取、条件版本存在性、数量、价格范围和版本选择可组合在同一个计划中。
+version_view默认summary，程序返回完整匹配集汇总与最低/中位/最高价代表版本；
+明确要求列出、逐个展示、排序选择具体版本时version_view=list，保留sort与数量。
+requested_fields保留所问事实；版本数量用variants，价格档位数量用price_levels。
+“支持无线吗”将wireless放requested_fields，不筛掉明确为否或未知的版本。
+“支持无线的版本多少钱”“如果支持无线才报价”将无线作为硬条件，price为所问事实；
+不能以[wireless,price]两个平行事实代替这个前提。若品类不具备此筛选能力，保留为
+unresolved_requirements/filter_data_unavailable并停止，不能在复核时改成无条件询价。
+查不到字段不代表不支持；不在查库前预测单商品资料是否齐全。
+多对象的独立事实查询须split_required；目录/品类的品牌与规格选项统计属于catalog_facets。
+不是指定对象而是在集合中找候选时返回unsupported并说明应使用catalog_search。

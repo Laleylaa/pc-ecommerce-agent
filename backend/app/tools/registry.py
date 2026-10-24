@@ -5,7 +5,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.tools.catalog import CatalogQueryPlanner
+from app.tools.catalog.facets_planner import FacetPlanner
 from app.tools.contracts import build_tool_catalog
 from app.tools.orders import OrderQueryPlanner
 from app.tools.schemas import ToolError, ToolExecutionResult
@@ -76,7 +76,7 @@ class ToolRegistry:
 
 def build_tool_registry(
     session: AsyncSession,
-    catalog_planner: CatalogQueryPlanner | None = None,
+    catalog_planner: FacetPlanner | None = None,
     order_planner: OrderQueryPlanner | None = None,
     settings: Settings | None = None,
     catalog_session_factory: async_sessionmaker[AsyncSession] | None = None,

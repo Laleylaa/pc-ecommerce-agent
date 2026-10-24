@@ -10,7 +10,7 @@ from app.core.llm_feedback import (
     validation_feedback,
 )
 from app.schemas.catalog_search import CatalogSearchRequest, SearchCondition
-from app.tools.catalog import LLMCatalogQueryPlanner
+from app.tools.catalog.compatibility import LLMCatalogQueryPlanner
 from app.tools.schemas import CatalogFacetInput
 from pydantic import ValidationError
 

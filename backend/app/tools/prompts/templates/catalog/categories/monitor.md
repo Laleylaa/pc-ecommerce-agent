@@ -1,0 +1,1 @@
+refresh_rate为屏幕刷新率，不使用摄像头frame_rate。Fast IPS与IPS不自动等同。当前未记录视频输入接口；不能用摄像头connection_type或USB-C名称证明显示器支持视频输入。

@@ -5,7 +5,7 @@
 本文是操作入口，不累计历史通过数，不以历史成绩说明当前实现已通过。
 
 - 复检已有结果：[通用复检手册](REVIEW.md)。
-- 商品单工具用例、数据前提、运行及复检：[catalog_search 手册](tools/catalog/REVIEW.md)。
+- 商品单工具用例、数据前提、运行及复检：[三个商品工具手册](tools/catalog/REVIEW.md)。
 - 商品场景与缺口：[覆盖索引](tools/catalog/coverage.json)。
 - 主流程首次工具选择：[分类、预标注与运行/复检](agent_loop/business/tool_selection/REVIEW.md)；只采集首次模型响应，不执行工具或提供反馈。v3共39例各3次，2026-10-24程序＋独立LLM复检117通过（仅首次选择）；[本轮汇总](agent_loop/business/tool_selection/results/summary-20261024-first-selection.md)。v1/v2越界反馈循环结果已按用户要求删除。不纳入默认离线pytest真实模型执行。
 - 开发与数据边界：[仓库约束](../AGENTS.md)。
@@ -103,7 +103,7 @@
 | `agent_loop/smoke/` | runtime、API及回答等代表路径；目录名不表示使用真实模型 |
 | `agent_loop/contracts/` | schema、证据、预算、适配、Trace和故障边界；部分测试使用受控前端子进程 |
 | `agent_loop/support/` | loop专属替身、模拟模型和Trace场景 |
-| `tools/catalog/` | 当前JSON为单工具实验标注；分类型runner、检查器、专项手册与覆盖索引。已有分批真实实验；预期争议及适用版本以专项手册为准 |
+| `tools/catalog/` | 三个工具各7条冒烟/契约/基础业务提前标注，独立选择runner及复检；9条契约另有离线入口。当前版本未运行，历史证据保留 |
 | `tools/orders/` | 订单身份、用户归属、建议及查询行为的隔离测试 |
 | `tools/knowledge/` | 政策／知识／网页检索的工具契约和合成检索场景 |
 | `tools/execution/` | 工具执行、并发和目标流转相关隔离场景 |

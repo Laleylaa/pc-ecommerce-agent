@@ -21,9 +21,9 @@ from app.core.config import get_settings
 from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError, transport_failure_details
 from app.core.model_usage import collect_model_calls, model_call_counts
-from app.tools.catalog import CatalogToolService, LLMCatalogQueryPlanner
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.compatibility import CatalogToolService, LLMCatalogQueryPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.contracts import BoundTool, DefaultToolContractProvider, execute_bound_tool
 from app.tools.orders import LLMOrderQueryPlanner
 from app.tools.schemas import OrderLookupInput

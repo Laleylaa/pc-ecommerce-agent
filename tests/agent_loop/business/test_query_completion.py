@@ -16,7 +16,7 @@ from agent_loop.support.query_batches import with_handlers
 from app.agent.loop.independent_answer import AnswerInput, fallback_answer
 from app.schemas.catalog_search import SearchPlan
 from app.schemas.chat import ChatRequest
-from app.tools.catalog_search.planner import CatalogSearchPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 

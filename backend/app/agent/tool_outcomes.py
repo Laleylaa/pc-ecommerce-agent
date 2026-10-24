@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.tools.catalog_search.outcomes import ResultReason, ResultStatus
+from app.tools.catalog.outcomes import ResultReason, ResultStatus
 
 CLARIFICATION_REASONS = {
     ResultReason.IDENTITY_CONFIRMATION_REQUIRED.value: "相似或有歧义候选中的完整商品名称",

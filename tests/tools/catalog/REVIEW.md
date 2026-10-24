@@ -1,264 +1,132 @@
-# catalog_search 结果复检手册
+# 三个商品工具的基础测试
 
-版本：`catalog-review-v1` · 2026-10-22。
+版本：`catalog-review-v2` / 用例 `catalog-basic-1`。
+状态：2026-10-24，删除标题语义冲突规则后，原失败的4条facets用例重测全部通过，程序、Trace和独立LLM复检均通过。
+最新汇总见[本轮报告](results/summary-20261024-basic.md)。历史首轮为16通过、4失败、1无法判定；lookup无线另批重测通过。
+本轮不是21例全量回归；当前各例最近记录均通过，但来自不同代码/数据批次，不代表当前版本完整验收。
+先读 [通用流程](../../README.md) 和 [复检标准](../../REVIEW.md)。
 
-先读 [通用复检手册](../../REVIEW.md)。本页补充商品工具业务判断和已有脚本使用方式，
-不替代每批运行前标注，也不声称所有下列场景已经有用例或通过。
-现有3条基础价格查询和4组共25条用例，均已改为名称输入版本；使用入口见第7节。
-2026-10-23已完成名称用例的工作区Prompt前后对照，结果在忽略的results中，各批次独立保存。
-用例模板中的design_status/revision_note保留设计时记录，不是当前执行状态；执行事实以批次证据为准。
+## 本轮范围
 
-**当前不是已验收基线。** 操作分类、名称与条件的等价表示、附带price字段及db-01的品类能力前提
-存在待修订问题，见[AL-020～AL-023](../../../docs/development/issues.md#al-020商品工具操作分类不稳定精确条件询问曾返回替代结果)。
-这些issue属于另行维护的工作区文档；若当前checkout尚无对应条目，以上限制仍适用。
-本次整理不修改用例断言或改判历史结果。模板适配当前工具v4工作区，相关生产改动尚未随测试提交，
-不能假设仅checkout测试提交就能复现相同工具行为。缺少结果时不得用历史通过数代替证据。
+每个工具 7 条，共 21 条。每个批次只运行一个工具，可进一步只选一种测试类型。
 
-目录职责及程序、被测模型、独立复检LLM和人工的分工见 [tests/README.md](../../README.md)。
-本页“人工记录”表示检查器之外独立填写的语义记录；由LLM填写时明确标识LLM身份，
-不等于用户已人工验收。已有报告的字段标题不改变实际判读者身份。
-
-## 1. 范围与源码定位
-
-仅复检 `catalog_search` 单工具。编排、聊天API、回答、前端和其他工具不纳入本页验收。
-执行链应是正式绑定、输入校验、规划/复核或允许的确定性路径、查询/组装及输出校验。
-直接调用repository/engine的输出不能冒充正式工具验收。
-
-阅读实现时使用执行批次的版本；以下是当前定位入口，不是旧批次实现的保证：
-
-- [正式绑定与输入输出校验](../../../backend/app/tools/contracts.py)
-- [请求、计划及结果契约](../../../backend/app/schemas/catalog_search.py)
-- [规划Prompt](../../../backend/app/tools/prompts/catalog_search.py)
-- [服务入口](../../../backend/app/tools/catalog_search/service.py)、[规划](../../../backend/app/tools/catalog_search/planner.py)、[执行引擎](../../../backend/app/tools/catalog_search/engine.py)
-- [结果组装](../../../backend/app/tools/catalog_search/presentation.py)、[数据读取](../../../backend/app/repositories/catalog_search.py)
-- [程序校验](../../../backend/app/tools/catalog_search/validation.py)、[状态规则](../../../backend/app/tools/catalog_search/outcomes.py)、[数量边界](../../../backend/app/tools/catalog_search/limits.py)
-- [Trace](../../../backend/app/core/loop_tracing.py)、[预算上下文](../../../backend/app/core/loop_budget.py)
-
-本页编写时结果契约为v4，候选/版本展示上限20、型号版本预览上限1、身份建议上限5。
-这些是版本相关参数；复检其他版本时核对其冻结配置和标注，不能直接套用。
-
-## 2. 专项业务判读表
-
-按用例标注选择适用行。没有覆盖的行写“未覆盖”，不能计作通过。
-
-| 维度 | 判断标准与必须识别的问题 | 主要证据 |
-| --- | --- | --- |
-| 操作类型 | 找候选为search；明确对象的事实询问为lookup；明确列版本/选版本为variants。不能为查型号价格先要求列完SKU或选择版本 | 原请求、operation、requested_fields、结果类型 |
-| 型号与版本 | 先确定身份再筛条件；一个型号只有一个SKU、或筛后剩一个SKU，不足以把SPU改成SKU。versions按SKU展示，不等于用户指定了一个SKU | 原始身份依据、target、对象定位事件、selection_scope、facts.target或卡片entity_scope |
-| 价格汇总 | 仅price的lookup返回facts；价格、数量覆盖已确认适用的在售SKU集合，不受展示limit限制。明确SKU只报该SKU。不能将型号背景价代替条件内价格 | 独立数据集合/价格、applied_conditions、聚合事件、完整性字段 |
-| 名称与歧义 | 保留品牌、型号、版本；允许哪些换序/别名以标注为准。相似或多SPU待确认身份不能合并报价，不猜改型号数字或SKU编号 | search_text、target、object_results、identity_suggestions、实际事实对象 |
-| 名称/编号/scope | 共同出现时满足交集；冲突须保留冲突，不只用其中一项查询成功就算通过。scope编号须有可信来源，不由模型创造 | 实际输入、独立编号依据、计划、范围和定位诊断 |
-| 同SKU条件 | 多条硬条件必须在同一SKU上成立。单个SKU缺一项就不能拼其他版本补足；AND/OR、否定、单位和数值端点按预标注判断 | conditions、逐SKU condition_checks、独立规格来源 |
-| 硬条件与偏好 | 硬条件决定准入；明确软偏好只排序，不剔除满足硬条件的非偏好商品。不能为了有结果将硬条件降为偏好 | strength、完整候选依据、排序事件和结果顺序 |
-| 事实与筛选 | “这个型号支持X吗”不能变成仅筛支持X的版本；未知不能当不支持。用户所问字段须实际回应或明确缺失，不能仅在计划保留却在结果遗漏 | requested_fields、conditions、事实、field_issues与诊断 |
-| 混合事实 | “价格和规格”要保留两者；不能因price-only分支简洁而丢规格。按该版本实际查询路径验证全部要求 | 请求字段、完整返回、输出校验前值 |
-| 数量/排序/预览 | 先筛选和排序再截断；候选数、SKU数、展示数分开。有界预览不能当全部版本；统计完整性与明细完整性分开。超量请求按规则截断并说明 | requested_count、limit、returned_count、series计数/价格、variant_details_complete、窗口事件 |
-| 上下架与库存 | 下架与零库存分开；无现货要求不能隐式加库存条件。参数没查到不是商品不支持 | 独立status/stock、条件、对象状态、事实诊断 |
-| 受控替代 | 仅普通搜索在确认硬条件无匹配且符合规则时可替代，保留品类/身份/scope并说明差异。lookup/variants无匹配不得放宽条件或扩大报价范围 | fallback_attempted、match_kind、条件差异、unknown计数 |
-| 不确定与失败 | 无匹配、资料缺失/冲突、需澄清、不支持、执行失败分别判断。unknown不能记作mismatch；部分可确认集合不能声称统计完整 | ok/error、query_state、status、reason_code、matching_complete、facts.complete、诊断 |
-| 必要程序边界 | 结构、字段/操作符/单位、编号来源、确定性冲突与预算有实际校验依据。复核approve不证明语义，requirement_assessment仅描述计划条目执行能力 | 计划与复核输出校验、拒绝/修正事件、工具最终输出校验 |
-
-范围集合有独立数据依据但Trace只记录计数时，应准确说明证据来源，不能声称Trace列出了完整SKU集合。
-缺少必要独立事实时保留缺口，不从被测输出“验证”其自身价格或数量。
-未查询规格的价格facts不能证明所有规格完整；型号卡片的代表版本事实不能当作全型号事实。
-
-## 3. Trace读取顺序与关联
-
-1. 按批次、用例、尝试号及Trace ID定位根记录和工具节点，核对实际输入与冻结输入。
-2. 阅读所有实际规划输出、复核输入/输出和修正，不只读最后一次approve。
-3. 查看计划校验、复核输出校验、工具输出校验；核对来源模型Span和父子关系。
-4. 查看上下文范围、执行计划、对象定位、条件筛选、统计/返回窗口及结果事件。
-5. 比较“工具输出校验”的校验前输入、最终正式返回和本地调用记录，检查截断与采集失败标记。
-6. 核对模型HTTP请求计数、预算上下文、重试和异常。缺少tool_scope导致HTTP前拒绝是入口/实验问题，
-   不能归为商品无匹配；预算不应为了获得结果而放宽。
-
-现有封闭编号语法可以合法跳过模型。若用例要求真实自然语言规划，必须看到实际规划/复核请求；
-若用例专测确定性路径，模型调用为零不自动构成失败。不得统一要求所有用例恰好两个模型节点。
-根记录、工具成功、Phoenix接收成功和业务通过分别判定。
-
-## 4. 已有批次文件与命令
-
-批次位于 `tests/tools/catalog/results/<批次目录名>/`，产物已被Git忽略。
-
-| 文件 | 读取内容 |
-| --- | --- |
-| `evidence/cases.json` | `common_hard`与每例`hard`、`common_semantic`、每例目标/允许形式/condition_policy/population、trace_requirements |
-| `evidence/baseline.json` | prepared与before_execution的SQL、原始数据、核对时间和只读事务信息；没有快照一致证据时不能假设一致 |
-| `evidence/environment.json` | 模型、代码/脚本指纹、执行准备、导出、Trace读取记录；部分verification字段由收尾检查另行填写，不假设总是存在 |
-| `evidence/executions.jsonl` | 每条实际输入、工具结果/错误、尝试、Trace ID、模型用量与预算记录 |
-| `evidence/traces/<用例ID>.json` | Phoenix原始`data`节点；`context.span_id`、`parent_id`、`attributes`和`events`用于定位证据 |
-| `checks/automatic.jsonl` | hard_checks与trace_checks逐项预期、实际、结论 |
-| `checks/semantic.jsonl` | 人工填写的语义逐项判读、摘要和观察 |
-| `report.md` | 给用户看的单份报告 |
-
-旧布局或文件缺失时先说明，不能在普通复检中静默迁移目录。
-
-### 仅使用已有本地证据
-
-从仓库根运行以下命令，将`<批次目录名>`替换成实际名称，不带上级路径：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/check_price_lookup.py --render <批次目录名>
-```
-
-该入口重新计算程序检查、合并已有人工记录，写`checks/automatic.jsonl`和`report.md`；
-不调用模型、数据库或Phoenix。它**不会替执行者做语义复检**。
-首次可先生成待判读结果，再填写语义记录后重生成；已有分析则按通用手册先归档。
-
-### 缺少本地Trace，且任务允许补取原平台记录
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/check_price_lookup.py --fetch <批次目录名>
-```
-
-只访问本地Phoenix原Trace，不调用工具/模型；保存原始Trace和取回记录后也会重新生成检查/报告。
-它跳过已经存在的Trace文件，不能用于宣称已补齐一个现存但不完整的文件。
-需要补取不同版本时应保留旧文件和来源记录，不擅自删除旧证据。
-
-`run_price_lookup.py --live --prepare/--run` 会访问真实数据库，后者还调用真实模型；
-它们是实验入口，**不属于复检命令**。不通过`tests/run.py`执行真实实验，不关闭其离线保护。
-
-## 5. 人工记录如何填写
-
-`checks/semantic.jsonl` 每个用例一行JSON对象；每个对象包含如下字段：
-
-```json
-{
-  "case_id": "<本批用例ID>",
-  "trace_id": "<本次实际Trace ID>",
-  "reviewer": "<判读者>",
-  "reviewed_at": "<带时区的实际复检时间>",
-  "review_standard": ["review-v1", "catalog-review-v1"],
-  "summary": "一句业务判断，不重复全部过程",
-  "notes": [],
-  "checks": [
-    {
-      "id": "<运行前语义标注ID>",
-      "status": "无法判定",
-      "evidence": ["evidence/traces/<用例ID>.json#span=<实际Span ID>"],
-      "reason": "指出具体已核对内容或缺少的必要证据"
-    }
-  ]
-}
-```
-
-这是格式示意，不可原样当作完成判读。现有价格批次必须逐项填写
-`intent`、`identity`、`constraints`、`population`、`review`五个ID，
-并结合每例的`identity_acceptance`等标注。其他批次读取其自身ID，不强套这五项。
-所有结论独立填写；禁止程序自动把自动通过或模型approve映射为人工通过。
-引用路径以批次根目录为基准，JSONL引用同时写用例/尝试，Trace引用写Span ID及必要字段/事件。
-
-`summary`用于简洁结果表；`notes`用于报告中的重要观察。通过用例的详细解释留在`checks`，
-失败或无法判定必须说明触发输入、预期与实际差异、来源证据及影响。
-记录中的Trace ID必须属于本次执行，不能沿用上一批的语义判读。
-
-已观察到的一个边界：价格用例中，模型可能把调用参数的显式limit复制到requested_limit，
-但未限制价格统计。是否违反数量来源要求应按运行前标注判断，不能因报价正确就宣称来源规则通过，
-也不能临时添加新的硬断言改判原批次。保留观察和未覆盖范围即可。
-
-## 6. 当前检查器的限制与交付核对
-
-本节限制针对 `check_price_lookup.py`，它是基础价格查询的小批入口：
-
-- 报告中的价格字段和部分限制说明按这3条用例编写，不能直接套用于search/variants。
-- 它会按case_id读取一条执行/人工记录；当前运行器禁止同批重跑。若已有材料出现同用例多次尝试，
-  先逐次审查，不允许让字典覆盖掩盖尝试；注明当前生成器不适用。
-- 它不会自动保存复检历史，也不会检查所有人工证据引用的真实性；这些由执行者完成。
-- 它不会自动将数据变动、执行记录丢失、实验入口异常等所有情形分类正确；缺输出时的字段失败
-  不能直接解释为工具业务缺陷。先查原始执行/错误，再依通用状态规则判定。
-- 程序生成的报告若与证据或通用判定规则冲突，保留程序原结论，在人工记录和报告明确写出差异、
-  最终状态及理由；不要为了修正报告而悄悄改脚本、预期或自动记录。人工调整后再次render会覆盖报告，
-  因此最后必须核对成品，不以命令返回零作为交付完成。
-
-交付前核对：每例输入和预期未改、实际Trace对应、全部必要语义项有证据、四类状态不漏计、
-报告和分析一致、链接有效、旧结论与改判理由保留。提供`report.md`链接即可，
-不要在回复里再次粘贴所有底层检查。只复检旧结果时明确说“完成复检”，不声称本轮重新运行了测试。
-
-## 7. 分组用例与显式执行入口
-
-原3条用例及其脚本保留。新增用例逐条包含自然语言输入、硬比较、条件强度/操作符、
-允许等价形式、5项具体语义标准及证据要求。优先场景对应关系、未覆盖项与隔离数据需求见
-[coverage.json](coverage.json)。覆盖索引及模板描述场景，不是验收证据；执行状态与未解决问题见本页开头。
-
-| 类型 | 用例文件 | 独立运行入口 | 数量 |
+| 工具 | 冒烟 1 条 | 输入契约 3 条 | 基础业务 3 条 |
 | --- | --- | --- | --- |
-| 价格、版本与对象层级 | [price_boundaries_cases.json](price_boundaries_cases.json) | [run_price_boundaries.py](run_price_boundaries.py) | 7 |
-| 名称、编号与可信范围 | [identity_scope_cases.json](identity_scope_cases.json) | [run_identity_scope.py](run_identity_scope.py) | 6 |
-| 条件、偏好、排序与预览 | [selection_ranking_cases.json](selection_ranking_cases.json) | [run_selection_ranking.py](run_selection_ranking.py) | 6 |
-| 数据质量、库存与失败边界 | [data_boundaries_cases.json](data_boundaries_cases.json) | [run_data_boundaries.py](run_data_boundaries.py) | 6 |
+| [catalog_lookup](lookup_cases.json) | 名称定位型号、汇总价格 | 空 scope、limit=0、注入 user_id | 明确版本价格库存、型号无线支持、按价格列两个版本 |
+| [catalog_search](search_cases.json) | 预算内键盘候选 | 同上，分别验证正式绑定 | 可信型号范围内选最便宜、白色+预算、无线+预算 |
+| [catalog_facets](facets_cases.json) | 无品类提示的全店品类目录 | 同上，分别验证正式绑定 | 全店品牌、范围内颜色选项、预算内全店品牌 |
 
-同类在一个独立批次运行；四个入口复用 [run_catalog_cases.py](run_catalog_cases.py)，
-正式调用继续使用原试跑脚本的 `run_cases`，保留绑定、参数/输出校验、真实规划/复核、
-追踪及预算上下文。没有复制工具业务实现；SQL只用于独立预期，不代替被测工具调用。
-这些入口均不命名为 `test_*.py`，不接入pytest、Makefile或默认离线测试；不更改隔离保护。
+查具体商品功能属于 lookup；按条件找候选属于 search；查看范围内选项属于 facets。
+全部正常业务都使用自然语言，无强制 category_hint；可信 scope 来自独立数据。
+输入契约要求 `invalid_input`，没有业务输出，handler、模型与SQL均不得启动。
+输出契约通过正常业务的正式绑定校验和 Trace 检查覆盖；尚未加入非法输出故障注入。
 
-### 运行前独立依据与数据缺口
+[coverage.json](coverage.json) 记录缺口。本轮不覆盖聊天、编排选工具、回答或前端。
+旧 28 条价格/身份/筛选/数据边界模板及专用脚本已移除；其中仍有效的边界需求保留为缺口，
+不表示这些需求退役或已通过。旧 `test_planning_context.py` 移除，通用规划预算/修复单元回归待补。
+`results/` 中历史证据保留；旧批次需要对应 Git 版本脚本，不用新脚本改判旧结果。
 
-固定编号/价格来自既有试跑资料和数据导入源码的设计假设，不声称它们仍是当前事实。
-每条 `oracle_sql` 预先定义只读原始行和 `eligible` 数据前提；`--prepare` 将来执行时核对。
-固定预期不随查询值变化；`$oracle.*` 只用于预先声明的独立SQL聚合或原始规格，
-在正式调用之前解析并冻结。`condition_expectation` 不通过被测matcher计算。
+## 文件职责与提前标注
 
-`pb-04/pb-05/db-01/db-02/db-03/db-04` 需要边界对象，暂不猜编号。
-未来独立核对到现成数据后，通过绑定JSON传入每例所需的 `spu_id` 或 `sku_id`，
-同时填写 `source`（核对来源/时间，无凭据），例如结构为：
+- `*_cases.json`：输入、测试目的、硬断言、允许等价形式、语义预期、数据前提。
+- `catalog_basis.py`：独立只读 SQL 和预期计算；不导入生产匹配、排序、规格归一化规则。
+- `run_catalog_cases.py`：分别准备/执行；冻结并检查数据、代码、脚本、模型配置。
+- `catalog_evidence.py`：调用正式 `build_tool_catalog` / `execute_bound_tool`，记录尝试、预算、SQL次数和 Trace。
+- `catalog_trace.py` / `check_catalog_cases.py`：读取证据、程序检查、生成复检材料和报告。
+- `test_catalog_contracts.py`：复用上述 9 条输入契约的离线执行入口；handler为禁止调用的替身。
+
+JSON 中的 `$oracle.*` 在 **prepare 阶段** 用独立原始数据解析，先于任何工具调用冻结。
+预期不来自被测工具输出；未获得数据库快照前，不声称已完成具体编号/价格的实例化标注。
+
+首批型号固定为“Keychron 星轴 K01 机械键盘”；独立查询必须确认其唯一性。
+颜色/无线用例要求原始规格完整一致；不猜别名、不把缺失当否。
+搜索用例至少有足够候选，价格截断位置不能并列；目录要求不超过 50 个值。
+前提不满足记未执行，不自动建数、不改现有商品。
+搜索 SKU 明细可能只是预览：匹配总数查完整集合，展示编号只要求属于正确集合。
+LLM 复检还须核对每张卡片的型号归属与规格证据。
+
+## 执行入口
+
+以下命令均从项目根执行；使用已有环境，不自动安装或启动服务。
+
+离线输入契约，无真实模型/数据库/Trace平台：
+
+```bash
+backend/.venv/bin/python tests/run.py tests/tools/catalog/test_catalog_contracts.py -q
+```
+
+也可加 `-k lookup`、`-k search` 或 `-k facets` 分别选择工具。
+这只是同 9 条契约的隔离验证，不是另一套业务覆盖，也不代替真实工具验收。
+
+真实单工具实验需要后续运行授权。将 `lookup` 换为 `search` 或 `facets`：
+
+```bash
+backend/.venv/bin/python tests/tools/catalog/run_catalog_cases.py lookup --live --prepare
+backend/.venv/bin/python tests/tools/catalog/run_catalog_cases.py lookup --live --run <批次目录名>
+```
+
+准备时可加 `--kind smoke`、`--kind contract` 或 `--kind business`，省略则准备该工具七条。
+单例重测使用 `--prepare --case lookup-wireless`；不会复用旧批次。
+lookup现行版本 `catalog-lookup-basic-3`：按用户确认的程序校验边界，删除标题及connection_type与wireless之间的语义推断。
+前检只比较同一结构化字段的独立来源；v2属于历史重测版本，不再作为现行规则。
+prepare 只读数据库，不调用模型；run 调用正式绑定，正常业务会调用真实模型。
+live 入口需要已有模型配置，包括契约批次；契约的实际工具调用仍应为零 HTTP / 零 SQL。
+默认 pytest / make tools-test 不运行 live 脚本，不允许绕过 `tests/run.py` 的离线保护。
+数据库连接设置只读与查询超时，准备/前检使用可重复读事务；工具可能使用独立只读会话，
+因此另做执行后快照核对。前后相同不能排除中间短暂写入，验收宜使用稳定的隔离数据集。
+
+源码、脚本、模型或冻结材料变化时拒绝继续。数据变化时保留原预期并标记无法判定。
+每例每批调用一次；工具内部有界修复/重试全部留在 Trace 中，不另挑最好的一次。
+同批不允许重跑；异常后也另建批次，保留前次记录并说明原因。
+
+## 程序检查、独立 LLM 复检、报告
+
+```bash
+backend/.venv/bin/python tests/tools/catalog/check_catalog_cases.py --fetch <批次目录名>
+backend/.venv/bin/python tests/tools/catalog/check_catalog_cases.py --render <批次目录名>
+```
+
+fetch 只读取本地 Phoenix 并保存原始 Trace；不覆盖现存文件。render 只处理本地证据。
+两者均不调用模型/商品数据库，也不会自动将内部复核 approve 转成通过。
+现存 Trace 不完整、尚有分页、截断、缺节点或来源关联不足时记无法判定；不能算通过。
+
+程序检查：冻结预期与结果、输入拒绝的零调用、范围计划→业务计划→复核的校验顺序、
+模型来源关联、正式输出校验、预算记账和根/工具/批次关联。
+正常业务至少有三个模型阶段；允许有界修复，不能硬性限定恰好三次。
+程序检查不代替语义审查，也不证明所有安全/业务边界均覆盖。
+
+输出布局：
 
 ```text
-{"pb-04": {"spu_id": <独立确认的整数编号>, "source": "<只读核对来源与时间>"}}
+results/<批次>/
+  evidence/case_templates.json  原始设计
+  evidence/cases.json           已实例化冻结输入/预期
+  evidence/baseline.json        独立SQL和原始行
+  evidence/preflight.json       执行前复核
+  evidence/postflight.json      执行后复核
+  evidence/environment.json    配置、源码/脚本指纹、阶段状态
+  evidence/executions.jsonl     每次实际调用、结果/错误、用量
+  evidence/traces/<用例>.json   原始Trace
+  checks/automatic.jsonl        程序逐项结论
+  checks/review_packets.json    独立复检材料，不含自动语义判决
+  checks/semantic.jsonl         独立LLM或人工填写
+  checks/history/              前次复检归档
+  report.md                    逐例摘要及四类状态
 ```
 
-这是格式示意，不是可直接运行的JSON。每组绑定只包含该组用例；未给绑定、数据前提不符、
-SQL核对失败都保留为未执行。不得自动seed、改库存、改上下架状态或导入数据。
-如果没有现成对象，按 `data_requirement` 提出的最小隔离数据方案另行确认；脚本不提供建数入口。
+独立复检者先读冻结预期/原始数据，再读实际结果和全部阶段 Trace。
+每例必须判断 `intent`、`scope`、`workflow`、`facts` 四项，并结合该例 semantic_expectation。
+契约用例的 workflow 判断应是校验前拒绝，不要求三个模型阶段；facts 判断是无业务输出。
+在独立 LLM 会话/任务中复检，不能拿工具内部的自审冒充结果复检。
+脚本负责准备材料和合并记录，不自行调用评审模型。人工验收与独立 LLM 复检分开记录。
 
-以下是未来获得运行授权后的命令示意，**本轮没有执行**。将文件名换成相应类型：
+`checks/semantic.jsonl` 每例一行，格式如下（占位值必须替换）：
 
-```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/run_price_boundaries.py --live --prepare
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/run_price_boundaries.py --live --run <批次目录名>
+```json
+{"batch_id":"<本批次>","case_id":"<用例>","attempt":1,"trace_id":"<本次Trace>","reviewer":"<模型及复检者标识>","reviewer_type":"independent_llm","reviewed_at":"<带时区时间>","review_standard":["review-v1","catalog-review-v2"],"summary":"<业务结论>","checks":[{"id":"intent","status":"无法判定","evidence":["<路径、用例、Span或字段>"],"reason":"<证据与理由>"}],"notes":[]}
 ```
 
-准备有边界对象的批次时可加 `--bindings <绑定JSON路径>`。
-准备与执行都使用只读、可重复读事务；准备不调用模型。
-执行前重新读取同一独立SQL，任何相关原始数据变化都阻止该例调用，记录数据变化/无法判定，
-不更新原预期。源码、脚本、用例快照或模型配置变化则拒绝继续该批次。
-同批不重跑，异常后也不得复用；需要重试时保留旧批次，另建新批次并解释重试原因。
-
-新增批次沿用 `report.md / evidence / checks`，并增加：
-
-- `evidence/case_templates.json`：未解析的设计模板。
-- `evidence/cases.json`：运行前冻结的输入、两类预期和数据就绪状态。
-- `evidence/baseline.json`：准备阶段的原始行、SQL、绑定依据及核对时间。
-- `evidence/preflight.json`：调用前二次只读核对和未执行原因，不覆盖原始baseline。
-
-### 新批次的程序检查、语义复检与报告
-
-新4组使用 [check_catalog_cases.py](check_catalog_cases.py)，不使用原3条的检查器：
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/check_catalog_cases.py --render <批次目录名>
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/tools/catalog/check_catalog_cases.py --fetch <批次目录名>
-```
-
-`--render` 只读本地证据并写分析/报告；`--fetch` 另外读取本地Phoenix原Trace，须在任务授权内。
-不会触发模型或数据库。若已有Trace文件，fetch不覆盖；存在下一页标记、缺失或截断时
-保留证据不足，不能将采集到的第一页当完整记录。
-
-程序明细包含逐项硬比较、Trace检查和从Trace抽取的规划结果、校验结论、事件及Span关联；
-完整Prompt及原始节点仍在 `evidence/traces`，不铺进报告。
-读取每例 `semantic_checks` 并结合 `common_semantic` 与 `semantic_expectation` 独立判读。
-人工记录沿用第5节格式，**新批次必须另有 `batch_id` 和 `attempt`**，与execution一致；
-重复判读注明改判原因。不能沿用不同Trace或其他批次的语义结论。
-
-本轮没有实际调用，因此没有填任何语义“通过”或生成新实验report。
-未来复检者填写 `checks/semantic.jsonl` 后再render合并；缺必要判读只能无法判定。
-新检查器在覆盖前自动归档现有report/automatic/semantic及哈希；人工编辑semantic之前，
-仍须先按通用手册归档旧版，避免把编辑后的文件误当编辑前记录。
-
-`model` 路径要求真实规划/复核及正常查询事件；`model_stopped` 要求规划/复核与提前结束，
-不要求本不应发生的查询事件；`input_rejected` 要求模型请求为零并保留正式参数拒绝。
-三个路径均核对根/工具/批次/用例/Trace关联和预算记录，不把模型approve直接算通过。
-工具/实验异常、数据核对失败、追踪缺失分别记录；已有明确业务失败优先保留。
-
-新脚本尚未经过真实运行验证；静态检查无法证明SQL在当前数据库可执行、Phoenix读回完整，
-或所有报告分支均正常。未来首跑发现脚本问题时也保留批次，不修改原预期后隐瞒重跑。
+示例只演示一项；实际须填齐四项。人工判读用 `reviewer_type=human`。
+修改旧语义结论前先归档，并说明改判原因；render会归档已有分析，不替代编辑前归档。
+报告区分通过、失败、无法判定、未执行。缺独立复检不能通过；已有明确业务失败保留失败。
+首轮失败和证据缺口保留在历史批次；facets四例最新重测通过且未复现截断，完整范围和剩余限制见最新汇总。

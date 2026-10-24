@@ -12,7 +12,7 @@ from app.repositories.catalog_search import CatalogRecord
 from app.repositories.orders import OrderSearchPage
 from app.schemas.catalog import ProductCard
 from app.schemas.order import LogisticsCard, OrderCard, OrderItemCard
-from app.tools.catalog_search.service import within_scope
+from app.tools.catalog.service import within_scope
 from app.tools.knowledge import (
     KnowledgeRetrievalToolService,
     KnowledgeVectorIndex,

@@ -16,9 +16,9 @@ from pydantic_core import PydanticCustomError
 
 from app.core.llm_feedback import OutputValidationError
 from app.schemas.catalog import ProductCard, ProductVariantCard
-from app.tools.catalog_fields import hard_condition_verdict, normalize_category_hint
-from app.tools.catalog_search.limits import MAX_DISPLAY_COUNT, MAX_IDENTITY_SUGGESTIONS
-from app.tools.catalog_search.outcomes import (
+from app.tools.catalog.fields import hard_condition_verdict, normalize_category_hint
+from app.tools.catalog.limits import MAX_DISPLAY_COUNT, MAX_IDENTITY_SUGGESTIONS
+from app.tools.catalog.outcomes import (
     LookupStatus,
     QueryState,
     ResultAction,
@@ -27,7 +27,7 @@ from app.tools.catalog_search.outcomes import (
     completed_policy,
     validate_policy_fields,
 )
-from app.tools.catalog_search.outcomes import (
+from app.tools.catalog.outcomes import (
     data_quality as assess_data_quality,
 )
 
@@ -40,7 +40,7 @@ CategoryHint = Annotated[
     Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=40)] | None,
     AfterValidator(normalize_category_hint),
     Field(
-        description="可选品类提示：鼠标/键盘/耳机/显示器/音箱/摄像头；只加载该品类规格说明，不是筛选条件。未知或空值使用全品类说明。"
+        description="可选品类提示，保留兼容；不是筛选条件或权威品类。工具根据原请求和实际对象加载规格规则，不确定时省略。"
     ),
 ]
 

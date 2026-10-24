@@ -1,6 +1,6 @@
 from app.schemas.catalog_search import CatalogSearchRequest
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.planner import CatalogSearchPlanner
+from app.tools.catalog.service import CatalogSearchService
 
 from tests.support.tool_plan_fixtures import search_plan
 from tests.support.tool_planning import Model, Repository

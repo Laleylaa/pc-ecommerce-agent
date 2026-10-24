@@ -2,8 +2,8 @@
 
 import pytest
 from app.schemas.catalog_search import CatalogSearchRequest
-from app.tools.catalog import CatalogToolService
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.compatibility import CatalogToolService
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.orders import LLMOrderQueryPlanner, OrderToolService
 from app.tools.schemas import (
     CatalogFacetInput,

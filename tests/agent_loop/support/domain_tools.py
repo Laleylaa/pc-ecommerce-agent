@@ -8,8 +8,8 @@ from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.repositories.catalog_search import CatalogRecord, CatalogSearchRepository
 from app.schemas.catalog import ProductCard
 from app.schemas.order import OrderCard
-from app.tools.catalog import CatalogToolService
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.compatibility import CatalogToolService
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.contracts import (
     BoundTool,
     ToolCatalog,

@@ -17,7 +17,7 @@ from app.models import (
 )
 from app.schemas.catalog import ProductCard
 from app.schemas.catalog_search import FieldIssue, SearchScope
-from app.tools.catalog_fields import canonical_field, same_recorded_value
+from app.tools.catalog.fields import canonical_field, same_recorded_value
 
 
 @dataclass
@@ -156,16 +156,6 @@ class CatalogSearchRepository:
                     )
                 if distinct:
                     specs[key] = distinct[0]
-            if "无线版" in sku.title and specs.get("wireless") == "否":
-                issues.extend(
-                    FieldIssue(
-                        sku_id=sku.id,
-                        field=key,
-                        status="conflict",
-                        values=["标题：无线版", f"规格：{specs.get(key, '')}"],
-                    )
-                    for key in ("wireless", "connection_type")
-                )
             records.append(
                 CatalogRecord(
                     product=ProductCard(

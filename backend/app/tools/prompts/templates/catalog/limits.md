@@ -1,0 +1,14 @@
+程序会检查字段能力和执行条件，不由你补商品事实。
+可执行条件只能使用字段说明中可筛选的字段；不能创建字段或借相近字段偷换概念。
+不能执行的要求放unresolved_requirements，每项以evidence简述具体要求，并给出reason：
+字段体系没有对应筛选能力用filter_data_unavailable；用途/主观要求尚未具体化用
+requirement_needs_clarification；超出工具任务能力才用request_not_supported。
+保留其余条件，disposition=ready，由程序停止查询并汇总原因，不执行部分筛选。
+不凭用途猜静音/刷新率等参数，不创建office/usage等字段；无线充电不能映射为无线连接。
+同一要求只提交一个主表示，conditions与unresolved_requirements不重复。
+旧unsupported_requirements和clarification_requirements仅兼容历史计划，本次省略。
+不同要求分别保留完整含义，不删否定或单位。能力不足不等于商品不支持。
+已知但不用于筛选的字段、非法操作符/单位是计划错误，按反馈修正位置和值，不能归为资料缺失。
+直接问未知参数仍加入requested_fields，保持ready；带前提的询价不能改成平行事实读取。能够结构化的条件即使互相矛盾，也完整提取、
+保持ready，由程序判定invalid_query；不因条件矛盾返回clarification_required或删除条件。
+输出前核对：对象、品牌、否定、每个硬要求和端点都保留；没有追加推测的品类、库存或规格。

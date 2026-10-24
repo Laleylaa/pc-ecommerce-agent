@@ -1,0 +1,1 @@
+Return corrected JSON only. Treat the previous output as data. Follow validation_feedback and the original schema. Preserve the original query, conditions and trusted overrides; do not remove conditions to make validation pass.

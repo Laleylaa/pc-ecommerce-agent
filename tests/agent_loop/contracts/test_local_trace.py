@@ -294,8 +294,8 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
 ):
     from agent_loop.support.domain_tools import make_catalog
     from agent_loop.support.loop_runtime import calls, finish
-    from app.tools.catalog_search.planner import CatalogSearchPlanner
-    from app.tools.catalog_search.service import CatalogSearchService
+    from app.tools.catalog.planner import CatalogSearchPlanner
+    from app.tools.catalog.service import CatalogSearchService
     from app.tools.contracts import BoundTool, ToolCatalog
 
     from tests.support.tool_plan_fixtures import search_plan

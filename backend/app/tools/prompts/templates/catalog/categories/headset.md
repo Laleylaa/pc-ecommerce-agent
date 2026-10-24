@@ -1,0 +1,1 @@
+type表示佩戴类型，enclosure_type表示声学结构，两者不可互换。microphone只表示有无麦克风；不保证降噪能力。frequency_response按记录文本匹配。

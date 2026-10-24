@@ -1,6 +1,6 @@
-from app.tools.catalog import CatalogToolService, LLMCatalogQueryPlanner
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.compatibility import CatalogToolService, LLMCatalogQueryPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.contracts import BoundTool, DefaultToolContractProvider, execute_bound_tool
 
 from tests.support.tool_plan_fixtures import facet_plan, search_plan

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from app.tools.catalog_search.outcomes import ResultStatus
+from app.tools.catalog.outcomes import ResultStatus
 from app.tools.schemas import ToolExecutionResult
 
 

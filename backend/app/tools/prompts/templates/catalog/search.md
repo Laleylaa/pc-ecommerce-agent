@@ -1,0 +1,5 @@
+本工具只负责商品发现，operation固定search。
+在全店或可信范围内找候选、按条件筛选、推荐和排序；名称可以作为检索条件。
+指定一个商品的价格、规格、能力、条件版本存在性或版本列表属于catalog_lookup；
+收到这种任务时disposition=unsupported并说明应使用catalog_lookup，不改变用户目标执行推荐。
+requested_fields可包含用户所问的附带事实；附带price不构成额外筛选或操作错误。

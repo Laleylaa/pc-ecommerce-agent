@@ -109,7 +109,7 @@ async def test_missing_product_is_not_fabricated_and_scope_is_preserved(monkeypa
 async def test_window_never_becomes_exhaustive_evidence(monkeypatch):
     from agent_loop.support.domain_tools import product
     from app.schemas.catalog_search import SearchPlan
-    from app.tools.catalog_search.planner import CatalogSearchPlanner
+    from app.tools.catalog.planner import CatalogSearchPlanner
 
     async def plan(self, request):
         return SearchPlan(category="键盘", category_evidence="键盘")
@@ -136,7 +136,7 @@ async def test_same_sku_constraints_and_model_variant_scope_survive_adapter(
     monkeypatch, query_text,
 ):
     from app.schemas.catalog_search import SearchCondition, SearchPlan
-    from app.tools.catalog_search.planner import CatalogSearchPlanner
+    from app.tools.catalog.planner import CatalogSearchPlanner
 
     requests = []
 

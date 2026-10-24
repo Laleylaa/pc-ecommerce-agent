@@ -19,8 +19,8 @@ from app.core.model_usage import collect_model_calls
 from app.rules.chat_input import match_input_rule
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.context import ConversationContextService
-from app.tools.catalog import LLMCatalogQueryPlanner
-from app.tools.catalog_search.planner import CatalogSearchPlanner
+from app.tools.catalog.facets_planner import CatalogFacetPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
 from app.tools.contracts import ToolCatalog, build_tool_catalog
 from app.tools.orders import LLMOrderQueryPlanner
 
@@ -50,7 +50,7 @@ class AgentLoopRuntime:
         return build_tool_catalog(
             self.session,
             settings=self.settings,
-            catalog_planner=LLMCatalogQueryPlanner(text_model),
+            catalog_planner=CatalogFacetPlanner(text_model),
             order_planner=LLMOrderQueryPlanner(text_model),
             catalog_search_planner=CatalogSearchPlanner(
                 text_model if self.settings.catalog_llm_planner_enabled else None,

@@ -1,0 +1,1 @@
+frame_rate为摄像头帧率，不使用显示器refresh_rate。connection_type为连接接口。USB-C不保证额外协议能力；microphone为有无麦克风；1080p HDR不自动等同1080p。

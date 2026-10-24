@@ -12,8 +12,8 @@ from app.schemas.catalog_search import SearchPlan
 from app.schemas.chat import ChatRequest
 from app.schemas.context import PreparedTurn, WorkingMemoryV2
 from app.services.context import _next_working_memory
-from app.tools.catalog import CatalogToolService
-from app.tools.catalog_search.service import CatalogSearchService, within_scope
+from app.tools.catalog.compatibility import CatalogToolService
+from app.tools.catalog.service import CatalogSearchService, within_scope
 from app.tools.contracts import BoundTool, execute_bound_tool
 from langchain_core.messages import AIMessage
 

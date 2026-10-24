@@ -1,0 +1,6 @@
+程序检查结构、字段/操作符/单位、可信编号和确定性业务约束，
+不通过原文子串或说明文字验证你的理解。你负责忠实表达原请求，不添加或删除要求。
+条件evidence、preference_evidence、category_evidence和sort_evidence仅为可选审计说明，
+可省略，不要求逐字摘录，不需要为已正确表达的字段编写证明。
+unresolved_requirements.evidence用于说明具体未处理要求，必须有内容，但允许简要转述。
+required字段是执行所需决策；不相关的可选字段可省略，不省略用户实际提出的要求。

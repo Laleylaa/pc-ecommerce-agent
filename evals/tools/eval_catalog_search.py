@@ -11,8 +11,8 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.schemas.catalog_search import SearchCondition
-from app.tools.catalog_search.planner import explicit_lookup
-from app.tools.catalog_search.rules import matches, normalize, number
+from app.tools.catalog.planner import explicit_lookup
+from app.tools.catalog.fields import matches, normalize, number
 from app.tools.contracts import (
     CatalogSearchPublicInput,
     build_catalog_search_tool,

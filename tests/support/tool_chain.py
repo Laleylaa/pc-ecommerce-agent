@@ -4,9 +4,9 @@
 import json
 
 from app.schemas.chat import ChatRequest
-from app.tools.catalog import CatalogToolService, LLMCatalogQueryPlanner
-from app.tools.catalog_search.planner import CatalogSearchPlanner
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.compatibility import CatalogToolService, LLMCatalogQueryPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.contracts import BoundTool, execute_bound_tool
 from app.tools.orders import LLMOrderQueryPlanner, OrderToolService
 

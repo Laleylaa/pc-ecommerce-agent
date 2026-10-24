@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import OrderInfo, OrderItem, OrderLogistics
 from app.schemas.order import LogisticsCard, OrderCard, OrderFilters, OrderItemCard
-from app.tools.catalog_fields import product_term_aliases
+from app.tools.catalog.fields import product_term_aliases
 
 ORDER_STATUS_LABELS = {
     1: "待付款",

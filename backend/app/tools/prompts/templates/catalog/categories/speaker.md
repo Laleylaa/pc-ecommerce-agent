@@ -1,0 +1,1 @@
+type表示音箱产品类型，channels表示声道配置，power_w表示功率，分别判断。不能把Soundbar自动转换为特定声道，也不能把耳机的佩戴类型填入type。

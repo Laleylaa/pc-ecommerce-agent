@@ -4,11 +4,12 @@ Pure prompt material: no database calls or candidate filtering. Examples were
 checked against the current product catalog on 2026-09-29, and are not enums.
 """
 
-from app.tools.catalog_fields import (
+from app.tools.catalog.fields import (
     CATEGORY_FIELDS,
     FIELD_DEFINITIONS,
     normalize_category_hint,
 )
+from app.tools.prompts.templates import load_prompt
 
 # Small examples of recorded representation, not the set of permitted queries.
 # Field membership and executable rules are always read from FIELD_DEFINITIONS.
@@ -53,58 +54,19 @@ _CATALOG_EXAMPLES = {
     },
 }
 
-_COMMON_RULES = """你在解析单目标商品查询，以下是字段说明，不是商品事实或可售配置。
-category_hint只帮助选取说明，不能作为新增筛选条件、替代原文或证明商品品类。
-没有可靠hint时使用统一说明；只按原文明确品类填写category，不凭型号猜测。
-若hint与请求不符，不得删除要求或改用相近字段；hint不是筛选依据；不要因所选说明缺字段而宣称商品不支持。
-用于发现商品的规格硬要求保留conditions，标题词保留在工具的名称字段；事实询问保留requested_fields。
-字段体系没有筛选能力时标记filter_data_unavailable；具体商品是否缺记录只能查询后判断。
-所有条件须在同一个SKU上成立；记录示例不是取值白名单，也不表示能任意组合。
-同一字段同时满足多个能力时分成多个eq条件（AND）；任一满足才用in（OR）。
-不能为绕过冲突校验把同时满足改为in；否定条件保留ne/not_in。
-示例之外的合法值仍保留，如500Hz；不能替换成当前记录中的最近值。
-品牌/型号/系列名用于定位，不推断轴体、配列或无线能力；名称查找不依赖预先知道品类。
-boolean用是/否（兼容true/false等别名）；数值保留单位、端点与否定，文本保留具体型号规格。
-普通选购不加库存条件；问有没有货是事实询问，明确要求现货才筛库存。
-返回完整已记录资料；支持查询某字段不等于每个商品都有该事实。"""
+_COMMON_RULES = load_prompt("catalog/specs_common.md")
 
 
 # Contrasting examples, shared by search/facets and inherited by semantic review.
-CONDITION_EXAMPLES = """以下是成对条件片段，不是完整输出，也不代表店内商品：
-1. “蓝牙和2.4G都要有”：
-conditions=[{"key":"connection_type","operator":"eq","values":["蓝牙"],"strength":"requirement","evidence":"蓝牙和2.4G都要有"},
-{"key":"connection_type","operator":"eq","values":["2.4G"],"strength":"requirement","evidence":"蓝牙和2.4G都要有"}]。
-两项AND；用in表达此原文是错误，审核应revise。上述两个eq正确，审核应approve。
-2. “蓝牙或者2.4G都行”：
-conditions=[{"key":"connection_type","operator":"in","values":["蓝牙","2.4G"],"strength":"requirement","evidence":"蓝牙或者2.4G都行"}]。
-这是OR；不能因为出现“都”字就判AND。上述in正确，审核应approve。
-3. “蓝牙必须有，最好也支持2.4G”：
-conditions=[{"key":"connection_type","operator":"eq","values":["蓝牙"],"strength":"requirement","evidence":"蓝牙必须有"},
-{"key":"connection_type","operator":"eq","values":["2.4G"],"strength":"preference","evidence":"最好也支持2.4G","preference_evidence":"最好也支持2.4G"}]。
-前者决定准入，后者只排序；把两项都当硬条件或都当任选均应revise。
-4. “三模鼠标，蓝牙也要支持”：eq三模 + eq蓝牙可正确保留，审核应approve。
-这些是能力谓词，三模记录可同时满足两项；不能按字符串必须同时等于两种值而误判冲突。
-反向不成立：“蓝牙和2.4G都要有”不能直接改写成“三模”，不得增加原文没要求的配置。
-5. “支持无线充电”：保留unresolved_requirements=
-[{"evidence":"支持无线充电","reason":"filter_data_unavailable"}]。
-字段体系缺少此能力；正确停止计划应approve，替换成wireless=是应revise。
-“支持无线连接”才按连接能力表达，不能把连接和充电混为一谈。
-审核以上片段时仍要核对实际原文的其他要求；生成时补齐schema要求，不能复制无关条件。"""
+CONDITION_EXAMPLES = load_prompt("catalog/condition_examples.md")
 
 _CATEGORY_NOTES = {
-    "鼠标": "DPI是最高灵敏度记录，weight_g是重量；不能据此保证游戏性能。无线不等于蓝牙。",
-    "键盘": "switches是红轴、茶轴等实际轴体，不能用机械代替；机械键盘是标题类型词，"
-    "保留在名称检索文本，不当作轴体条件。style是配列；"
-    "系列名含轴字、版本名含无线不证明对应规格，明确轴体/连接要求仍用规格条件。"
-    "backlit为背光模式；tenkeyless为有无独立数字键区，不反推具体配列。",
-    "耳机": "type表示佩戴类型，enclosure_type表示声学结构，两者不可互换。"
-    "microphone只表示有无麦克风；不保证降噪能力。frequency_response按记录文本匹配。",
-    "显示器": "refresh_rate为屏幕刷新率，不使用摄像头frame_rate。Fast IPS与IPS不自动等同。"
-    "当前未记录视频输入接口；不能用摄像头connection_type或USB-C名称证明显示器支持视频输入。",
-    "音箱": "type表示音箱产品类型，channels表示声道配置，power_w表示功率，分别判断。"
-    "不能把Soundbar自动转换为特定声道，也不能把耳机的佩戴类型填入type。",
-    "摄像头": "frame_rate为摄像头帧率，不使用显示器refresh_rate。connection_type为连接接口。"
-    "USB-C不保证额外协议能力；microphone为有无麦克风；1080p HDR不自动等同1080p。",
+    "鼠标": load_prompt("catalog/categories/mouse.md"),
+    "键盘": load_prompt("catalog/categories/keyboard.md"),
+    "耳机": load_prompt("catalog/categories/headset.md"),
+    "显示器": load_prompt("catalog/categories/monitor.md"),
+    "音箱": load_prompt("catalog/categories/speaker.md"),
+    "摄像头": load_prompt("catalog/categories/webcam.md"),
 }
 
 
@@ -136,14 +98,23 @@ def build_spec_context(
     *,
     include_common_rules: bool = True,
     include_other_categories: bool = False,
+    categories: tuple[str, ...] | None = None,
 ) -> str:
     """Return common guidance plus one category, or all categories as fallback.
 
-    Blank/unrecognized hints use the full guide; raw hint text is never inserted
+    Explicit categories select resolved rules; an empty tuple selects common fields only.
+    Without explicit categories, blank/unrecognized hints use the full guide.
+    Raw hint text is never inserted
     into the prompt. This function does not modify a query, plan, or scope.
     """
     category = normalize_category_hint(category_hint)
-    categories = (category,) if category in CATEGORY_FIELDS else tuple(CATEGORY_FIELDS)
+    categories = (
+        tuple(c for c in categories if c in CATEGORY_FIELDS)
+        if categories is not None
+        else (category,)
+        if category in CATEGORY_FIELDS
+        else tuple(CATEGORY_FIELDS)
+    )
     if include_other_categories and category:
         categories = (category, *(c for c in CATEGORY_FIELDS if c != category))
     common = {
@@ -151,8 +122,11 @@ def build_spec_context(
         for key, definition in FIELD_DEFINITIONS.items()
         if definition.filterable and set(definition.categories) == set(CATEGORY_FIELDS)
     }
-    lines = (["## 统一处理规则", _COMMON_RULES, "## 条件对照示例", CONDITION_EXAMPLES]
-             if include_common_rules else [])
+    lines = (
+        ["## 统一处理规则", _COMMON_RULES, "## 条件对照示例", CONDITION_EXAMPLES]
+        if include_common_rules
+        else []
+    )
     lines.append("## 公共字段")
     # Derive operators from the execution registry instead of a second rule table.
     for kind in ("text", "boolean", "number"):
@@ -168,6 +142,7 @@ def build_spec_context(
         for key, d in FIELD_DEFINITIONS.items()
         if len(categories) > 1
         and d.filterable
+        and any(selected in d.categories for selected in categories)
         and len(d.categories) > 1
         and not d.category_meanings
         and key not in common
@@ -180,6 +155,8 @@ def build_spec_context(
             lines.append(_field_description(key) + "；适用：" + "/".join(definition.categories))
             examples_by_category = {}
             for selected in definition.categories:
+                if selected not in categories:
+                    continue
                 if include_other_categories and category and selected != category:
                     continue
                 if values := _CATALOG_EXAMPLES.get(selected, {}).get(key):

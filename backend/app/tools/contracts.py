@@ -22,9 +22,10 @@ from app.schemas.catalog_search import (
     QueryText,
     SearchScope,
 )
-from app.tools.catalog import CatalogQueryPlanner, CatalogToolService, LLMCatalogQueryPlanner
-from app.tools.catalog_search.planner import CatalogSearchPlanner, SearchPlanner
-from app.tools.catalog_search.service import CatalogSearchService
+from app.tools.catalog.facets import CatalogFacetService
+from app.tools.catalog.facets_planner import CatalogFacetPlanner, FacetPlanner
+from app.tools.catalog.planner import CatalogSearchPlanner, SearchPlanner
+from app.tools.catalog.service import CatalogSearchService
 from app.tools.knowledge import (
     POLICY_TIMEOUT_SECONDS,
     KnowledgeRetrievalToolService,
@@ -321,7 +322,7 @@ def build_tool_catalog(
     session: AsyncSession,
     *,
     settings: Settings,
-    catalog_planner: CatalogQueryPlanner | None = None,
+    catalog_planner: FacetPlanner | None = None,
     order_planner: OrderQueryPlanner | None = None,
     catalog_session_factory: async_sessionmaker[AsyncSession] | None = None,
     catalog_search_planner: SearchPlanner | None = None,
@@ -347,8 +348,8 @@ def build_tool_catalog(
                 operation="lookup" if name == "catalog_lookup" else "search",
             ).search  # type: ignore[return-value]
         if name == "catalog_facets":
-            return CatalogToolService(
-                bound_session, planner=catalog_planner, session_factory=catalog_session_factory,
+            return CatalogFacetService(
+                bound_session, planner=catalog_planner,
             ).facets  # type: ignore[return-value]
         return OrderToolService(
             bound_session, planner=order_planner,
@@ -410,7 +411,7 @@ def _build_search_planner(
     return CatalogSearchPlanner(model, operation=operation)
 
 
-def build_catalog_planner(settings: Settings | None = None) -> CatalogQueryPlanner | None:
+def build_catalog_planner(settings: Settings | None = None) -> FacetPlanner | None:
     from app.core.config import get_settings
 
     settings = settings or get_settings()
@@ -421,7 +422,7 @@ def build_catalog_planner(settings: Settings | None = None) -> CatalogQueryPlann
     if chat_model is None:
         return None
 
-    return LLMCatalogQueryPlanner(chat_model)
+    return CatalogFacetPlanner(chat_model)
 
 
 def build_order_planner(settings: Settings | None = None) -> OrderQueryPlanner | None:
@@ -561,8 +562,9 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "For facts, conditional availability, prices or variants of ONE specified product, "
                 "use catalog_lookup. For catalog brands/categories/specification options, use "
                 "catalog_facets. Pass a self-contained query preserving every hard condition, "
-                "negation and preference. category_hint selects only that category's specification "
-                "guide; it never filters products. Omit when uncertain. scope is a sourced hard "
+                "negation and preference. category_hint is optional and non-authoritative; "
+                "the workflow resolves scope and loads applicable specification rules. "
+                "Omit when uncertain. scope is a sourced hard "
                 "boundary, not a comparison anchor; never invent IDs. Set limit to the requested "
                 "count; default 3, capped at 20 with explicit count metadata. Returns model cards "
                 "with matching-SKU counts and prices; previews are not the full population. "
@@ -589,8 +591,9 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "Combine these facts in one query; no preliminary search is needed for a name. "
                 "Use catalog_search to discover products across a collection; use catalog_facets "
                 "for collection-wide options. Preserve the complete question and any prerequisite "
-                "such as 'price only if wireless'. category_hint selects specification guidance "
-                "only, never a filter; omit when uncertain. Never infer IDs from model numbers. "
+                "such as 'price only if wireless'. category_hint is a non-authoritative "
+                "compatibility hint, "
+                "never a filter; omit when uncertain. Never infer IDs from model numbers. "
                 "Separate independent named objects into calls. Default returns lookup_summary "
                 "over ALL confirmed matching active versions, including existence, SKU count, "
                 "price range, distinct price count and cheapest/middle/most expensive examples. "
@@ -617,8 +620,9 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "Use for 'which keyboard layouts are available under 500 yuan'. "
                 "For ONE product's specs, colors, wireless support, versions or prices use "
                 "catalog_lookup; for product candidates use catalog_search. Pass a complete "
-                "query with filters; category_hint selects only the relevant specification guide, "
-                "not a product filter. Omit uncertain hints. scope may restrict an already sourced "
+                "query with filters; category_hint is non-authoritative; the workflow derives "
+                "applicable rules from the request and sourced scope. Omit uncertain hints. "
+                "scope may restrict an already sourced "
                 "candidate collection. Returns option values and SKU/SPU counts, not inventory "
                 "quantities or product quotes. Values are not proof that combinations exist; "
                 "retain source identities and missing/conflicting evidence. Read only."

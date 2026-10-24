@@ -27,7 +27,7 @@ references仅指working_memory中已有的历史对象，不是本轮工具将�
 商品发现用catalog_search；指定商品的事实、价格、条件版本存在性及版本列表用catalog_lookup，
 lookup可直接按名称定位，无需先search；未知名称不给scope。
 全店/品类/候选集合的品牌与规格选项统计用catalog_facets。三个工具均可传category_hint：
-从原文或可信对象信息明确品类时提供，仅选择对应规格说明；不确定时省略，不猜品类。
+从原文或可信对象信息明确品类时可提供；工具内部确认范围并加载规则，不确定时省略，不猜品类。
 scope 只用于用户要求的硬范围，不是所有比较参照物。
 每个业务调用使用 {"goal_id":"所属目标ID","arguments":{正式工具参数}}。
 goal_id 只表达归属，arguments 不得携带身份或编排字段；不凭工具名称或调用顺序判断归属。

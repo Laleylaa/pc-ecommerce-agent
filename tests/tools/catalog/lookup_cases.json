@@ -1,0 +1,383 @@
+{
+  "version": "catalog-lookup-basic-3",
+  "type": "lookup",
+  "tool_name": "catalog_lookup",
+  "design_status": "提前标注完成；未执行",
+  "common_hard": [
+    [
+      "ok",
+      "eq",
+      true
+    ],
+    [
+      "error",
+      "eq",
+      null
+    ]
+  ],
+  "common_semantic": [
+    {
+      "id": "intent",
+      "criterion": "是否完整理解本例需求；功能事实不能改成筛选，目录不能变成单商品资料。"
+    },
+    {
+      "id": "scope",
+      "criterion": "身份、品类、可信scope及同SKU范围是否忠实；不得猜编号或缩小全店目录。"
+    },
+    {
+      "id": "workflow",
+      "criterion": "逐阶段检查范围计划、业务计划、复核和程序校验；有修正则检查全部尝试。approve不等于通过。"
+    },
+    {
+      "id": "facts",
+      "criterion": "逐项对照独立原始行、冻结预期、最终返回与Trace，不跨版本拼规格，不遗漏必要事实。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "lookup-smoke",
+      "kind": "smoke",
+      "input": {
+        "query": "$oracle.model_query"
+      },
+      "oracle_scenario": "lookup_price",
+      "intent": "不提供category_hint；按完整型号名称定位，汇总全部在售版本价格，不要求先选SKU。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "lookup"
+        ],
+        [
+          "output.lookup_summary.exists",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.matching_complete",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.lookup_summary.min_price",
+          "decimal_eq",
+          "$oracle.minimum"
+        ],
+        [
+          "output.lookup_summary.max_price",
+          "decimal_eq",
+          "$oracle.maximum"
+        ],
+        [
+          "output.lookup_summary.matched_sku_count",
+          "eq",
+          "$oracle.count"
+        ],
+        [
+          "output.lookup_summary.price_level_count",
+          "eq",
+          "$oracle.price_levels"
+        ]
+      ],
+      "trace_route": "model",
+      "semantic_expectation": "不提供category_hint；按完整型号名称定位，汇总全部在售版本价格，不要求先选SKU。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。"
+    },
+    {
+      "id": "lookup-sku",
+      "kind": "business",
+      "input": {
+        "query": "$oracle.sku_query"
+      },
+      "oracle_scenario": "lookup_sku",
+      "intent": "明确SKU名称查价格和库存；仅该版本，库存为数量，不以有货代替。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "lookup"
+        ],
+        [
+          "output.lookup_summary.exists",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.matching_complete",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.lookup_summary.matched_sku_count",
+          "eq",
+          1
+        ],
+        [
+          "output.lookup_summary.min_price",
+          "decimal_eq",
+          "$oracle.sku_price"
+        ],
+        [
+          "output.lookup_summary.max_price",
+          "decimal_eq",
+          "$oracle.sku_price"
+        ],
+        [
+          "output.lookup_fields.stock.values.0.value",
+          "decimal_eq",
+          "$oracle.stock"
+        ],
+        [
+          "output.lookup_fields.stock.values.0.versions.0.sku_id",
+          "eq",
+          "$oracle.sku_id"
+        ]
+      ],
+      "trace_route": "model",
+      "semantic_expectation": "明确SKU名称查价格和库存；仅该版本，库存为数量，不以有货代替。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。"
+    },
+    {
+      "id": "lookup-wireless",
+      "kind": "business",
+      "input": {
+        "query": "$oracle.wireless_query"
+      },
+      "oracle_scenario": "lookup_wireless",
+      "intent": "型号是否支持无线属于事实查询；同时返回支持与不支持的版本证据，不加wireless=是硬筛选。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "lookup"
+        ],
+        [
+          "output.lookup_summary.exists",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.matching_complete",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.lookup_summary.matched_sku_count",
+          "eq",
+          "$oracle.count"
+        ],
+        [
+          "output.field_versions.wireless",
+          "eq",
+          "$oracle.wireless_values"
+        ],
+        [
+          "output.lookup_fields.wireless.missing_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.lookup_fields.wireless.conflicted_sku_count",
+          "eq",
+          0
+        ]
+      ],
+      "trace_route": "model",
+      "semantic_expectation": "型号是否支持无线属于事实查询；同时返回支持与不支持的版本证据，不加wireless=是硬筛选。依据结构化wireless字段，不从标题或其他字段猜测、改写事实。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "各在售版本的wireless在JSON和属性表中有明确一致记录；不从标题或connection_type推断该字段。来源不同则未执行，不从被测结果生成预期。"
+    },
+    {
+      "id": "lookup-versions",
+      "kind": "business",
+      "input": {
+        "query": "$oracle.versions_query",
+        "limit": 2
+      },
+      "oracle_scenario": "lookup_versions",
+      "intent": "列出型号最便宜两个版本；operation仍为lookup，version_view=list；汇总范围不受两条展示窗口限制。",
+      "hard": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "lookup"
+        ],
+        [
+          "output.lookup_summary.exists",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.matching_complete",
+          "eq",
+          true
+        ],
+        [
+          "output.lookup_summary.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.query_plan.version_view",
+          "eq",
+          "list"
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          2
+        ],
+        [
+          "output.product_sku_order",
+          "eq",
+          "$oracle.version_ids"
+        ],
+        [
+          "output.lookup_summary.matched_sku_count",
+          "eq",
+          "$oracle.count"
+        ]
+      ],
+      "trace_route": "model",
+      "semantic_expectation": "列出型号最便宜两个版本；operation仍为lookup，version_view=list；汇总范围不受两条展示窗口限制。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。"
+    },
+    {
+      "id": "lookup-empty-scope",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "scope": {}
+      },
+      "oracle_scenario": null,
+      "intent": "显式空scope应拒绝，不能静默扩大到全店。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "显式空scope应拒绝，不能静默扩大到全店。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    },
+    {
+      "id": "lookup-bad-limit",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "limit": 0
+      },
+      "oracle_scenario": null,
+      "intent": "limit=0应拒绝，不能自动改成默认值。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "limit=0应拒绝，不能自动改成默认值。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    },
+    {
+      "id": "lookup-runtime-field",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "user_id": 999
+      },
+      "oracle_scenario": null,
+      "intent": "拒绝用户注入服务端身份字段；不能透传给handler。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "拒绝用户注入服务端身份字段；不能透传给handler。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    }
+  ],
+  "revision_note": "按用户确认的校验边界，删除标题语义与跨字段语义冲突推断；预期仅取同一结构化字段的独立记录。"
+}
