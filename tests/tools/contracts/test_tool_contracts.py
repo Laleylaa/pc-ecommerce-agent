@@ -27,6 +27,7 @@ async def test_tool_registry_exposes_expected_business_tools() -> None:
 
     assert registry.tool_names == [
         "catalog.facets",
+        "catalog.lookup",
         "catalog.search",
         "knowledge.search",
         "order.lookup",
@@ -43,6 +44,7 @@ def test_tool_contracts_expose_llm_safe_metadata() -> None:
 
     assert names == [
         "catalog_search",
+        "catalog_lookup",
         "catalog_facets",
         "order_lookup",
         "policy_search",
@@ -53,7 +55,7 @@ def test_tool_contracts_expose_llm_safe_metadata() -> None:
     assert all(contract.description for contract in contracts)
     assert all(contract.read_only for contract in contracts)
     assert {contract.name for contract in contracts if contract.parallel_safe} == {
-        "catalog_search", "catalog_facets", "order_lookup", "knowledge_search",
+        "catalog_search", "catalog_lookup", "catalog_facets", "order_lookup", "knowledge_search",
     }
 
     order_contract = DefaultToolContractProvider().get_contract("order_lookup")

@@ -6,12 +6,6 @@ import subprocess
 import sys
 
 import pytest
-from agent_loop.support.domain_tools import (
-    TOOL_ARGUMENTS,
-    adapter,
-    admit_goal,
-    make_catalog,
-)
 from app.agent.loop.strands_tools import StrandsToolBindings
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.tools.contracts import (
@@ -21,6 +15,13 @@ from app.tools.contracts import (
     default_tool_contracts,
 )
 from app.tools.schemas import OrderLookupOutput
+
+from tests.support.registry_tools import (
+    TOOL_ARGUMENTS,
+    adapter,
+    admit_goal,
+    make_catalog,
+)
 
 pytestmark = pytest.mark.contract
 

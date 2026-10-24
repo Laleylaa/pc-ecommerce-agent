@@ -51,6 +51,7 @@ def sha(path):
 
 def source_state():
     paths = set((ROOT / "backend/app").rglob("*.py"))
+    paths.update((ROOT / "backend/app/tools/prompts/templates").rglob("*.md"))
     paths.update(HERE.glob("*.py"))
     paths.update(HERE.glob("*.json"))
     paths.update(HERE.glob("*.md"))
@@ -130,13 +131,16 @@ async def select_once(prepared, model, budget):
     agent = session.build(model)
     # Use the same registry, control descriptions, visibility, context and model as run().
     model.tool_spec_filter = session.visible_tools
+    specs = agent.tool_registry.get_all_tool_specs()
+    if set(agent.tool_registry.registry) != {s["name"] for s in specs}:
+        raise RuntimeError("registered_tool_spec_mismatch")
     events = []
     try:
         async for event in model.stream(
             messages=[{"role": "user", "content": [{
                 "text": json.dumps(query_context(prepared), ensure_ascii=False),
             }]}],
-            tool_specs=agent.tool_registry.get_all_tool_specs(),
+            tool_specs=specs,
             system_prompt=agent.system_prompt,
         ):
             events.append(event)

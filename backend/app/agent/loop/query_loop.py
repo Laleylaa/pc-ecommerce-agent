@@ -5,10 +5,11 @@ import json
 from copy import deepcopy
 
 from pydantic import ValidationError
-from strands import Agent, tool
+from strands import Agent
 from strands.hooks import AfterToolsEvent, BeforeToolsEvent
 from strands.tools.executors import SequentialToolExecutor
 
+from app.agent.loop.control_tools import control_tools
 from app.agent.loop.evidence import EvidenceRecord
 from app.agent.loop.prompts.query_loop import QUERY_PROMPT
 from app.agent.loop.query_context import (
@@ -20,11 +21,10 @@ from app.agent.loop.query_context import (
 from app.agent.loop.query_schema import (
     CompletionCall,
     GoalRegistration,
-    QueryCompletion,
     RegistrationCall,
 )
 from app.agent.loop.query_state import GoalBook
-from app.agent.loop.strands_tools import StrandsToolBindings
+from app.agent.loop.strands_tools import RegisteredBusinessTools, StrandsToolBindings
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopBudget, LoopLimit, find_loop_limit
 from app.core.loop_models import QueryModel
@@ -237,43 +237,6 @@ class QuerySession:
             self.book = original
 
     def build(self, model) -> Agent:
-        @tool(inputSchema={"json": RegistrationCall.model_json_schema()})
-        def register_goals(registration: GoalRegistration) -> dict:
-            """Register all goals, then propose independent queries in this SAME response.
-
-            If no query is needed or possible, follow with query_complete in this SAME
-            response. Each business call explicitly names its goal_id; a goal may
-            have multiple calls. No activation round trip is needed. Source text is verbatim.
-            """
-            try:
-                registration = GoalRegistration.model_validate(registration)
-                references = self._register(registration, self.book)
-                return {
-                    "accepted": True, "trusted_references": references, **self.control_state(),
-                }
-            except (AdmissionError, ValidationError) as exc:
-                return self.reject_control(
-                    "register_goals", exc, registration.model_dump(mode="json")
-                    if isinstance(registration, GoalRegistration) else registration,
-                )
-
-        @tool(inputSchema={"json": CompletionCall.model_json_schema()})
-        def query_complete(completion: QueryCompletion) -> dict:
-            """Stop querying and hand every goal and actual result to the answer stage.
-
-            Supply only a short reason, never goal statuses or evidence IDs. This does not
-            claim success. Usually standalone; may follow initial registration if no queries
-            will be made. Never mix with business queries in the same response.
-            """
-            try:
-                self.book.finish(QueryCompletion.model_validate(completion))
-                self.stop_reason = "completed"
-                return {"accepted": True}
-            except (AdmissionError, ValidationError) as exc:
-                return self.reject_control("query_complete", exc, completion.model_dump(mode="json")
-                                           if isinstance(completion, QueryCompletion)
-                                           else completion)
-
         controls = {"register_goals", "query_complete"}
 
         def before(event: BeforeToolsEvent) -> None:
@@ -331,9 +294,13 @@ class QuerySession:
                 self.stop_reason = "invalid_completion"
                 event.end_turn = True
 
-        return Agent(
+        tools = [*self.bindings.tools(), *control_tools(self)]
+        names = [t.tool_name.replace("-", "_") for t in tools]
+        if len(set(names)) != len(names):
+            raise ValueError("duplicate SDK tool name")
+        agent = Agent(
             model=model,
-            tools=[*self.bindings.tools(), register_goals, query_complete],
+            tools=tools,
             system_prompt=QUERY_PROMPT,
             callback_handler=None,
             hooks=[before, after],
@@ -341,6 +308,10 @@ class QuerySession:
             retry_strategy=None,
             context_manager=False,
         )
+
+        # Admission, execution and discovery now resolve from the SDK's real registry.
+        self.adapter.catalog = RegisteredBusinessTools(agent.tool_registry)
+        return agent
 
     async def run(self, model) -> None:
         if isinstance(model, QueryModel):

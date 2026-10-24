@@ -12,14 +12,14 @@ from tests.support.execution_tool_concurrency import (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["success", "error", "cancel", "timeout"])
-@pytest.mark.parametrize("name", ["order_lookup", "catalog_search", "catalog_facets"])
+@pytest.mark.parametrize("name", ["order_lookup", "catalog_search", "catalog_lookup", "catalog_facets"])
 async def test_tool_sessions_are_per_call_and_closed_on_every_exit(monkeypatch, outcome, name):
     factory = SessionFactory()
     chat_session = object()
     seen = []
 
     async def lookup(self, request):
-        session = self.repository.session if name == "catalog_search" else self.session
+        session = self.engine.repository.session if name in {"catalog_search", "catalog_lookup"} else self.session
         seen.append((session, getattr(request, "user_id", None)))
         if outcome == "error":
             raise RuntimeError("synthetic failure")
@@ -27,7 +27,7 @@ async def test_tool_sessions_are_per_call_and_closed_on_every_exit(monkeypatch, 
             raise asyncio.CancelledError()
         if outcome == "timeout":
             await asyncio.Event().wait()
-        if name == "catalog_search":
+        if name in {"catalog_search", "catalog_lookup"}:
             from app.schemas.catalog_search import CatalogSearchResult
             return CatalogSearchResult(
                 result_type="empty", status="clarification_required",
@@ -40,8 +40,9 @@ async def test_tool_sessions_are_per_call_and_closed_on_every_exit(monkeypatch, 
 
     target = {
         "order_lookup": "app.tools.orders.OrderToolService.lookup",
-        "catalog_search": "app.tools.catalog_search.service.CatalogSearchService.search",
-        "catalog_facets": "app.tools.catalog.CatalogToolService.facets",
+        "catalog_search": "app.tools.catalog.service.CatalogSearchService.search",
+        "catalog_lookup": "app.tools.catalog.service.CatalogSearchService.search",
+        "catalog_facets": "app.tools.catalog.facets.CatalogFacetService.facets",
     }[name]
     monkeypatch.setattr(target, lookup)
     executor = RegistryToolExecutor(

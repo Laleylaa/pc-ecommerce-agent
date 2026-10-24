@@ -166,21 +166,25 @@ class BoundTool:
 
 class ToolCatalog:
     def __init__(self, bound_tools: Sequence[BoundTool]):
-        self._by_llm_name: dict[str, BoundTool] = {}
-        self._by_registry_name: dict[str, BoundTool] = {}
-        for bound_tool in bound_tools:
+        # Immutable assembly definitions, not a second runtime registry. Legacy callers
+        # retain linear metadata access until that runtime is retired.
+        self._definitions = tuple(bound_tools)
+        names, aliases = set(), set()
+        for bound_tool in self._definitions:
             self._validate_bound_tool(bound_tool)
             contract = bound_tool.contract
-            if contract.llm_name in self._by_llm_name:
+            if contract.llm_name in names:
                 raise ValueError(f"duplicate tool llm_name: {contract.llm_name}")
-            if contract.registry_name in self._by_registry_name:
+            if contract.registry_name in aliases:
                 raise ValueError(f"duplicate tool registry_name: {contract.registry_name}")
-            self._by_llm_name[contract.llm_name] = bound_tool
-            self._by_registry_name[contract.registry_name] = bound_tool
+            names.add(contract.llm_name)
+            aliases.add(contract.registry_name)
 
     @staticmethod
     def _validate_bound_tool(bound_tool: BoundTool) -> None:
         contract = bound_tool.contract
+        if not isinstance(contract, ToolContract):
+            raise ValueError("missing tool contract")
         handler = bound_tool.handler
         if not callable(handler):
             raise ValueError(f"missing handler for tool: {contract.llm_name}")
@@ -218,16 +222,17 @@ class ToolCatalog:
             raise ValueError(f"handler output model mismatch for tool: {contract.llm_name}")
 
     def list_bound_tools(self) -> Sequence[BoundTool]:
-        return tuple(self._by_llm_name.values())
+        return self._definitions
 
     def list_contracts(self) -> Sequence[ToolContract]:
-        return tuple(bound_tool.contract for bound_tool in self._by_llm_name.values())
+        return tuple(bound_tool.contract for bound_tool in self.list_bound_tools())
 
     def get_by_llm_name(self, llm_name: str) -> BoundTool | None:
-        return self._by_llm_name.get(llm_name)
+        return next((b for b in self.list_bound_tools() if b.contract.llm_name == llm_name), None)
 
     def get_by_registry_name(self, registry_name: str) -> BoundTool | None:
-        return self._by_registry_name.get(registry_name)
+        return next((b for b in self.list_bound_tools()
+                     if b.contract.registry_name == registry_name), None)
 
 
 class ToolContractProvider(Protocol):

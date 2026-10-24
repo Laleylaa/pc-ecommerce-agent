@@ -200,3 +200,14 @@ ZIP SHA256：`810eb253b2cca6c9f3cacd68eef14d6c7089867d5f97b741002ef246bb0c14c5`�
 恢复应在独立目录核验后使用兼容项目版本，不覆盖当前工作区。原已跟踪文件也可从归档前Git版本恢复；缓存与包内附加材料不在Git中。归档操作未运行测试。
 根Makefile的legacy-test入口和pytest排除项未修改；默认测试不收集此目录。
 前述105模块为归档前盘点，移除38个legacy测试模块后现存67个；其余测试保留。
+
+### Strands 注册结构专项（2026-10-24）
+
+仅结构验证，使用纯替身，不运行工具业务：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python tests/run.py tests/tools/contracts/test_tool_contracts.py tests/tools/smoke/test_strands_registry.py tests/tools/execution/test_tool_concurrency.py tests/agent_loop/contracts/test_tool_adapter.py tests/agent_loop/contracts/test_tool_selection_boundary.py -q
+```
+
+注册契约从 application/agent 迁入 tools/contracts；适配器 fixture 采用
+`tests/support/registry_tools.py`，领域行为用例仍保留原位置。

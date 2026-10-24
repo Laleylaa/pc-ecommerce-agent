@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
+from strands.tools.registry import ToolRegistry
 from strands.tools.tools import PythonAgentTool
 from strands.types.tools import ToolResult, ToolUse
 
@@ -13,6 +14,34 @@ from app.agent.loop.query_schema import GoalToolCall
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopLimit
 from app.core.loop_tracing import fields, payload, rejection, step
+from app.tools.contracts import BoundTool, ToolCatalog
+
+
+class BusinessAgentTool(PythonAgentTool):
+    """SDK registration owns the binding; metadata is never a model argument."""
+
+    def __init__(self, bound: BoundTool, spec: dict, execute: Callable) -> None:
+        super().__init__(bound.contract.llm_name, spec, execute)
+        self.bound = bound
+
+    @property
+    def supports_hot_reload(self) -> bool:
+        return False
+
+
+class RegisteredBusinessTools(ToolCatalog):
+    """Read-only legacy-shaped view over the actual Agent registry, no handler index."""
+
+    def __init__(self, registry: ToolRegistry) -> None:
+        self.registry = registry
+
+    def list_bound_tools(self) -> tuple[BoundTool, ...]:
+        return tuple(t.bound for t in self.registry.registry.values()
+                     if isinstance(t, BusinessAgentTool))
+
+    def get_by_llm_name(self, llm_name: str) -> BoundTool | None:
+        tool = self.registry.registry.get(llm_name)
+        return tool.bound if isinstance(tool, BusinessAgentTool) else None
 
 
 class StrandsToolBindings:
@@ -45,7 +74,8 @@ class StrandsToolBindings:
 
     def tools(self) -> list[PythonAgentTool]:
         tools = []
-        for contract in self.adapter.catalog.list_contracts():
+        for bound in self.adapter.catalog.list_bound_tools():
+            contract = bound.contract
             if not contract.read_only:
                 continue
             arguments = deepcopy(contract.public_input_model.model_json_schema())
@@ -55,8 +85,8 @@ class StrandsToolBindings:
             # Domain schemas use root-relative refs; preserve their resolution in the envelope.
             if definitions:
                 schema["$defs"] = definitions
-            tools.append(PythonAgentTool(
-                contract.llm_name,
+            tools.append(BusinessAgentTool(
+                bound,
                 {"name": contract.llm_name, "description": contract.description,
                  "inputSchema": {"json": schema}},
                 self._execute,
