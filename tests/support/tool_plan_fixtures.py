@@ -8,16 +8,20 @@ def search_plan(data: dict | None = None) -> dict:
         "operation": "search",
         "disposition": "ready",
         "category": None,
-        "name": None,
+        "search_text": None,
         "target": None,
-        "keywords": [],
+        "version_view": "summary",
+        "candidate_unit": "spu",
         "conditions": [],
         "requested_fields": [],
+        "unresolved_requirements": [],
         "unsupported_requirements": [],
         "clarification_requirements": [],
         "sort": "relevance",
         "purpose": "search",
     } | deepcopy(data or {})
+    if result["operation"] == "lookup" and "purpose" not in (data or {}):
+        result["purpose"] = "lookup"
     result["conditions"] = [
         {"operator": "eq", "strength": "requirement", "preference_evidence": None} | c
         for c in result["conditions"]
@@ -41,6 +45,7 @@ def facet_plan(data: dict | None = None) -> dict:
         "count_scope": "spu",
         "supported": True,
         "unsupported_reason": None,
+        "unresolved_requirements": [],
         "unsupported_requirements": [],
         "clarification_requirements": [],
     } | deepcopy(data or {})

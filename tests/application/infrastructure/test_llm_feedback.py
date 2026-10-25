@@ -70,22 +70,21 @@ async def test_catalog_repair_preserves_raw_output_category_and_original_input(r
                             {"key":"color", "values":["白色"], "evidence":"白色"},
                             {"key":"connection_type", "values":["蓝牙"], "evidence":"蓝牙"},
                         ]})
-    model = SequenceModel([SimpleNamespace(content=raw),
+    model = SequenceModel([SimpleNamespace(content=json.dumps({
+        "scope_kind": "category", "category": valid["category"],
+        "search_text": None, "target": None, "needs_specifications": True,
+    })), SimpleNamespace(content=raw),
                            SimpleNamespace(content=json.dumps(valid, ensure_ascii=False)),
                            SimpleNamespace(content=json.dumps({
-                               "verdict": "approve", "checks": [{
-                                   "evidence": "白色蓝牙键盘有哪些布局可选",
-                                   "plan_paths": ["/conditions"], "status": "matched",
-                                   "explanation": "脚本审核通过，语义审核另有专项测试",
-                               }],
+                               "verdict": "approve",
                            }, ensure_ascii=False))])
     request = CatalogFacetInput(query="白色蓝牙键盘有哪些布局可选", limit=1)
     plan = await LLMCatalogQueryPlanner(model).plan_facets(request)
-    assert len(model.calls) == 3
-    payloads = [json.loads(call[1].content) for call in model.calls]
+    assert len(model.calls) == 4
+    payloads = [json.loads(call[1].content) for call in model.calls[1:]]
     assert payloads[2]["candidate_plan"]["conditions"] == valid["conditions"]
-    feedback = json.loads(model.calls[1][-1].content)["validation_feedback"]
-    assert json.loads(model.calls[1][-1].content)["previous_output"] == raw
+    feedback = json.loads(model.calls[2][-1].content)["validation_feedback"]
+    assert json.loads(model.calls[2][-1].content)["previous_output"] == raw
     assert feedback["errors"][0]["type"] == expected_type
     assert payloads[1]["query"] == payloads[0]["query"] == request.query
     assert payloads[1]["explicit_overrides"] == payloads[0]["explicit_overrides"]
