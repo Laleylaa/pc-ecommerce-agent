@@ -42,7 +42,7 @@ async def test_actual_registry_owns_all_bindings_and_specs():
     for definition in default_tool_contracts():
         tool = registry.registry[definition.name]
         assert isinstance(tool, BusinessAgentTool)
-        assert tool.tool_spec["description"] == definition.description
+        assert tool.tool_spec["description"] == definition.model_description
         assert query.adapter.catalog.get_by_llm_name(definition.name) is tool.bound
         with pytest.raises(ValueError, match="already exists"):
             registry.register_tool(tool)

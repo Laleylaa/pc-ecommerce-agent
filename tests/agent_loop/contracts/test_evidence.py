@@ -74,13 +74,15 @@ async def test_ok_is_not_complete_and_restrictions_are_lossless(output, blocker)
     query = adapter(ToolCatalog([BoundTool(contract, handler)]))
     record = await order_record(query)
     assert record.result.ok
-    assert record.result.output == output.model_dump(mode="json")
+    expected = output.model_dump(mode="json", exclude={"output_budget"})
+    assert {k:v for k,v in record.result.output.items() if k != "output_budget"} == expected
+    assert not record.result.output["output_budget"]["truncated"]
     assert blocker in record.completion_blockers
     with pytest.raises(EvidenceError, match="incomplete_evidence"):
         query.evidence.reference("g1", record.evidence_id, require_complete=True)
     presentation = query.evidence.presentation("g1", record.evidence_id)
     assert blocker in presentation["evidence"]["completion_blockers"]
-    assert presentation["evidence"]["result"]["output"] == output.model_dump(mode="json")
+    assert presentation["evidence"]["result"]["output"] == record.result.output
 
 
 @pytest.mark.parametrize("name", ["policy_search", "knowledge_search"])

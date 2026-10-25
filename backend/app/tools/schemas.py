@@ -16,6 +16,7 @@ from app.schemas.catalog_search import CatalogSearchRequest, CategoryHint, Field
 from app.schemas.context import CatalogMemory
 from app.schemas.order import OrderCard, OrderFilters, OrderQueryMode, OrderSuggestion, OrderSummary
 from app.tools.order_identity import explicit_order_ids
+from app.tools.output_limits import MAX_RESULT_ITEMS, BoundedToolOutput
 
 NonBlankQuery = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
 
@@ -195,6 +196,10 @@ class CatalogSeriesSummary(BaseModel):
 
 
 class CatalogFacetValue(BaseModel):
+    total_sku_ids_count: int | None = Field(default=None, ge=0)
+    total_spu_ids_count: int | None = Field(default=None, ge=0)
+    sources_exhaustive: bool = True
+
     value: str
     sku_ids: list[int] = Field(default_factory=list)
     spu_ids: list[int] = Field(default_factory=list)
@@ -213,7 +218,7 @@ class CatalogFacetInput(BaseModel):
     min_price: Decimal | None = None
     max_price: Decimal | None = None
     filters: dict[str, str] = Field(default_factory=dict)
-    limit: int = Field(default=20, ge=1, le=50, strict=True)
+    limit: int = Field(default=MAX_RESULT_ITEMS, ge=1, le=MAX_RESULT_ITEMS, strict=True)
 
     @field_validator("scope")
     @classmethod
@@ -222,6 +227,9 @@ class CatalogFacetInput(BaseModel):
 
 
 class CatalogFacetItem(BaseModel):
+    total_nested_value_count: int | None = Field(default=None, ge=0)
+    values_exhaustive: bool = True
+
     value: str
     spec_key: str | None = None
     values: list[CatalogFacetValue] = Field(default_factory=list)
@@ -231,7 +239,7 @@ class CatalogFacetItem(BaseModel):
     spu_count: int = 0
 
 
-class CatalogFacetOutput(BaseModel):
+class CatalogFacetOutput(BoundedToolOutput):
     result_type: Literal["facets", "empty"]
     facet: Literal["category", "brand", "spec_key", "spec_value"]
     items: list[CatalogFacetItem] = Field(default_factory=list)
@@ -263,7 +271,7 @@ class OrderLookupInput(BaseModel):
         return self
 
 
-class OrderLookupOutput(BaseModel):
+class OrderLookupOutput(BoundedToolOutput):
     result_type: Literal[
         "single_order",
         "order_candidates",
@@ -299,7 +307,7 @@ class DocumentSearchInput(BaseModel):
 
     query: NonBlankQuery
     document_type: str | None = None
-    limit: int = Field(default=3, ge=1, le=10, strict=True)
+    limit: int = Field(default=3, ge=1, le=MAX_RESULT_ITEMS, strict=True)
     retrieval_mode: Literal["bm25", "vector", "hybrid"] = "hybrid"
 
 
@@ -313,7 +321,7 @@ class DocumentSearchHit(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class DocumentSearchOutput(BaseModel):
+class DocumentSearchOutput(BoundedToolOutput):
     result_type: Literal["documents", "empty"]
     documents: list[DocumentSearchHit] = Field(default_factory=list)
     search_strategy: Literal["bm25", "vector", "hybrid"] = "hybrid"
@@ -323,7 +331,7 @@ class WebSearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: NonBlankQuery
-    limit: int = Field(default=3, ge=1, le=10, strict=True)
+    limit: int = Field(default=3, ge=1, le=MAX_RESULT_ITEMS, strict=True)
 
 
 class WebSearchHit(BaseModel):
@@ -337,7 +345,7 @@ class WebSearchHit(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class WebSearchOutput(BaseModel):
+class WebSearchOutput(BoundedToolOutput):
     result_type: Literal["documents", "empty"]
     documents: list[WebSearchHit] = Field(default_factory=list)
     search_strategy: Literal["web"] = "web"

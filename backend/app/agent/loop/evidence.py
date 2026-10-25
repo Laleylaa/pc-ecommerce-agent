@@ -48,6 +48,8 @@ class EvidenceRecord(BaseModel):
             return ("execution_failed",)
         output = self.result.output
         blockers = []
+        if (output.get("output_budget") or {}).get("truncated"):
+            blockers.append("tool_output_limited")
         name = self.invocation.tool_name
         if name in {"catalog_search", "catalog_lookup"}:
             if output["status"] not in {

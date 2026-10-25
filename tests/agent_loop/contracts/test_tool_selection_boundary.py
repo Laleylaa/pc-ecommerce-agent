@@ -133,7 +133,7 @@ def test_active_cases_have_no_feedback_or_parameter_assertions(scripts):
             assert not {"hard", "fixture_profile", "feedback_scenario"} & set(case)
             assert set(case["semantic_checks"]) == {"routing", "coverage"}
             assert case["input"]["context"] in contexts
-    assert count == coverage["total_cases"] == 39
+    assert count == coverage["total_cases"] == 43
     assert not (HERE / "fixtures.json").exists()
 
 

@@ -45,7 +45,7 @@ def test_schema_is_derived_and_detached(monkeypatch, name):
     if definitions:
         assert schema["$defs"] == definitions
     assert set(schema["properties"]) == {"goal_id", "arguments"}
-    assert tool.tool_spec["description"] == contract.description
+    assert tool.tool_spec["description"] == contract.model_description
     assert not {"user_id", "goal_id", "catalog_context", "evidence"} & set(
         schema["properties"]["arguments"]["properties"]
     )

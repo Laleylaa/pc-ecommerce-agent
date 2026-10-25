@@ -14,7 +14,11 @@ from app.agent.loop.independent_answer import (
 )
 from app.agent.loop.query_context import resolve_reference
 from app.agent.loop.query_loop import project_record
-from app.agent.loop.query_schema import ContextReference, GoalRegistration, QueryCompletion
+from app.agent.loop.query_schema import (
+    ContextReference,
+    GoalRegistration,
+    QueryCompletion,
+)
 from app.agent.loop.query_state import GoalBook
 from app.agent.loop.tool_adapter import AdmissionError
 from app.schemas.context import PreparedTurn
@@ -153,10 +157,10 @@ def test_large_observation_preserves_limits_and_does_not_fake_empty_sources():
     view = project_record(record)
     assert len(json.dumps(view, ensure_ascii=False)) < 16000
     assert view["projection_truncated"]
-    assert "documents" in view["result"]["output"]["omitted_fields"]
-    assert "documents" not in view["result"]["output"]
-    assert view["result"]["output"]["total_match_count"] == 10
-    assert "projection_truncated" in view["completion_blockers"]
+    assert view["result"]["output"] is None
+    assert not view["result"]["ok"]
+    assert view["result"]["error"]["code"] == "observation_budget_exceeded"
+    assert "observation_budget_exceeded" in view["completion_blockers"]
     assert store.reference("g1", record.evidence_id).result.output["documents"]
 
 
@@ -205,3 +209,39 @@ def test_fallback_preserves_handoff_and_security_boundary_without_false_actions(
     validate_answer(result, facts)
     assert "尚未提交" in result.response and "当前登录账号" in result.response
     assert "手机号" not in result.response
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("destination", ["query", "answer"])
+async def test_large_catalog_projection_preserves_requested_price_and_versions(destination):
+    """AL-001: formal tool budgeting must precede lossless business-fact handoff."""
+    from app.tools.contracts import (
+        BoundTool,
+        default_tool_contracts,
+        execute_bound_tool,
+    )
+
+    from tests.support.output_budget_fixtures import catalog_output
+
+    original = catalog_output("lookup", count=2, diagnostic=100000)
+    summary = original.lookup_summary.model_dump(mode="json")
+    async def handler(request):
+        return original
+    contract = next(c for c in default_tool_contracts() if c.name == "catalog_lookup")
+    result = await execute_bound_tool(BoundTool(contract, handler),
+                                     {"query": "列出两版本价格", "limit": 2}, {"user_id": 41})
+    assert result.ok, result.error
+    now = datetime.now(UTC)
+    record = EvidenceStore().record(
+        ToolInvocation(invocation_id="a1", operation_id="op1", goal_id="g1",
+                       tool_name="catalog_lookup", arguments={"query": "列出两版本价格"},
+                       attempt=1, started_at=now, elapsed_seconds=1, status="succeeded"),
+        result, now,
+    )
+    view = project_record(record, destination=destination)
+    assert len(json.dumps(view, ensure_ascii=False)) <= 16000
+    assert view["result"]["ok"]
+    output = view["result"]["output"]
+    assert output["lookup_summary"] == summary
+    assert {(p["sku_id"], p["price"]) for p in output["products"]} == {(1,"101"),(2,"102")}
+    assert original.diagnostics[0].details["audit"] == "x"*100000

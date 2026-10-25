@@ -115,7 +115,7 @@ async def test_concurrent_and_disabled_results_match(monkeypatch, memory_traces)
     assert len(roots) == 2 and len({s.context.trace_id for s in spans}) == 2
     for root in roots:
         children = [s for s in spans if s.context.trace_id == root.context.trace_id]
-        assert len(children) == 14
+        assert len(children) == 16
         ids = {s.context.span_id for s in children}
         assert all(s.parent is None or s.parent.span_id in ids for s in children)
 
@@ -305,11 +305,6 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
     plan = search_plan({'category': '键盘', 'conditions': [
         {'key': 'price', 'operator': 'lte', 'values': ['200'], 'evidence': '200元以内'},
     ]})
-    def review(path):
-        return {'verdict': 'approve', 'checks': [{
-            'evidence': '200元以内', 'plan_paths': [path],
-            'status': 'matched', 'explanation': '合成复核',
-        }]}
     runs = []
     for enabled in (False, True):
         repo = Repository([product(1, price='100'), product(2, price='300')])
@@ -322,16 +317,20 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
             ])
         runtime, model, _ = runtime_fixture(monkeypatch, [
             calls(*register(goal(query))['calls'], ('catalog_search', {'query': query})),
+            {'content': json.dumps({
+                'scope_kind': 'category', 'category': plan['category'],
+                'search_text': None, 'target': None, 'needs_specifications': False,
+            })},
             {'content': json.dumps(plan)},
-            {'content': json.dumps(review('/nonexistent'))},
-            {'content': json.dumps(review('/conditions'))},
+            {'content': json.dumps({'verdict': 'invalid'})},
+            {'content': json.dumps({'verdict': 'approve'})},
             finish(), final_answer(),
         ], catalog_factory=factory)
         runtime.settings = runtime.settings.model_copy(update={'loop_trace_enabled': enabled})
         result = await runtime.run(ChatRequest(message=query), 41)
         runs.append((result.answer, len(model.requests), len(repo.calls)))
     assert runs[0] == runs[1]
-    assert runs[1][1:] == (6, 2)
+    assert runs[1][1:] == (7, 2)
     spans = memory_traces.get_finished_spans()
     tool = next(s for s in spans if s.attributes.get('tool.name') == 'catalog_search')
     events = tool.events
@@ -347,16 +346,18 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
     assert all('工具计划复核' in s.name for s in models)
     validations = [s for s in spans if s.attributes.get('record_type') == 'program_validation']
     assert [s.name for s in validations] == [
-        '程序 · 计划校验【通过】', '程序 · 复核输出校验【拒绝】',
-        '程序 · 复核输出校验【通过】', '程序 · 工具输出校验【通过】',
+        '程序 · 计划校验【通过】', '程序 · 计划校验【通过】',
+        '程序 · 复核输出校验【拒绝】',
+        '程序 · 复核输出校验【通过】', '程序 · 工具原始结果校验【通过】', '程序 · 工具输出预算处理【通过】',
+        '程序 · 工具输出校验【通过】',
     ]
     assert all(s.parent.span_id == tool.context.span_id for s in validations)
-    assert validations[1].status.status_code.name == 'ERROR'
-    assert validations[1].attributes['model_span_id'] == format(models[0].context.span_id, '016x')
-    assert 'Review path must reference' in (
-        json.loads(validations[1].attributes['metadata'])['error']
+    assert validations[2].status.status_code.name == 'ERROR'
+    assert validations[2].attributes['model_span_id'] == format(models[0].context.span_id, '016x')
+    assert 'verdict' in (
+        json.loads(validations[2].attributes['metadata'])['error']
     )
-    assert validations[2].attributes['model_span_id'] == format(models[1].context.span_id, '016x')
+    assert validations[3].attributes['model_span_id'] == format(models[1].context.span_id, '016x')
     assert all(s.attributes['openinference.span.kind'] == 'CHAIN' for s in validations)
 
     checks = json.loads(
@@ -364,7 +365,8 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
     )
     assert checks['identity_sku_count'] == 2
     assert checks['exact_sku_count'] == 1 and checks['mismatch_sku_count'] == 1
-    ready = next(e for e in events if e.name == '程序 · 计划就绪')
+    ready = next(e for e in events if e.name == '程序 · 计划就绪'
+                 and 'conditions' in json.loads(e.attributes['details'])['plan'])
     assert json.loads(ready.attributes['details'])['plan']['conditions'][0]['values'] == ['200']
     root = next(s for s in spans if s.parent is None)
     projection = next(e for e in root.events if e.name == '程序 · 材料投影')
@@ -397,12 +399,13 @@ async def test_projection_event_explains_omission_without_changing_evidence(memo
         result = project_record(record, destination='answer')
     event = memory_traces.get_finished_spans()[0].events[0]
     details = json.loads(event.attributes['details'])
-    assert event.attributes['outcome'] == 'truncated'
+    assert event.attributes['outcome'] == 'rejected'
     assert details['source_product_count'] == 1 and details['retained_product_count'] == 0
     assert details['original_chars'] > details['limit_chars'] == 16000
     assert details['projected_chars'] < 16000 and 'products' in details['omitted_fields']
     assert details['invocation_id'] == 'a1'
-    assert 'products' not in result['result']['output']
+    assert result['result']['output'] is None
+    assert details['delivery_error'] == 'observation_budget_exceeded'
     assert record.result.output['products'][0]['title'] == 'large' * 4000
 
 
@@ -431,7 +434,54 @@ async def test_tool_output_validation_span_preserves_rejection(monkeypatch, memo
         enabled = await execute_bound_tool(bound, {'query': 'SKU 9101'}, {'user_id': 41})
     assert enabled == disabled and not enabled.ok
     validation = memory_traces.get_finished_spans()[0]
-    assert validation.name == '程序 · 工具输出校验【拒绝】'
+    assert validation.name == '程序 · 工具原始结果校验【拒绝】'
     assert validation.attributes['validation_outcome'] == 'rejected'
     assert validation.status.status_code.name == 'ERROR'
     assert 'structured output model' in json.loads(validation.attributes['metadata'])['error']
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+async def test_tool_budget_trace_follows_raw_budget_and_delivered_output(memory_traces, oversized):
+    from app.tools.contracts import (
+        BoundTool,
+        default_tool_contracts,
+        execute_bound_tool,
+    )
+
+    from tests.support.output_budget_fixtures import document_output
+
+    original = document_output(count=3, length=2500 if oversized else 650)
+    async def handler(request):
+        return original
+    contract = next(c for c in default_tool_contracts() if c.name == "policy_search")
+    with tracing.step("budget-test", root=True):
+        result = await execute_bound_tool(BoundTool(contract, handler),
+                                         {"query": "退货条件", "limit": 3}, {"user_id": 41})
+    spans = sorted(memory_traces.get_finished_spans(), key=lambda s: s.start_time)
+    validations = {s.attributes.get("validation_name"): s for s in spans
+                   if s.attributes.get("record_type") == "program_validation"}
+    assert json.loads(validations["工具原始结果校验"].attributes["input.value"]) == (
+        original.model_dump(mode="json")
+    )
+    budget = validations["工具输出预算处理"]
+    assert validations["工具原始结果校验"].end_time <= budget.start_time
+    if oversized:
+        assert not result.ok and result.error.code == "output_budget_exceeded"
+        assert budget.attributes["validation_outcome"] == "rejected"
+        assert "工具输出校验" not in validations
+    else:
+        assert result.ok and len(result.output["documents"]) < 3
+        final = validations["工具输出校验"]
+        assert budget.end_time <= final.start_time
+        assert budget.attributes["validation_outcome"] == "accepted"
+        assert json.loads(final.attributes["input.value"]) == result.output
+        event = next(e for e in budget.events if e.name == "程序 · 输出窗口确定")
+        assert event.attributes["outcome"] == "limited"
+        details = json.loads(event.attributes["details"])
+        assert details["original_item_count"] == 3
+        assert details["returned_item_count"] == len(result.output["documents"])
+        assert details["serialized_cost"] <= 12000
+    root = next(s for s in spans if s.name == "budget-test")
+    delivery = next(e for e in root.events if e.name == "程序 · 工具交付预算检查")
+    assert delivery.attributes["outcome"] == "accepted"
+    assert json.loads(delivery.attributes["details"])["result_ok"] is result.ok

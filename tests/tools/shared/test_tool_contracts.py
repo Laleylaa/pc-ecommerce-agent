@@ -73,7 +73,7 @@ def test_tool_contracts_export_public_llm_schemas_only() -> None:
         schema = contract.as_llm_tool()
         assert schema["type"] == "function"
         assert schema["function"]["name"] == contract.llm_name
-        assert schema["function"]["description"] == contract.description
+        assert schema["function"]["description"] == contract.model_description
         parameters = schema["function"]["parameters"]
         for runtime_field in contract.runtime_fields:
             assert runtime_field not in parameters.get("properties", {})

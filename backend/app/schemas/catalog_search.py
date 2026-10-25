@@ -30,6 +30,7 @@ from app.tools.catalog.outcomes import (
 from app.tools.catalog.outcomes import (
     data_quality as assess_data_quality,
 )
+from app.tools.output_limits import BoundedToolOutput
 
 QueryText = Annotated[
     str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=2000)
@@ -78,9 +79,10 @@ class CatalogSearchRequest(BaseModel):
     limit: int = Field(
         default=3,
         ge=1,
+        le=MAX_DISPLAY_COUNT,
         strict=True,
         description=(
-            "请求展示数量。用户要求N款时填写N；超过系统展示上限时截断并明确告知；"
+            "请求展示数量，最大10；超限参数拒绝。用户要求更多时query保留原要求，limit最多10并解释部分交付；"
             "仅未指定数量时省略，默认最多3款。"
         ),
     )
@@ -388,6 +390,8 @@ class LookupFieldValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
     value: str
     versions: list[CatalogVersionIdentity]
+    total_version_count: Count | None = None
+    versions_exhaustive: bool = True
 
 
 class LookupFieldFacts(BaseModel):
@@ -412,7 +416,7 @@ class CatalogLookupSummary(BaseModel):
     representative_versions: list[ProductVariantCard] = Field(default_factory=list, max_length=3)
 
 
-class CatalogSearchResult(BaseModel):
+class CatalogSearchResult(BoundedToolOutput):
     model_config = ConfigDict(extra="forbid")
 
     contract_version: Literal["5"] = "5"
@@ -682,7 +686,11 @@ class CatalogSearchResult(BaseModel):
                 raise ValueError("applied limit must respect requested count and display cap")
             if self.limit_capped != (self.requested_count > self.display_cap):
                 raise ValueError("count truncation must reflect the display cap")
-        if self.returned_count != min(self.limit, max(0, total - self.offset)):
+        expected_count = min(self.limit, max(0, total - self.offset))
+        budget_window = bool(self.output_budget and self.output_budget.truncated
+                             and "products" in self.output_budget.omitted_sections)
+        if (self.returned_count > expected_count or
+                (self.returned_count != expected_count and not budget_window)):
             raise ValueError("page size must agree with offset, limit and total")
         expected_next = self.offset + self.returned_count
         if self.next_offset != (expected_next if expected_next < total else None):

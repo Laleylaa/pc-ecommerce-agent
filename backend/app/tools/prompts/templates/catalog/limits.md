@@ -12,3 +12,5 @@ requirement_needs_clarification；超出工具任务能力才用request_not_supp
 直接问未知参数仍加入requested_fields，保持ready；带前提的询价不能改成平行事实读取。能够结构化的条件即使互相矛盾，也完整提取、
 保持ready，由程序判定invalid_query；不因条件矛盾返回clarification_required或删除条件。
 输出前核对：对象、品牌、否定、每个硬要求和端点都保留；没有追加推测的品类、库存或规格。
+
+单次最多展示10项；数量不改变工具职责。用户要求更多时保留原数量意图，程序只返回允许窗口并说明限制。输出另有体积预算，窗口可能更小；全集统计不能按展示窗口计算。

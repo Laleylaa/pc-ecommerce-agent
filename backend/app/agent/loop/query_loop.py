@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from copy import deepcopy
 
 from pydantic import ValidationError
 from strands import Agent
@@ -42,41 +41,23 @@ def project_record(
         projected = {**observation, "projection_truncated": False}
         _trace_projection(record, observation, projected, original_chars, limit, destination)
         return projected
-    output = observation["result"].get("output") or {}
-    metadata = {
-        key: deepcopy(value)
-        for key, value in output.items()
-        if key
-        in {
-            "status",
-            "reason_code",
-            "recommended_action",
-            "result_type",
-            "match_kind",
-            "query_state",
-            "scope",
-            "total_match_count",
-            "returned_count",
-            "is_exhaustive",
-            "matching_complete",
-            "limit",
-            "offset",
-            "next_offset",
-            "data_quality",
-            "candidate_count",
-            "unknown_sku_count",
-            "requested_count",
-            "display_cap",
-            "limit_capped",
-            "identity_suggestions",
-        }
-    }
-    metadata["omitted_fields"] = sorted(set(output) - set(metadata))
-    observation["result"]["output"] = metadata
+    # Tool results are bounded by their own contracts. First remove only the
+    # duplicated invocation arguments; domain facts must never be whitelisted away.
+    original = record.observation()
+    observation["invocation"]["arguments"] = {}
+    observation["invocation_arguments_omitted"] = True
     observation["projection_truncated"] = True
-    observation["completion_blockers"].append("projection_truncated")
-    _trace_projection(record, {"result": {"output": output}}, observation,
-                      original_chars, limit, destination)
+    if len(json.dumps(observation, ensure_ascii=False)) > limit:
+        observation["result"] = {
+            "tool_name": record.result.tool_name, "ok": False, "output": None,
+            "error": {
+                "code": "observation_budget_exceeded",
+                "message": "工具材料超过交接预算，未交付事实；请缩小请求，不要据此声称无匹配。",
+                "retryable": False, "recommended_action": "narrow_query",
+            },
+        }
+        observation["completion_blockers"] = ["observation_budget_exceeded"]
+    _trace_projection(record, original, observation, original_chars, limit, destination)
     return observation
 
 
@@ -85,13 +66,18 @@ def _trace_projection(record, original, projected, original_chars, limit, destin
         return
     source = original["result"].get("output") or {}
     target = projected["result"].get("output") or {}
-    program_event("材料投影", outcome="truncated" if projected["projection_truncated"] else "kept",
+    delivery_error = (projected["result"].get("error") or {}).get("code")
+    rejected = delivery_error == "observation_budget_exceeded"
+    program_event("材料投影", outcome=("rejected" if rejected else
+                                      "truncated" if projected["projection_truncated"] else "kept"),
                   destination=destination, evidence_id=record.evidence_id,
                   invocation_id=record.invocation.invocation_id,
                   operation_id=record.invocation.operation_id,
                   original_chars=original_chars,
                   projected_chars=len(json.dumps(projected, ensure_ascii=False)), limit_chars=limit,
-                  omitted_fields=target.get("omitted_fields", []),
+                  omitted_fields=sorted(source) if rejected else [],
+                  delivery_error=delivery_error,
+                  invocation_arguments_omitted=projected.get("invocation_arguments_omitted", False),
                   source_product_count=len(source.get("products", [])),
                   retained_product_count=len(target.get("products", [])))
 

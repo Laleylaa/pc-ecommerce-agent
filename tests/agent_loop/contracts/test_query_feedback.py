@@ -68,7 +68,7 @@ async def test_query_observation_has_current_status_and_unchanged_public_tool_sc
         assert "status" not in state and state["execution"]["attempt_count"] == 0
         specs = {t["function"]["name"]: t["function"] for t in payload["tools"]}
         for contract in default_tool_contracts():
-            assert specs[contract.llm_name]["description"] == contract.description
+            assert specs[contract.llm_name]["description"] == contract.model_description
             assert set(specs[contract.llm_name]["parameters"]["properties"]) == {
                 "goal_id", "arguments",
             }

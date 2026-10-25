@@ -20,6 +20,7 @@ from app.tools.catalog.normalization import (
     _normalize_catalog_filters_with_debug,
 )
 from app.tools.catalog.outcomes import QueryIssue
+from app.tools.output_limits import MAX_RESULT_ITEMS
 from app.tools.schemas import CatalogFacetInput
 
 
@@ -63,7 +64,7 @@ class FacetQueryPlan(BaseModel):
     max_price: Decimal | None = None
     filters: dict[str, str] = Field(default_factory=dict)
     count_scope: Literal["sku", "spu"] = "spu"
-    limit: int = Field(default=20, ge=1, le=50)
+    limit: int = Field(default=MAX_RESULT_ITEMS, ge=1, le=MAX_RESULT_ITEMS)
     supported: bool = Field(default=True, strict=True)
     unsupported_reason: str | None = None
     planner: str = "rule_based"

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError
-from app.core.loop_tracing import payload, tracing_active, validation_step
+from app.core.loop_tracing import metadata, payload, program_event, tracing_active, validation_step
 from app.core.tracing import trace_event
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import (
@@ -32,6 +32,13 @@ from app.tools.knowledge import (
     RetrievalBusyError,
 )
 from app.tools.orders import LLMOrderQueryPlanner, OrderQueryPlanner, OrderToolService
+from app.tools.output_budget import OutputBudgetExceeded, prepare_tool_output
+from app.tools.output_limits import (
+    DEFAULT_OUTPUT_TOKEN_BUDGET,
+    MAX_OUTPUT_TOKEN_BUDGET,
+    budget_description,
+    output_cost,
+)
 from app.tools.schemas import (
     CatalogFacetInput,
     CatalogFacetOutput,
@@ -139,6 +146,14 @@ class ToolContract(BaseModel):
     parallel_safe: bool = False
     requires_auth: bool = False
     timeout_seconds: float | None = 12.0
+    output_token_budget: int = Field(default=DEFAULT_OUTPUT_TOKEN_BUDGET, ge=1024,
+                                     le=MAX_OUTPUT_TOKEN_BUDGET)
+
+    @property
+    def model_description(self) -> str:
+        field = self.public_input_model.model_fields.get("limit")
+        maximum = next((m.le for m in field.metadata if hasattr(m, "le")), None) if field else None
+        return self.description + budget_description(self.output_token_budget, maximum)
 
     @property
     def name(self) -> str:
@@ -149,7 +164,7 @@ class ToolContract(BaseModel):
             "type": "function",
             "function": {
                 "name": self.llm_name,
-                "description": self.description,
+                "description": self.model_description,
                 "parameters": self.public_input_model.model_json_schema(),
             },
         }
@@ -445,6 +460,35 @@ async def execute_bound_tool(
     arguments: dict[str, Any],
     runtime_context: dict[str, Any],
 ) -> ToolExecutionResult:
+    """Final budget check covers successes and errors for every runtime adapter."""
+    result = await _execute_bound_tool(bound_tool, arguments, runtime_context)
+    delivered_cost = output_cost(result.model_dump(mode="json"))
+    program_event(
+        "工具交付预算检查",
+        outcome=("accepted" if delivered_cost <= bound_tool.contract.output_token_budget
+                 else "rejected"),
+        tool_name=bound_tool.contract.llm_name,
+        token_limit=bound_tool.contract.output_token_budget,
+        counting_method="utf8_byte_upper_bound", serialized_cost=delivered_cost,
+        result_ok=result.ok, error_code=result.error.code if result.error else None,
+    )
+    if delivered_cost <= bound_tool.contract.output_token_budget:
+        return result
+    return ToolExecutionResult(
+        tool_name=bound_tool.contract.llm_name, ok=False,
+        error=ToolError(
+            code="output_budget_exceeded", retryable=False,
+            recommended_action="narrow_query",
+            message="工具结果或错误详情超过输出预算；请缩小请求，完整记录保留在追踪中。",
+        ),
+    )
+
+
+async def _execute_bound_tool(
+    bound_tool: BoundTool,
+    arguments: dict[str, Any],
+    runtime_context: dict[str, Any],
+) -> ToolExecutionResult:
     contract = bound_tool.contract
     await trace_event(
         "tool_contract_input", tool_name=contract.llm_name, arguments=arguments,
@@ -518,8 +562,8 @@ async def execute_bound_tool(
     await trace_event("tool_handler_output", tool_name=contract.llm_name, output=output)
     try:
         with validation_step(
-            "工具输出校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
-            check_scope="工具输出结构、字段及确定性结果一致性；不判定用户目标完成",
+            "工具原始结果校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
+            check_scope="领域执行产生的原始结果；尚未应用输出预算，不代表最终交付",
         ):
             if tracing_active():
                 try:
@@ -539,7 +583,53 @@ async def execute_bound_tool(
             validated_output = contract.output_model.model_validate(
                 output.model_dump(mode="python"),
             )
+        with validation_step(
+            "工具输出预算处理", tool_name=contract.llm_name,
+            token_limit=contract.output_token_budget, counting_method="utf8_byte_upper_bound",
+            check_scope="按领域缩减展示窗口与来源预览，保留全集统计；无法安全交付则拒绝",
+        ):
+            if tracing_active():
+                raw_cost = output_cost({
+                    "tool_name": contract.llm_name, "ok": True,
+                    "output": validated_output.model_dump(mode="json"), "error": None,
+                })
+                payload("input", {"serialized_cost": raw_cost,
+                                  "token_limit": contract.output_token_budget,
+                                  "counting_method": "utf8_byte_upper_bound"})
+                metadata(before_cost=raw_cost)
+            validated_output = prepare_tool_output(
+                contract.llm_name, validated_output, contract.output_token_budget,
+            )
+            if tracing_active():
+                budget = validated_output.output_budget.model_dump(mode="json")
+                after_cost = output_cost({
+                    "tool_name": contract.llm_name, "ok": True,
+                    "output": validated_output.model_dump(mode="json"), "error": None,
+                })
+                metadata(after_cost=after_cost, **budget)
+                program_event("输出窗口确定", outcome="limited" if budget["truncated"] else "kept",
+                              serialized_cost=after_cost, **budget)
+        with validation_step(
+            "工具输出校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
+            check_scope="预算处理后实际交付的输出结构与事实一致性；不判定用户目标完成",
+        ):
+            if tracing_active():
+                payload("input", validated_output.model_dump(mode="json"))
+            validated_output = contract.output_model.model_validate(
+                validated_output.model_dump(mode="python"),
+            )
             serialized_output = validated_output.model_dump(mode="json")
+    except OutputBudgetExceeded:
+        return ToolExecutionResult(
+            tool_name=contract.llm_name, ok=False,
+            error=ToolError(
+                code="output_budget_exceeded", retryable=False,
+                recommended_action="narrow_query",
+                message="最小完整结果仍超过单次输出预算；请缩小查询范围或字段，不要重复相同调用。",
+                details={"token_limit": contract.output_token_budget,
+                         "counting_method": "utf8_byte_upper_bound"},
+            ),
+        )
     except (ValidationError, TypeError, PydanticSerializationError) as exc:
         await trace_event(
             "tool_output_rejected", tool_name=contract.llm_name, error_type=type(exc).__name__,
@@ -573,7 +663,8 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "the workflow resolves scope and loads applicable specification rules. "
                 "Omit when uncertain. scope is a sourced hard "
                 "boundary, not a comparison anchor; never invent IDs. Set limit to the requested "
-                "count; default 3, capped at 20 with explicit count metadata. Returns model cards "
+                "count within 1..10; default 3. Larger limit values are rejected. "
+                "Returns model cards "
                 "or SKU cards when selecting versions, with explicit selection_scope; "
                 "previews are not the full population. "
                 "Check status, match_kind, condition_checks and matching_complete. Alternatives "
@@ -607,7 +698,8 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "Separate independent named objects into calls. Default returns lookup_summary "
                 "over ALL confirmed matching active versions, including existence, SKU count, "
                 "price range, distinct price count and cheapest/middle/most expensive examples. "
-                "Explicit version lists use limit (default 3, cap 20); summary statistics never "
+                "Explicit version lists use limit (default 3, maximum 10); "
+                "summary statistics never "
                 "use the display window. Field values retain SKU attribution and missing/conflict "
                 "counts. Partial wireless support is not whole-model support. Alternatives may "
                 "be returned with match_kind=alternative and per-SKU differences; they never "

@@ -87,7 +87,7 @@ class StrandsToolBindings:
                 schema["$defs"] = definitions
             tools.append(BusinessAgentTool(
                 bound,
-                {"name": contract.llm_name, "description": contract.description,
+                {"name": contract.llm_name, "description": contract.model_description,
                  "inputSchema": {"json": schema}},
                 self._execute,
             ))
