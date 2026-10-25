@@ -219,7 +219,13 @@ class CatalogDiscoveryPlan(SearchPlan):
     )
     operation: Literal["search"] = "search"
     purpose: Literal["search", "recommendation"] = "search"
-    version_view: Literal["summary"] = "summary"
+    version_view: Literal["summary"] = Field(
+        default="summary",
+        description=(
+            "search固定为summary，不控制候选卡片粒度；candidate_unit=sku仍返回具体SKU版本卡片。"
+            "summary/list版本事实视图切换仅适用于lookup。"
+        ),
+    )
 
 
 class CatalogLookupPlan(SearchPlan):

@@ -2,9 +2,13 @@ resolved_scope由程序提供，包含范围识别结果和实际定位信息。
 binding.scope_kind只说明查谁/在哪查，不决定是事实、选购或统计；详细规划须根据原始query
 判断是否符合当前工具职责，误投明确说明应使用哪个工具，不改写目标或静默换工具。
 其中binding中的名称、显式品类和编号已固定，本阶段不要修改或重新猜测；仍核对原始query的全部要求。
-categories只用于加载适用规则，不自动增加category筛选。仅有identity_scope/statuses时表示已查询身份；
+categories只用于加载适用规则，不自动增加category筛选。identity_scope、identity_count和
+identity_statuses说明程序已执行的身份定位；identity_preview仅是身份预览，不是条件匹配结果。
 scope_kind中的spu/sku是原请求的范围层级，实际确认层级以identity_scope为准。
 价格/库存/规格条件尚未执行。
+程序已确认身份时，执行器沿用该身份集合，再应用计划条件；已确认的型号本身限定候选范围。
+名称与原请求一致、身份定位成功且没有范围冲突时，search_text与程序身份结果共同落实型号限制，
+无需再增加型号条件、复制scope或把查得编号填入target。无调用方scope不等于无型号限制。
 有效执行范围由original_request.scope与计划中的名称、编号、品类和条件共同限定，取交集。
 original_request.scope由程序直接应用，不要求复制到candidate_plan；facets计划没有scope字段，
 统计时仍使用原请求scope加载记录。target只表达query明示编号，不能用它复写scope。
