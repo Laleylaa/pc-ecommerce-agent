@@ -63,15 +63,6 @@ async def execute_facets(
         "scope": request.scope,
         "query_plan": plan.model_dump(mode="json"),
     }
-    if plan.selection == "object" or plan.target is not None or plan.name:
-        return CatalogFacetOutput(
-            **base, result_type="empty", is_exhaustive=False, matching_complete=False,
-            diagnostics=[ToolDiagnostic(
-                code="request_not_supported",
-                message="指定商品的事实、规格和版本请使用catalog_lookup，可直接传名称或可信编号。",
-                recommended_action="use_catalog_lookup",
-            )],
-        )
     if issue := plan._query_issue:
         diagnostic = policy_for(issue.reason).diagnostic(issue.message)
         diagnostic["details"].update(issue.details)
@@ -108,6 +99,16 @@ async def execute_facets(
                                 "requirement_assessment": plan._requirement_assessment},
                 }))
             ],
+        )
+    # Respect reviewed tool-boundary reasons before the object-facts fallback.
+    if plan.selection == "object":
+        return CatalogFacetOutput(
+            **base, result_type="empty", is_exhaustive=False, matching_complete=False,
+            diagnostics=[ToolDiagnostic(
+                code="request_not_supported",
+                message="指定商品的事实、规格和版本请使用catalog_lookup，可直接传名称或可信编号。",
+                recommended_action="use_catalog_lookup",
+            )],
         )
     scope = request.scope or SearchScope()
     records = [

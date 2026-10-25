@@ -107,14 +107,13 @@ async def test_missing_product_is_not_fabricated_and_scope_is_preserved(monkeypa
 
 
 async def test_window_never_becomes_exhaustive_evidence(monkeypatch):
-    from agent_loop.support.domain_tools import product
+    from agent_loop.support.domain_tools import FixtureSearchPlanner, product
     from app.schemas.catalog_search import SearchPlan
-    from app.tools.catalog.planner import CatalogSearchPlanner
 
     async def plan(self, request):
         return SearchPlan(category="键盘", category_evidence="键盘")
 
-    monkeypatch.setattr(CatalogSearchPlanner, "plan", plan)
+    monkeypatch.setattr(FixtureSearchPlanner, "plan", plan)
     # Two distinct models: count is SPU-level, not the number of variants.
     products = [product(), product(9201).model_copy(update={"spu_id": 92})]
     query = adapter(make_catalog(monkeypatch, products=products))
@@ -135,8 +134,8 @@ async def test_window_never_becomes_exhaustive_evidence(monkeypatch):
 async def test_same_sku_constraints_and_model_variant_scope_survive_adapter(
     monkeypatch, query_text,
 ):
+    from agent_loop.support.domain_tools import FixtureSearchPlanner
     from app.schemas.catalog_search import SearchCondition, SearchPlan
-    from app.tools.catalog.planner import CatalogSearchPlanner
 
     requests = []
 
@@ -148,7 +147,7 @@ async def test_same_sku_constraints_and_model_variant_scope_survive_adapter(
             SearchCondition(key="connection_type", values=["蓝牙"], evidence="蓝牙"),
         ])
 
-    monkeypatch.setattr(CatalogSearchPlanner, "plan", plan)
+    monkeypatch.setattr(FixtureSearchPlanner, "plan", plan)
     catalog = make_catalog(monkeypatch)
     query = adapter(catalog)
     arguments = {"query": query_text}

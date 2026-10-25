@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from app.agent.loop.evidence import EvidenceRecord, EvidenceStore, ToolInvocation
 from app.core.loop_tracing import fields, payload
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext, execute_bound_tool
-from app.tools.schemas import CatalogToolRuntimeContext, ToolError, ToolExecutionResult
+from app.tools.schemas import ToolError, ToolExecutionResult
 
 
 class AdmissionError(ValueError):
@@ -58,15 +58,13 @@ class QueryToolAdapter:
         self._admit_goal = admit_goal
         self._before_attempt = before_attempt
         self._attempt_scope = attempt_scope
-        self._contexts: dict[str, CatalogToolRuntimeContext] = {}
         self.evidence = EvidenceStore()
         self._operations: dict[str, QueryOperation] = {}
         self._attempts: dict[str, list[EvidenceRecord]] = {}
         self._lock = asyncio.Lock()
 
     def prepare(
-        self, goal_id: str, tool_name: str, arguments: dict[str, Any], *,
-        catalog_context: CatalogToolRuntimeContext | None = None,
+        self, goal_id: str, tool_name: str, arguments: dict[str, Any],
     ) -> str:
         self._admit_goal(goal_id)
         bound = self.catalog.get_by_llm_name(tool_name)
@@ -88,8 +86,6 @@ class QueryToolAdapter:
         )
         self._operations[operation.operation_id] = operation
         self._attempts[operation.operation_id] = []
-        if catalog_context is not None:
-            self._contexts[operation.operation_id] = catalog_context.model_copy(deep=True)
         return operation.operation_id
 
     def operation(self, operation_id: str) -> QueryOperation:
@@ -104,7 +100,6 @@ class QueryToolAdapter:
             raise AdmissionError("cannot_discard_attempted_operation")
         del self._operations[operation_id]
         del self._attempts[operation_id]
-        self._contexts.pop(operation_id, None)
 
     @contextmanager
     def preparing_batch(self) -> Iterator[None]:
@@ -138,8 +133,6 @@ class QueryToolAdapter:
             started_at, started = datetime.now(UTC), monotonic()
             cancelled = False
             runtime = self._runtime.model_dump(mode="python")
-            if operation_id in self._contexts:
-                runtime["catalog_context"] = self._contexts[operation_id].model_dump(mode="python")
             scope = self._attempt_scope(operation) if self._attempt_scope else nullcontext()
             try:
                 with scope:

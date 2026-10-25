@@ -1,6 +1,6 @@
 """Independent P1 fixtures: real five services, synthetic data and HTTP only."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx
@@ -8,7 +8,8 @@ from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.repositories.catalog_search import CatalogRecord, CatalogSearchRepository
 from app.schemas.catalog import ProductCard
 from app.schemas.order import OrderCard
-from app.tools.catalog.compatibility import CatalogToolService
+from app.tools.catalog.facets import CatalogFacetService
+from app.tools.catalog.planner import explicit_lookup
 from app.tools.catalog.service import CatalogSearchService
 from app.tools.contracts import (
     BoundTool,
@@ -26,7 +27,7 @@ from app.tools.web_search import WebSearchToolService
 
 TOOL_ARGUMENTS = {
     "catalog_search": {"query": "SKU 9101"},
-    "catalog_facets": {"query": "SKU 9101 有哪些规格"},
+    "catalog_facets": {"query": "键盘有哪些规格"},
     "order_lookup": {"order_id": 8201},
     "policy_search": {"query": "退货配件要求"},
     "knowledge_search": {"query": "键盘连接接口"},
@@ -48,6 +49,18 @@ class NoEmbedding:
 
     def embed_query(self, text):
         raise AssertionError("P1 fixture forbids model downloads")
+
+
+class FixtureSearchPlanner:
+    """Fixed explicit-ID plan for adapter tests, not a natural-language interpreter."""
+
+    async def plan(self, request):
+        plan = explicit_lookup(request.query)
+        if plan is None:
+            raise AssertionError("This fixture needs an explicitly scripted search plan")
+        plan.operation = "search"
+        plan.purpose = "search"
+        return plan
 
 
 def product(sku=9101, *, price=299, color="白色", connection="蓝牙"):
@@ -82,7 +95,7 @@ def make_catalog(monkeypatch, *, products=None):
                 return None
             return OrderCard(
                 id=8201, status=3, status_label="已发货", pay_amount=299,
-                created_at=datetime(2026, 10, 1), items=[], logistics=None,
+                created_at=datetime(2026, 10, 1, tzinfo=UTC), items=[], logistics=None,
             )
 
     monkeypatch.setattr("app.tools.orders.OrderRepository", OrderRows)
@@ -105,8 +118,13 @@ def make_catalog(monkeypatch, *, products=None):
     ))
     session = NoDatabase()
     handlers = {
-        "catalog_search": CatalogSearchService(CatalogSearchRepository(session)).search,
-        "catalog_facets": CatalogToolService(session).facets,
+        "catalog_search": CatalogSearchService(
+            CatalogSearchRepository(session), planner=FixtureSearchPlanner(),
+        ).search,
+        "catalog_lookup": CatalogSearchService(
+            CatalogSearchRepository(session), operation="lookup",
+        ).search,
+        "catalog_facets": CatalogFacetService(session).facets,
         "order_lookup": OrderToolService(session).lookup,
         "policy_search": policy.search_policy,
         "knowledge_search": web.search,

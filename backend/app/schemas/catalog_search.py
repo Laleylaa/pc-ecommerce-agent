@@ -157,6 +157,13 @@ class SearchPlan(BaseModel):
         default="summary",
         description="指定商品默认汇总并展示低/中/高价代表版本；明确列版本用list。",
     )
+    candidate_unit: Literal["spu", "sku"] = Field(
+        default="spu",
+        description=(
+            "search比较与计数单位：普通推荐spu，先同SKU匹配再按型号分组；"
+            "只有明确选购具体版本时sku。规格条件、实际购买SKU及候选数量不决定此值。"
+        ),
+    )
     disposition: Literal["ready", "split_required", "clarification_required", "unsupported"] = (
         "ready"
     )
@@ -205,6 +212,9 @@ class SearchPlan(BaseModel):
 
 
 class CatalogDiscoveryPlan(SearchPlan):
+    model_required_fields: ClassVar[tuple[str, ...]] = (
+        *SearchPlan.model_required_fields, "candidate_unit",
+    )
     operation: Literal["search"] = "search"
     purpose: Literal["search", "recommendation"] = "search"
     version_view: Literal["summary"] = "summary"
@@ -213,6 +223,7 @@ class CatalogDiscoveryPlan(SearchPlan):
 class CatalogLookupPlan(SearchPlan):
     operation: Literal["lookup"] = "lookup"
     purpose: Literal["lookup"] = "lookup"
+    candidate_unit: Literal["spu"] = "spu"
 
 
 class FieldIssue(BaseModel):

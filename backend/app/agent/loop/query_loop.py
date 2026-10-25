@@ -13,7 +13,6 @@ from app.agent.loop.control_tools import control_tools
 from app.agent.loop.evidence import EvidenceRecord
 from app.agent.loop.prompts.query_loop import QUERY_PROMPT
 from app.agent.loop.query_context import (
-    catalog_context,
     query_context,
     resolve_references,
     validate_identities,
@@ -167,12 +166,10 @@ class QuerySession:
         self.book.admit(goal_id)
         goal = self.book.goals[goal_id]
         validate_identities(self.prepared, self.book, goal, use["name"], call.arguments)
-        context = catalog_context(self.prepared, self.book, goal)
         operation_id = self.adapter.prepare(
             goal_id,
             use["name"],
             call.arguments,
-            catalog_context=context,
         )
         operation = self.adapter.operation(operation_id)
         fingerprint = json.dumps(
@@ -180,7 +177,6 @@ class QuerySession:
                 "goal": goal_id,
                 "tool": use["name"],
                 "arguments": operation.arguments,
-                "context": context.model_dump(mode="json"),
             },
             sort_keys=True,
             ensure_ascii=False,

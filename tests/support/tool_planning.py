@@ -17,13 +17,7 @@ def scripted_review(messages):
     payload = json.loads(messages[1].content)
     if "candidate_plan" not in payload:
         return None
-    return SimpleNamespace(content=json.dumps({
-        "verdict": "approve", "checks": [{
-            "evidence": payload["original_request"]["query"],
-            "plan_paths": ["/" + next(iter(payload["candidate_plan"]))],
-            "status": "matched", "explanation": "Execution fixture accepts this plan",
-        }],
-    }))
+    return SimpleNamespace(content=json.dumps({"verdict": "approve"}))
 
 
 class Model:

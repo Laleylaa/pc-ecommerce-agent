@@ -31,9 +31,12 @@ class FacetQueryPlan(BaseModel):
         "selection", "facet", "conditions", "count_scope", "supported",
         "unresolved_requirements",
     )
-    selection: Literal["catalog", "object"] = "catalog"
+    selection: Literal["catalog", "object"] = Field(
+        default="catalog",
+        description="详细规划的结果职责：集合选项统计或误投的对象事实；不是查询范围层级。",
+    )
     name: QueryText | None = Field(
-        default=None, description="误投目录工具的指定对象名称，保留以返回catalog_lookup转交提示。",
+        default=None, description="误投目录工具的指定对象名称，保留以返回对应工具边界提示。",
     )
     target: ProductReference | None = SearchPlan.model_fields["target"]
     conditions: list[SearchCondition] = Field(default_factory=list)
@@ -95,6 +98,12 @@ def _validate_catalog_facet_plan(
     )
 
     extra_issues = []
+    if plan.supported and plan.selection == "catalog" and (plan.name or plan.target):
+        extra_issues.append(invalid_plan(
+            "集合统计不执行name/target身份筛选；不得忽略对象扩大范围。"
+            "保留原请求，在详细计划中明确是否属于对象事实或其他工具职责。",
+            ("selection",), "unhandled_object_scope",
+        ))
     if plan.facet == "spec_value" and not plan.spec_key:
         extra_issues.append(invalid_plan(
             "spec_value requires spec_key", ("spec_key",), "missing_spec_key",

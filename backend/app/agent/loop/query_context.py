@@ -6,7 +6,6 @@ from app.agent.loop.tool_adapter import AdmissionError
 from app.rules.product_identity import explicit_product_ids
 from app.schemas.context import PreparedTurn
 from app.tools.order_identity import explicit_order_ids
-from app.tools.schemas import CatalogDependencyArtifact, CatalogToolRuntimeContext
 
 
 def resolve_reference(prepared: PreparedTurn, reference: ContextReference) -> dict:
@@ -102,30 +101,6 @@ def validate_identities(
             requested.add(arguments["order_id"])
         if not requested <= orders:
             raise AdmissionError("unsourced_order_identity")
-
-
-def catalog_context(prepared: PreparedTurn, book: GoalBook, goal: QueryGoal):
-    artifacts = []
-    for prerequisite in goal.prerequisites:
-        for record in book.records(prerequisite.goal_id):
-            output = record.result.output or {}
-            if record.result.ok and output.get("products"):
-                artifacts.append(
-                    CatalogDependencyArtifact(
-                        task_id=record.invocation.operation_id,
-                        artifact_type="products",
-                        products=output["products"],
-                        selection_scope=output.get("selection_scope"),
-                        selected_sku_ids=[p["sku_id"] for p in output["products"]],
-                        selected_spu_ids=list(
-                            dict.fromkeys(p["spu_id"] for p in output["products"])
-                        ),
-                    )
-                )
-    return CatalogToolRuntimeContext(
-        memory=prepared.working_memory.catalog.model_copy(deep=True),
-        dependency_artifacts=artifacts[:8],
-    )
 
 
 def query_context(prepared: PreparedTurn) -> dict:

@@ -12,11 +12,11 @@ from app.tools.prompts.catalog_workflow import (
     REQUIREMENT_RULES,
     RESOLVED_SCOPE_RULES,
 )
-from app.tools.prompts.templates import render_prompt
+from app.tools.prompts.templates import load_prompt, render_prompt
 from app.tools.structured_planning import output_schema
 
 
-def build_facets_review_context(
+def _domain_context(
     category_hint: str | None,
     *,
     spec_context: str | None = None,
@@ -35,6 +35,17 @@ def build_facets_review_context(
     )
 
 
+def build_facets_review_context(
+    category_hint: str | None,
+    *,
+    spec_context: str | None = None,
+) -> str:
+    return (
+        _domain_context(category_hint, spec_context=spec_context)
+        + "\n\n" + load_prompt("catalog/review.md")
+    )
+
+
 def build_facets_prompt(
     schema: type[BaseModel],
     category_hint: str | None,
@@ -43,7 +54,7 @@ def build_facets_prompt(
 ) -> str:
     return render_prompt(
         "catalog/facets_plan.md",
-        domain_context=build_facets_review_context(category_hint, spec_context=spec_context),
+        domain_context=_domain_context(category_hint, spec_context=spec_context),
         output_schema=json.dumps(
             output_schema(schema, schema.model_required_fields), ensure_ascii=False
         ),

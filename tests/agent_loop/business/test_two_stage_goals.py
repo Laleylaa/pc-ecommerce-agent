@@ -137,7 +137,8 @@ async def test_product_prerequisite_uses_actual_result_and_context(monkeypatch, 
     assert len(response.execution_details.tool_calls) == (2 if found else 1)
     assert bool(seen) == found
     if found:
-        assert seen[0].catalog_context.dependency_artifacts[0].selected_sku_ids == [9101]
+        assert seen[0].query == f"SKU {sku} 有哪些规格"
+        assert "catalog_context" not in type(seen[0]).model_fields
     assert repo.data["audit"]["agent_loop"]["goals"][1]["prerequisites_met"] is found
 
 

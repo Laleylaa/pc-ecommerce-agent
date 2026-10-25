@@ -14,7 +14,7 @@
   价格范围、版本数量和可选属性按完整匹配集汇总，未知条件单独计数。
   requested_fields只声明用户所问事实；允许附带price，不因附带价格判定计划错误。
 - 普通选购不筛库存；只有明确要求可买/现货才加stock，问有没有货只询问availability。
-- sort默认relevance。明确价格/库存排序或推荐/销量排序才改变。
-  推荐用sales。requested_limit记录query明确要求的数量；没有要求就null，不复制默认limit。
+- sort默认relevance。明确价格/库存/销量排序才改变；选购推荐的默认排序由工具专属规则定义。
+  requested_limit记录query明确要求的数量；没有要求就null，不复制默认limit。
   显式limit优先；limit_source=default时程序可采用requested_limit，否则默认最多3项。
   数量超过展示上限仍是合法请求，不改写数量、不要求澄清、不返回unsupported；程序截断并说明。

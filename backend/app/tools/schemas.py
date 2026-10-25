@@ -213,9 +213,6 @@ class CatalogFacetInput(BaseModel):
     min_price: Decimal | None = None
     max_price: Decimal | None = None
     filters: dict[str, str] = Field(default_factory=dict)
-    catalog_context: CatalogToolRuntimeContext = Field(
-        default_factory=CatalogToolRuntimeContext
-    )
     limit: int = Field(default=20, ge=1, le=50, strict=True)
 
     @field_validator("scope")

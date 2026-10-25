@@ -32,6 +32,7 @@ class PreparedCatalogScope:
             "binding": self.plan.model_dump(mode="json"),
             "categories": list(self.categories),
             "identity_count": len(self.identity.records) if self.identity else 0,
+            "identity_scope": self.identity.entity_scope if self.identity else None,
             "identity_preview": [r.product.__dict__ for r in self.identity.records[:20]]
             if self.identity else [],
             "identity_statuses": [r.model_dump(mode="json") for r in self.identity.object_results]
@@ -61,10 +62,7 @@ async def prepare_catalog_scope(
     def validate(plan: CatalogScopePlan) -> None:
         if plan.category:
             category = normalize_category_hint(plan.category)
-            if category is None:
-                if plan.disposition != "unsupported":
-                    raise OutputValidationError("未知品类须保留原品类并标unsupported。")
-            else:
+            if category is not None:
                 plan.category = category
         if plan.target and (plan.target.kind, plan.target.id) not in explicit_product_ids(query):
             raise OutputValidationError("编号必须来自原文明示SKU/SPU，不能复制scope或猜编号。")
@@ -78,19 +76,21 @@ async def prepare_catalog_scope(
     )
     if explicit_category is not None:
         draft.category = explicit_category
-    categories = (draft.category,) if draft.category else ()
+    category = normalize_category_hint(draft.category)
+    categories = (category,) if category else ()
     identity = None
-    if draft.disposition == "ready" and repository is not None:
-        if operation == "lookup" and draft.selection == "object":
+    if repository is not None:
+        # Scope shape determines identity preparation, never the tool's business purpose.
+        object_scope = draft.scope_kind in {"object", "spu", "sku"} or draft.target is not None
+        scope_ids = scope.sku_ids or scope.spu_ids
+        has_object = draft.target or draft.search_text or len(scope_ids) == 1
+        if operation in {"lookup", "search"} and object_scope and has_object:
+            # Reuse strict single-object identity resolution, without invoking lookup.
             plan = SearchPlan(operation="lookup", **{
                 key: getattr(draft, key) for key in ("category", "search_text", "target")
             })
             if not plan.target and not plan.search_text:
                 ids = scope.sku_ids or scope.spu_ids
-                if len(ids) != 1:
-                    draft.disposition = "clarification_required"
-                    draft.reason = "请明确要查询的一个商品对象。"
-                    return PreparedCatalogScope(draft, categories)
                 plan.target = ProductReference(kind="sku" if scope.sku_ids else "spu", id=ids[0])
             lookup_scope = (
                 SearchScope(**{f"{plan.target.kind}_ids": [plan.target.id]})
@@ -108,5 +108,6 @@ async def prepare_catalog_scope(
     prepared = PreparedCatalogScope(draft, categories, identity)
     program_event("商品范围准备", outcome="prepared", operation=operation,
                   binding=draft.model_dump(mode="json"), categories=list(categories),
-                  identity_count=len(identity.records) if identity else None)
+                  identity_count=len(identity.records) if identity else None,
+                  identity_scope=identity.entity_scope if identity else None)
     return prepared

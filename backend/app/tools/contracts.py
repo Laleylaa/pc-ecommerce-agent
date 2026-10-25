@@ -563,6 +563,8 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
             registry_name="catalog.search",
             description=(
                 "Find or recommend products across the catalog or a sourced candidate scope. "
+                "This includes recommending a purchasable version within ONE specified model: "
+                "confirm its identity and rank its SKU candidates within that boundary. "
                 "Use for shared filters and ranking, including a name as a discovery constraint. "
                 "For facts, conditional availability, prices or variants of ONE specified product, "
                 "use catalog_lookup. For catalog brands/categories/specification options, use "
@@ -572,7 +574,8 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "Omit when uncertain. scope is a sourced hard "
                 "boundary, not a comparison anchor; never invent IDs. Set limit to the requested "
                 "count; default 3, capped at 20 with explicit count metadata. Returns model cards "
-                "with matching-SKU counts and prices; previews are not the full population. "
+                "or SKU cards when selecting versions, with explicit selection_scope; "
+                "previews are not the full population. "
                 "Check status, match_kind, condition_checks and matching_complete. Alternatives "
                 "are explicitly marked and do not count as exact matches. Unknown facts are not "
                 "negative facts. identity_suggestions require confirmation and cannot be quoted. "
@@ -594,7 +597,9 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
                 "wireless/support questions, "
                 "whether matching versions exist, version counts, price ranges and version lists. "
                 "Combine these facts in one query; no preliminary search is needed for a name. "
-                "Use catalog_search to discover products across a collection; use catalog_facets "
+                "Conditions, sorting, multiple versions and display counts do not turn facts "
+                "into shopping recommendations. Use catalog_search for purchase recommendations, "
+                "including selecting a suitable version within this model; use catalog_facets "
                 "for collection-wide options. Preserve the complete question and any prerequisite "
                 "such as 'price only if wireless'. category_hint is a non-authoritative "
                 "compatibility hint, "
@@ -635,7 +640,7 @@ def _tool_contracts() -> tuple[ToolContract, ...]:
             public_input_model=CatalogFacetPublicInput,
             internal_input_model=CatalogFacetInput,
             output_model=CatalogFacetOutput,
-            runtime_fields=("catalog_context",),
+            runtime_fields=(),
             timeout_seconds=75.0,
         ),
         ToolContract(

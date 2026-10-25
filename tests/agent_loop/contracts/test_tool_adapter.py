@@ -262,7 +262,7 @@ def test_tool_imports_do_not_load_agent_or_strands():
 
 
 @pytest.mark.asyncio
-async def test_facet_context_is_injected_from_contract_and_copied():
+async def test_facets_uses_explicit_arguments_without_runtime_catalog_context():
     from app.tools.schemas import (
         CatalogDependencyArtifact,
         CatalogFacetOutput,
@@ -272,8 +272,7 @@ async def test_facet_context_is_injected_from_contract_and_copied():
     received = []
 
     async def handler(request):
-        received.append(request.catalog_context.model_dump())
-        request.catalog_context.dependency_artifacts.clear()
+        received.append(request.model_dump())
         return CatalogFacetOutput(result_type="empty", facet="brand")
 
     contract = next(c for c in default_tool_contracts() if c.llm_name == "catalog_facets")
@@ -287,7 +286,8 @@ async def test_facet_context_is_injected_from_contract_and_copied():
     for goal in ("g1", "g2"):
         record = await query.execute(query.prepare(goal, "catalog_facets", {"query": "键盘品牌"}))
         assert "catalog_context" not in record.invocation.arguments
-    assert all(r["dependency_artifacts"][0]["task_id"] == "op_from_context" for r in received)
+    assert contract.runtime_fields == ()
+    assert all("catalog_context" not in r and r["scope"] is None for r in received)
 
 
 @pytest.mark.parametrize("tool_name", ["query_complete", "record_evidence", "refund", "sql"])

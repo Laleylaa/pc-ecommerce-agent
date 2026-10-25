@@ -6,7 +6,6 @@ from typing import Protocol
 from app.core.llm_feedback import OutputValidationError
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import SearchScope
-from app.tools.catalog.context import _catalog_context_summary
 from app.tools.catalog.facets_plan import FacetQueryPlan, _validate_catalog_facet_plan
 from app.tools.catalog.fields import explain_conditions
 from app.tools.catalog.scope import PreparedCatalogScope, prepare_catalog_scope
@@ -41,16 +40,6 @@ class CatalogFacetPlanner:
                     exclude_unset=True,
                 ),
             )
-            draft = prepared.plan
-            if draft.selection == "object" or draft.disposition != "ready":
-                return FacetQueryPlan(
-                    query=request.query, limit=request.limit, selection=draft.selection,
-                    name=draft.search_text, target=draft.target, category=draft.category,
-                    supported=False, unsupported_reason=draft.reason or
-                    "指定商品的事实和版本请使用catalog_lookup。",
-                    clarification_requirements=[draft.reason or "请明确查询范围。"]
-                    if draft.disposition == "clarification_required" else [],
-                )
             return await self._plan_facets(request, prepared, budget)
 
 
@@ -73,7 +62,6 @@ class CatalogFacetPlanner:
                 "max_price": request.max_price,
                 "filters": request.filters,
             },
-            "catalog_context": _catalog_context_summary(request),
         }
         # Only supplied fields are overrides; a default facet is not a user decision.
         payload["explicit_overrides"] = {
@@ -113,7 +101,7 @@ class CatalogFacetPlanner:
             trusted={
                 "query": request.query, "limit": request.limit, "planner": "llm",
                 "unsupported_code": "request_not_supported",
-                "category": prepared.plan.category, "selection": prepared.plan.selection,
+                "category": prepared.plan.category,
                 "name": prepared.plan.search_text,
                 "target": prepared.plan.target.model_dump() if prepared.plan.target else None,
             },

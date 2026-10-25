@@ -3,7 +3,6 @@ import re
 from typing import Any, Literal
 
 from app.tools.schemas import (
-    CatalogFacetInput,
     CatalogSearchInput,
     CatalogTargetIdentity,
     CatalogToolRuntimeContext,
@@ -260,7 +259,7 @@ def _catalog_memory_scope(
 
 
 def _catalog_context_summary(
-    request: CatalogSearchInput | CatalogFacetInput,
+    request: CatalogSearchInput,
 ) -> dict[str, Any]:
     targets, scope_hint = _resolved_catalog_request_context(
         request.query,

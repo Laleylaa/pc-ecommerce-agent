@@ -76,17 +76,7 @@ class CatalogSearchPlanner:
                 self.chat_model, repository, query=request.query, scope=request.scope,
                 operation=self.operation, budget=budget,
             )
-            draft = prepared.plan
             binding = prepared.search_binding()
-            disposition = draft.disposition
-            if (self.operation == "lookup") != (draft.selection == "object"):
-                disposition = "unsupported"
-                draft.reason = "指定对象事实使用catalog_lookup，集合发现使用catalog_search。"
-            if disposition != "ready":
-                return SearchPlan(
-                    operation=self.operation, purpose=self.operation,
-                    disposition=disposition, reason=draft.reason, **binding,
-                ), prepared
             # Identity failure is already an executable business result; no specification LLM.
             if prepared.identity is not None and not prepared.identity.records:
                 return SearchPlan(
@@ -117,7 +107,7 @@ class CatalogSearchPlanner:
         return await generate_tool_plan(
             self.chat_model,
             schema=self.schema,
-            required=SearchPlan.model_required_fields,
+            required=self.schema.model_required_fields,
             prompt=build_search_prompt(
                 operation=self.operation, spec_context=prepared.specification_context(),
             ),

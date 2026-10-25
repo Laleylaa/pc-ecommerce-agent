@@ -177,7 +177,7 @@ class CatalogSearchEngine:
         records, checks = selection.records, selection.checks
         sku_scope = (
             plan.operation == "lookup" and plan.version_view == "list"
-        ) or entity_scope == "sku"
+        ) or (plan.operation == "search" and plan.candidate_unit == "sku") or entity_scope == "sku"
         if sku_scope:
             groups = [[r] for r in records]
         else:

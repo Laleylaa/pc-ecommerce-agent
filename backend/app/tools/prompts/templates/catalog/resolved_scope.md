@@ -1,5 +1,15 @@
 resolved_scope由程序提供，包含范围识别结果和实际定位信息。
+binding.scope_kind只说明查谁/在哪查，不决定是事实、选购或统计；详细规划须根据原始query
+判断是否符合当前工具职责，误投明确说明应使用哪个工具，不改写目标或静默换工具。
 其中binding中的名称、显式品类和编号已固定，本阶段不要修改或重新猜测；仍核对原始query的全部要求。
-categories只用于加载适用规则，不自动增加category筛选。对象身份已查询，但价格/库存/规格条件尚未执行。
+categories只用于加载适用规则，不自动增加category筛选。仅有identity_scope/statuses时表示已查询身份；
+scope_kind中的spu/sku是原请求的范围层级，实际确认层级以identity_scope为准。
+价格/库存/规格条件尚未执行。
+有效执行范围由original_request.scope与计划中的名称、编号、品类和条件共同限定，取交集。
+original_request.scope由程序直接应用，不要求复制到candidate_plan；facets计划没有scope字段，
+统计时仍使用原请求scope加载记录。target只表达query明示编号，不能用它复写scope。
+scope_kind是范围描述，catalog/selection=catalog以及空target都不表示清空原请求scope。
+复核应结合原请求和实际计划检查范围是否忠实，而不是检查某个字段是否被重复抄写。
+scope编号未出现在query中仍是有效硬范围；无scope时才不追加此项限制。不得扩大已给定范围。
 范围识别若与原请求不一致，复核不得批准或静默改写，应明确指出不一致。
 未能表达的条件保留unresolved_requirements；事实问题按当前工具契约保留，不把资料未知变成否。

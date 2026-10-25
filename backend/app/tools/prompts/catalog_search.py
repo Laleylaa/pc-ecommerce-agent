@@ -21,7 +21,7 @@ from app.tools.prompts.catalog_workflow import (
 from app.tools.prompts.templates import load_prompt
 from app.tools.structured_planning import output_schema
 
-PROMPT_VERSION = "catalog-query-markdown-v27"
+PROMPT_VERSION = "catalog-query-markdown-v28"
 
 
 ROLE = load_prompt("catalog/role.md")
