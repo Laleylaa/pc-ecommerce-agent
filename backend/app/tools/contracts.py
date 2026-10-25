@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError
+from app.core.llm_feedback import OutputValidationError, validation_feedback
+from app.core.loop_budget import LoopLimit
 from app.core.loop_tracing import metadata, payload, program_event, tracing_active, validation_step
 from app.core.tracing import trace_event
 from app.repositories.catalog_search import CatalogSearchRepository
@@ -26,6 +28,7 @@ from app.tools.catalog.facets import CatalogFacetService
 from app.tools.catalog.facets_planner import CatalogFacetPlanner, FacetPlanner
 from app.tools.catalog.planner import CatalogSearchPlanner, SearchPlanner
 from app.tools.catalog.service import CatalogSearchService
+from app.tools.errors import error_payload
 from app.tools.knowledge import (
     POLICY_TIMEOUT_SECONDS,
     KnowledgeRetrievalToolService,
@@ -50,6 +53,7 @@ from app.tools.schemas import (
     OrderLookupInput,
     OrderLookupOutput,
     ToolError,
+    ToolErrorDetails,
     ToolExecutionResult,
     WebSearchInput,
     WebSearchOutput,
@@ -461,8 +465,19 @@ async def execute_bound_tool(
     runtime_context: dict[str, Any],
 ) -> ToolExecutionResult:
     """Final budget check covers successes and errors for every runtime adapter."""
-    result = await _execute_bound_tool(bound_tool, arguments, runtime_context)
-    delivered_cost = output_cost(result.model_dump(mode="json"))
+    try:
+        result = await _execute_bound_tool(bound_tool, arguments, runtime_context)
+        delivered_cost = output_cost(result.model_dump(mode="json"))
+    except (asyncio.CancelledError, LoopLimit):
+        raise
+    except Exception as exc:
+        # Includes unexpected validator/projection failures outside the handler boundary.
+        result = _error_result(
+            bound_tool.contract.llm_name, "execution_error",
+            details={"failure_type": "execution_boundary_error",
+                     "exception_type": type(exc).__name__},
+        )
+        delivered_cost = output_cost(result.model_dump(mode="json"))
     program_event(
         "工具交付预算检查",
         outcome=("accepted" if delivered_cost <= bound_tool.contract.output_token_budget
@@ -474,14 +489,7 @@ async def execute_bound_tool(
     )
     if delivered_cost <= bound_tool.contract.output_token_budget:
         return result
-    return ToolExecutionResult(
-        tool_name=bound_tool.contract.llm_name, ok=False,
-        error=ToolError(
-            code="output_budget_exceeded", retryable=False,
-            recommended_action="narrow_query",
-            message="工具结果或错误详情超过输出预算；请缩小请求，完整记录保留在追踪中。",
-        ),
-    )
+    return _error_result(bound_tool.contract.llm_name, "output_budget_exceeded")
 
 
 async def _execute_bound_tool(
@@ -496,21 +504,28 @@ async def _execute_bound_tool(
     )
     try:
         public_input = contract.public_input_model.model_validate(arguments)
+    except (ValidationError, OutputValidationError) as exc:
+        await trace_event("tool_contract_rejected", tool_name=contract.llm_name,
+                          reason=validation_feedback(exc))
+        return _error_result(
+            contract.llm_name, "invalid_input", details=validation_feedback(exc),
+            public_details=_argument_details(exc, contract.public_input_model),
+        )
+    try:
+        runtime = ToolRuntimeContext.model_validate(runtime_context)
+        if contract.requires_auth and runtime.user_id <= 0:
+            return _error_result(contract.llm_name, "unauthorized")
         internal_input = public_input.model_dump(mode="json", exclude_none=True)
         if (contract.llm_name in {"catalog_search", "catalog_lookup"}
                 and "limit" not in public_input.model_fields_set):
-            # Preserve the difference between caller selection and the schema default.
             internal_input.pop("limit", None)
-        runtime = ToolRuntimeContext.model_validate(runtime_context)
         for field_name in contract.runtime_fields:
             internal_input[field_name] = getattr(runtime, field_name)
         validated_internal = contract.internal_input_model.model_validate(internal_input)
-    except ValidationError as exc:
-        await trace_event("tool_contract_rejected", tool_name=contract.llm_name, reason=str(exc))
-        return _error_result(contract.llm_name, "invalid_input", str(exc))
-    except AttributeError as exc:
-        await trace_event("tool_contract_rejected", tool_name=contract.llm_name, reason=str(exc))
-        return _error_result(contract.llm_name, "invalid_input", str(exc))
+    except (ValidationError, OutputValidationError, AttributeError) as exc:
+        await trace_event("tool_runtime_rejected", tool_name=contract.llm_name,
+                          error_type=type(exc).__name__)
+        return _error_result(contract.llm_name, "runtime_contract_error")
 
     async def run_tool() -> BaseModel:
         await trace_event(
@@ -531,6 +546,9 @@ async def _execute_bound_tool(
     except asyncio.CancelledError:
         await trace_event("tool_handler_cancelled", tool_name=contract.llm_name)
         raise
+    except LoopLimit as exc:
+        await trace_event("tool_handler_limited", tool_name=contract.llm_name, reason=str(exc))
+        raise
     except TimeoutError:
         if contract.llm_name == "knowledge_search":
             await trace_event(
@@ -548,15 +566,19 @@ async def _execute_bound_tool(
     except ModelCallError as exc:
         await trace_event("tool_handler_error", tool_name=contract.llm_name, code=exc.code)
         return _error_result(contract.llm_name, exc.code, str(exc), details=exc.details)
-    except (SQLAlchemyError, OSError):
+    except (SQLAlchemyError, OSError) as exc:
         await trace_event(
             "tool_handler_error", tool_name=contract.llm_name, code="dependency_unavailable",
         )
-        return _error_result(contract.llm_name, "dependency_unavailable")
-    except Exception:
+        return _error_result(
+            contract.llm_name, "dependency_unavailable",
+            details={"exception_type": type(exc).__name__},
+        )
+    except Exception as exc:
         await trace_event("tool_handler_error", tool_name=contract.llm_name, code="execution_error")
         return _error_result(
-            contract.llm_name, "execution_error", details={"failure_type": "handler_error"},
+            contract.llm_name, "execution_error",
+            details={"failure_type": "handler_error", "exception_type": type(exc).__name__},
         )
 
     await trace_event("tool_handler_output", tool_name=contract.llm_name, output=output)
@@ -583,6 +605,15 @@ async def _execute_bound_tool(
             validated_output = contract.output_model.model_validate(
                 output.model_dump(mode="python"),
             )
+        planning_failed = (
+            contract.llm_name in {"catalog_search", "catalog_lookup"}
+            and getattr(validated_output, "reason_code", None) == "invalid_plan"
+        ) or (
+            contract.llm_name == "order_lookup"
+            and getattr(validated_output, "result_type", None) == "planning_failed"
+        )
+        if planning_failed:
+            return _error_result(contract.llm_name, "planning_output_invalid")
         with validation_step(
             "工具输出预算处理", tool_name=contract.llm_name,
             token_limit=contract.output_token_budget, counting_method="utf8_byte_upper_bound",
@@ -620,22 +651,14 @@ async def _execute_bound_tool(
             )
             serialized_output = validated_output.model_dump(mode="json")
     except OutputBudgetExceeded:
-        return ToolExecutionResult(
-            tool_name=contract.llm_name, ok=False,
-            error=ToolError(
-                code="output_budget_exceeded", retryable=False,
-                recommended_action="narrow_query",
-                message="最小完整结果仍超过单次输出预算；请缩小查询范围或字段，不要重复相同调用。",
-                details={"token_limit": contract.output_token_budget,
-                         "counting_method": "utf8_byte_upper_bound"},
-            ),
-        )
+        return _error_result(contract.llm_name, "output_budget_exceeded")
     except (ValidationError, TypeError, PydanticSerializationError) as exc:
         await trace_event(
             "tool_output_rejected", tool_name=contract.llm_name, error_type=type(exc).__name__,
         )
         return _error_result(
-            contract.llm_name, "execution_error", details={"failure_type": "output_contract_error"},
+            contract.llm_name, "execution_error",
+            details={"failure_type": "output_contract_error", "exception_type": type(exc).__name__},
         )
 
     return ToolExecutionResult(
@@ -813,40 +836,46 @@ def default_tool_contracts() -> tuple[ToolContract, ...]:
 
 def _error_result(
     name: str, code: str, message: Any | None = None, *, details: dict | None = None,
+    public_details: ToolErrorDetails | None = None,
 ) -> ToolExecutionResult:
-    error_messages = {
-        "unknown_tool": "unknown tool",
-        "invalid_input": "tool input is invalid",
-        "unauthorized": "authentication is required",
-        "forbidden": "access is forbidden",
-        "timeout": "tool execution timed out",
-        "dependency_unavailable": "tool dependency is temporarily unavailable",
-        "execution_error": "tool execution failed",
-    }
-    retryable = code in {"invalid_input", "timeout", "dependency_unavailable"}
-    actions = {
-        "unknown_tool": "stop",
-        "invalid_input": "replan_arguments",
-        "unauthorized": "request_authentication",
-        "forbidden": "stop",
-        "timeout": "retry_once",
-        "dependency_unavailable": "explain_temporary_unavailability",
-        "execution_error": "stop",
-    }
+    # Internal feedback stays in the trace, never in the model-visible envelope.
+    policy_code = code
+    if (code == "planning_call_timeout"
+            and (details or {}).get("timeout_source") != "local_deadline"):
+        policy_code = "planning_dependency_timeout"
+    program_event("工具失败归类", outcome="failed", tool_name=name,
+                  internal_code=code, internal_message=message, internal_details=details or {},
+                  public_error=error_payload(policy_code))
     return ToolExecutionResult(
-        tool_name=name,
-        ok=False,
-        error=ToolError(
-            code=code,
-            message=str(message or error_messages.get(code, "tool execution failed")),
-            retryable=retryable,
-            recommended_action=actions.get(code, "stop"),
-            phase=(
-                ("plan_validation" if code in {
-                    "planning_output_invalid", "planning_review_inconclusive", "invalid_input",
-                } else "execution")
-                if name in {"catalog_search", "catalog_lookup", "catalog_facets"} else None
-            ),
-            details=details or {},
-        ),
+        tool_name=name, ok=False,
+        error=ToolError(**error_payload(policy_code), details=public_details),
     )
+
+
+def _argument_details(exc: Exception, schema: type[BaseModel]) -> ToolErrorDetails | None:
+    if not isinstance(exc, ValidationError):
+        return None
+    issues = []
+    for error in exc.errors(include_input=False, include_url=False):
+        loc = error.get("loc", ())
+        # Nested keys and values can contain user data; expose only declared top-level fields.
+        field = loc[0] if loc and loc[0] in schema.model_fields else None
+        if field is None:
+            continue
+        kind = error["type"]
+        issue = "required" if kind == "missing" else (
+            "out_of_range" if kind in {
+                "greater_than", "greater_than_equal", "less_than", "less_than_equal",
+            } else "invalid_type" if kind.endswith(("_type", "_parsing")) else "invalid_value"
+        )
+        row = {"field": field, "issue": issue}
+        for metadata_item in schema.model_fields[field].metadata:
+            for attribute, key in (("ge", "minimum"), ("le", "maximum")):
+                bound = getattr(metadata_item, attribute, None)
+                if isinstance(bound, (int, float)):
+                    row[key] = bound
+        if row not in issues:
+            issues.append(row)
+        if len(issues) == 5:
+            break
+    return ToolErrorDetails(fields=issues) if issues else None

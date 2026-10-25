@@ -14,20 +14,15 @@ TOOL_INPUT_PROTOCOL = """
 """.strip()
 
 TOOL_RECOVERY_PROTOCOL = """
-- 只有 `code=invalid_input` 且 `recommended_action=replan_arguments` 时，才根据安全错误摘要定位
-  被指出的非 `query` 参数，并最多修正一次；`canonical_query` 始终不变。若错误指向 query 本身或
-  未指出具体字段，不得猜测改写，应停止或向用户澄清。
-- `code=execution_error` 表示工具内部执行失败，不提供可安全推断的参数修复信息。若
-  `recommended_action=stop` 或 `retryable=false`，不得修改 key/value 猜测原因，不得重复等价调用；
-  保留其他 usable 结果，并按情况使用 `finish_partial` 或 `finish_unavailable`。
-- `code=timeout` 且 action 为 `retry_once` 时只允许一次等价重试；`dependency_unavailable` 应说明
-  暂时不可用；`unauthorized`、`forbidden` 和 `unknown_tool` 不得通过改写参数绕过。
-- fingerprint 相同或出现 `reused_from_tool_call_id` 表示没有获得新证据。除非错误协议明确允许
-  retry_once，否则立即停止重复调用；不要用改写 `query` 掩盖语义等价的重试。
-- `empty`、`not_found` 和 `unsupported` 不允许通过擅自删除用户显式条件自动重查；可以直接说明
-  结果，或询问用户是否愿意放宽一个条件。
-- `insufficient` 或 `invalid_catalog_plan` 由 Tool 内部 planner/fallback 负责；Orchestrator 不得
-  改写 `canonical_query` 再试。
+- 工具最终失败使用统一code、message和next_action；内部细码及复核意见不属于调用修正契约。
+- next_action=revise_arguments时只修正被明确指出的非query参数，最多一次；canonical_query不变。
+  若未指出字段或错误指向query，不得猜测改写。历史invalid_input/replan_arguments按同一边界解释。
+- next_action=retry才许可一次相同工具、相同参数重试，程序预算优先；历史timeout/retry_once
+  按既有策略处理。stop不得通过改写query绕过，保留其他usable结果并如实说明查询失败。
+- request_authentication引导登录；narrow_request可说明缩小展示或拆分请求的需要，不能删除硬条件。
+  access_denied不得绕过；dependency_unavailable不表示商城用户未登录；planning_failed不表示无匹配。
+- fingerprint相同或reused_from_tool_call_id不构成新证据，不重复成功查询。
+- empty、not_found、unsupported及资料不足仍按领域事实处理，不自动删除条件或重规划。
 """.strip()
 
 # Compatibility aggregate for documentation and older imports. Runtime prompts load the two

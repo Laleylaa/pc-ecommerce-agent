@@ -29,6 +29,7 @@ from app.core.loop_models import QueryModel
 from app.core.loop_tracing import program_event, rejection, tracing_active
 from app.schemas.context import PreparedTurn
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext
+from app.tools.errors import error_payload
 
 
 def project_record(
@@ -50,11 +51,7 @@ def project_record(
     if len(json.dumps(observation, ensure_ascii=False)) > limit:
         observation["result"] = {
             "tool_name": record.result.tool_name, "ok": False, "output": None,
-            "error": {
-                "code": "observation_budget_exceeded",
-                "message": "工具材料超过交接预算，未交付事实；请缩小请求，不要据此声称无匹配。",
-                "retryable": False, "recommended_action": "narrow_query",
-            },
+            "error": error_payload("observation_budget_exceeded"),
         }
         observation["completion_blockers"] = ["observation_budget_exceeded"]
     _trace_projection(record, original, observation, original_chars, limit, destination)
@@ -67,7 +64,7 @@ def _trace_projection(record, original, projected, original_chars, limit, destin
     source = original["result"].get("output") or {}
     target = projected["result"].get("output") or {}
     delivery_error = (projected["result"].get("error") or {}).get("code")
-    rejected = delivery_error == "observation_budget_exceeded"
+    rejected = "observation_budget_exceeded" in projected.get("completion_blockers", [])
     program_event("材料投影", outcome=("rejected" if rejected else
                                       "truncated" if projected["projection_truncated"] else "kept"),
                   destination=destination, evidence_id=record.evidence_id,
@@ -174,7 +171,7 @@ class QuerySession:
             if not attempts:
                 raise AdmissionError("duplicate_pending_query")
             last = attempts[-1].result
-            if last.ok or not last.error or not last.error.retryable or len(attempts) >= 2:
+            if last.ok or not last.error or last.error.next_action != "retry" or len(attempts) >= 2:
                 raise AdmissionError("duplicate_query")
             return previous
         self._operations[fingerprint] = operation_id

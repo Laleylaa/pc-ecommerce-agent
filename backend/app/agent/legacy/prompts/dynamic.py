@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.agent.legacy.error_compatibility import legacy_error_view
 from app.agent.legacy.limits import TOOL_RETRY_POLICY
 from app.agent.legacy.outcomes import build_subquery_ledger, is_active_ledger_entry
 from app.agent.legacy.prompts.static import (
@@ -275,6 +276,7 @@ def _collect_failures(
         if not isinstance(error, Mapping):
             error = {}
         name = str(result.get("name") or execution.get("tool_name") or "unknown_tool")
+        error = legacy_error_view(error)
         code = str(error.get("code") or "execution_error")
         requested_action = str(error.get("recommended_action") or "")
         action = (

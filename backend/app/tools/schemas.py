@@ -15,6 +15,7 @@ from app.schemas.catalog import ProductCard
 from app.schemas.catalog_search import CatalogSearchRequest, CategoryHint, FieldIssue, SearchScope
 from app.schemas.context import CatalogMemory
 from app.schemas.order import OrderCard, OrderFilters, OrderQueryMode, OrderSuggestion, OrderSummary
+from app.tools.errors import ALLOWED_ERROR_ACTIONS, ToolErrorCode, ToolNextAction
 from app.tools.order_identity import explicit_order_ids
 from app.tools.output_limits import MAX_RESULT_ITEMS, BoundedToolOutput
 
@@ -35,20 +36,52 @@ def validate_order_lookup_selection(order_id: int | None, query: str | None) -> 
         raise OutputValidationError("query order ID conflicts with order_id", path=("query",))
 
 
+class ToolArgumentIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=100)
+    issue: Literal["required", "invalid_type", "out_of_range", "invalid_value", "unexpected_field"]
+    minimum: int | float | None = None
+    maximum: int | float | None = None
+
+
+class ToolErrorDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[ToolArgumentIssue] = Field(default_factory=list, max_length=5)
+
+
 class ToolError(BaseModel):
-    code: str
-    message: str
-    retryable: bool = False
-    recommended_action: str = "stop"
-    phase: Literal["plan_validation", "execution"] | None = None
-    details: dict[str, Any] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="forbid")
+
+    code: ToolErrorCode
+    message: str = Field(min_length=1, max_length=300)
+    next_action: ToolNextAction
+    details: ToolErrorDetails | None = None
+
+    @model_validator(mode="after")
+    def validate_action(self) -> "ToolError":
+        if self.next_action not in ALLOWED_ERROR_ACTIONS[self.code]:
+            raise ValueError("error code and next_action disagree")
+        return self
 
 
 class ToolExecutionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     tool_name: str
-    ok: bool
+    ok: bool = Field(strict=True)
     output: dict | None = None
     error: ToolError | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> "ToolExecutionResult":
+        if self.ok:
+            if self.output is None or self.error is not None:
+                raise ValueError("successful execution requires output and no error")
+        elif self.output is not None or self.error is None:
+            raise ValueError("failed execution requires error and no output")
+        return self
 
 
 class ToolDiagnostic(BaseModel):

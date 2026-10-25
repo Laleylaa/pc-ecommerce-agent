@@ -17,6 +17,7 @@ from app.agent.legacy.artifacts import (
     user_clarifiable_blockers,
 )
 from app.agent.legacy.decisions import OrchestratorDecision, PlannedToolCall, infer_tool_subquery
+from app.agent.legacy.error_compatibility import legacy_error_view
 from app.agent.legacy.limits import TOOL_RETRY_POLICY
 from app.agent.legacy.outcomes import (
     build_subquery_ledger,
@@ -247,7 +248,7 @@ def _find_reusable_tool_result(
     if outcomes[-1].outcome != "error":
         return matches[-1]
     # Timeout attempts share the executor's policy, including when retries are disabled.
-    error = matches[-1].get("execution", {}).get("error") or {}
+    error = legacy_error_view(matches[-1].get("execution", {}).get("error") or {})
     max_attempts = TOOL_RETRY_POLICY.max_attempts if error.get("code") == "timeout" else 2
     if sum(outcome.outcome == "error" for outcome in outcomes) >= max_attempts:
         return matches[-1]
@@ -286,6 +287,7 @@ def _deterministic_recovery_decision(state: AgentState) -> OrchestratorDecision 
         error = result.get("execution", {}).get("error", {}) if result else {}
         if not isinstance(error, dict):
             continue
+        error = legacy_error_view(error)
         code = str(error.get("code") or "execution_error")
         action = str(error.get("recommended_action") or "")
         if not action:
@@ -403,6 +405,7 @@ def _followup_tool_call_allowed(state: AgentState, call: PlannedToolCall) -> boo
     error = result.get("execution", {}).get("error", {}) if result else {}
     if not isinstance(error, dict):
         return False
+    error = legacy_error_view(error)
     code = str(error.get("code") or "execution_error")
     action = str(error.get("recommended_action") or "")
     if not action:

@@ -4,6 +4,7 @@ import asyncio
 import re
 from typing import Literal, Protocol
 
+from app.core.llm_calls import ModelCallError
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.rules.product_identity import PRODUCT_REFERENCE_PREFIX, product_reference_kind
 from app.schemas.catalog_search import (
@@ -71,18 +72,28 @@ class CatalogSearchPlanner:
         if self.chat_model is None:
             raise OSError("catalog natural-language planner is unavailable")
         budget = PlanningBudget.start()
-        async with asyncio.timeout_at(budget.deadline):
-            prepared = await prepare_catalog_scope(
-                self.chat_model, repository, query=request.query, scope=request.scope,
-                operation=self.operation, budget=budget,
-            )
-            binding = prepared.search_binding()
-            # Identity failure is already an executable business result; no specification LLM.
-            if prepared.identity is not None and not prepared.identity.records:
-                return SearchPlan(
-                    operation=self.operation, purpose=self.operation, **binding,
-                ), prepared
-            return await self._plan(request, prepared, budget), prepared
+        planning_timeout = asyncio.timeout_at(budget.deadline)
+        try:
+            async with planning_timeout:
+                prepared = await prepare_catalog_scope(
+                    self.chat_model, repository, query=request.query, scope=request.scope,
+                    operation=self.operation, budget=budget,
+                )
+                binding = prepared.search_binding()
+                # Identity failure is already an executable business result; no specification LLM.
+                if prepared.identity is not None and not prepared.identity.records:
+                    return SearchPlan(
+                        operation=self.operation, purpose=self.operation, **binding,
+                    ), prepared
+                return await self._plan(request, prepared, budget), prepared
+        except TimeoutError as exc:
+            raise ModelCallError(
+                "planning_call_timeout" if planning_timeout.expired()
+                else "planning_dependency_timeout",
+                "Planning did not complete before timeout",
+                details={"timeout_source": "local_deadline" if planning_timeout.expired()
+                         else "unspecified"},
+            ) from exc
 
     async def plan(self, request: CatalogSearchRequest) -> SearchPlan:
         # Standalone callers have no repository; no database identity is invented.

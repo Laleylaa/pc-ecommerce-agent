@@ -218,7 +218,7 @@ class OrderToolService:
             except ModelCallError:
                 # Preserve the terminal model error code for the formal tool wrapper.
                 raise
-            except Exception as exc:
+            except (ValidationError, OutputValidationError) as exc:
                 return _planning_failed_output(str(exc))
 
         plan = _apply_trusted_order_overrides(plan, request, order_id=order_id)

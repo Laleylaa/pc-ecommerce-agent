@@ -3,6 +3,7 @@ import asyncio
 import json
 from typing import Protocol
 
+from app.core.llm_calls import ModelCallError
 from app.core.llm_feedback import OutputValidationError
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import SearchScope
@@ -29,18 +30,28 @@ class CatalogFacetPlanner:
         self, request: CatalogFacetInput, repository: CatalogSearchRepository | None,
     ) -> FacetQueryPlan:
         budget = PlanningBudget.start()
-        async with asyncio.timeout_at(budget.deadline):
-            prepared = await prepare_catalog_scope(
-                self.chat_model, repository, query=request.query,
-                scope=request.scope or SearchScope(), operation="facets", budget=budget,
-                explicit_category=request.category,
-                explicit_arguments=request.model_dump(
-                    mode="json", include={"facet", "category", "brand", "spec_key",
-                                          "filters", "min_price", "max_price"},
-                    exclude_unset=True,
-                ),
-            )
-            return await self._plan_facets(request, prepared, budget)
+        planning_timeout = asyncio.timeout_at(budget.deadline)
+        try:
+            async with planning_timeout:
+                prepared = await prepare_catalog_scope(
+                    self.chat_model, repository, query=request.query,
+                    scope=request.scope or SearchScope(), operation="facets", budget=budget,
+                    explicit_category=request.category,
+                    explicit_arguments=request.model_dump(
+                        mode="json", include={"facet", "category", "brand", "spec_key",
+                                              "filters", "min_price", "max_price"},
+                        exclude_unset=True,
+                    ),
+                )
+                return await self._plan_facets(request, prepared, budget)
+        except TimeoutError as exc:
+            raise ModelCallError(
+                "planning_call_timeout" if planning_timeout.expired()
+                else "planning_dependency_timeout",
+                "Planning did not complete before timeout",
+                details={"timeout_source": "local_deadline" if planning_timeout.expired()
+                         else "unspecified"},
+            ) from exc
 
 
     async def _plan_facets(

@@ -1,6 +1,9 @@
 """Facet service: plan, validate, aggregate. No candidate-search orchestration."""
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.llm_calls import ModelCallError
+from app.core.llm_feedback import OutputValidationError, validation_feedback
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.tools.catalog.facets_plan import FacetQueryPlan, _validate_catalog_facet_plan
 from app.tools.catalog.facets_planner import CatalogFacetPlanner, FacetPlanner
@@ -19,7 +22,13 @@ class CatalogFacetService:
     async def facets(self, request: CatalogFacetInput) -> CatalogFacetOutput:
         from app.tools.catalog.facets_execution import execute_facets
 
-        plan = await self._safe_plan_facets(request)
+        try:
+            plan = await self._safe_plan_facets(request)
+        except (ValidationError, OutputValidationError) as exc:
+            raise ModelCallError(
+                "planning_output_invalid", "Invalid facet plan",
+                details={"validation_feedback": validation_feedback(exc)},
+            ) from exc
         return await execute_facets(CatalogSearchRepository(self.session), request, plan)
 
 

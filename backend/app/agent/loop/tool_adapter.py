@@ -13,8 +13,10 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from app.agent.loop.evidence import EvidenceRecord, EvidenceStore, ToolInvocation
+from app.core.loop_budget import LoopLimit
 from app.core.loop_tracing import fields, payload
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext, execute_bound_tool
+from app.tools.errors import error_payload
 from app.tools.schemas import ToolError, ToolExecutionResult
 
 
@@ -121,7 +123,8 @@ class QueryToolAdapter:
             fields(operation_id=operation_id, goal_id=operation.goal_id, attempt=len(attempts) + 1)
             if attempts:
                 last = attempts[-1].result
-                if len(attempts) >= 2 or last.ok or not last.error or not last.error.retryable:
+                if (len(attempts) >= 2 or last.ok or not last.error
+                        or last.error.next_action != "retry"):
                     raise AdmissionError("retry_not_allowed")
             deadline = (
                 self._before_attempt(deepcopy(operation)) if self._before_attempt else None
@@ -132,6 +135,7 @@ class QueryToolAdapter:
             assert bound is not None
             started_at, started = datetime.now(UTC), monotonic()
             cancelled = False
+            limit_error: LoopLimit | None = None
             runtime = self._runtime.model_dump(mode="python")
             scope = self._attempt_scope(operation) if self._attempt_scope else nullcontext()
             try:
@@ -145,6 +149,10 @@ class QueryToolAdapter:
             except asyncio.CancelledError:
                 cancelled = True
                 result = _failure(operation.tool_name, "cancelled")
+            except LoopLimit as exc:
+                limit_error = exc
+                result = _failure(operation.tool_name, "model_budget_exhausted")
+                fields(limit_reason=str(exc))
             record = self.evidence.record(
                 ToolInvocation(
                     invocation_id=f"attempt_{uuid4().hex}",
@@ -162,6 +170,8 @@ class QueryToolAdapter:
             attempts.append(record.model_copy(deep=True))
             if cancelled:
                 raise asyncio.CancelledError
+            if limit_error is not None:
+                raise limit_error
             return record
 
     def attempts(self, operation_id: str) -> tuple[EvidenceRecord, ...]:
@@ -172,5 +182,5 @@ class QueryToolAdapter:
 def _failure(tool_name: str, code: str) -> ToolExecutionResult:
     return ToolExecutionResult(
         tool_name=tool_name, ok=False,
-        error=ToolError(code=code, message=code, recommended_action="stop"),
+        error=ToolError(**error_payload(code)),
     )

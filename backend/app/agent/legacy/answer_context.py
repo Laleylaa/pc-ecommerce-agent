@@ -9,6 +9,7 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from app.agent.legacy.error_compatibility import legacy_error_view
 from app.agent.legacy.limits import MAX_TOOL_WAVES
 from app.agent.legacy.outcomes import is_active_ledger_entry
 from app.agent.legacy.projections import without_pagination_controls
@@ -727,6 +728,7 @@ def _result_details(
     execution = _mapping(result.get("execution"))
     output = _mapping(execution.get("output")) or _mapping(facts)
     error = _mapping(execution.get("error"))
+    error = legacy_error_view(error)
     reason = str(error.get("code") or ledger.get("reason") or output.get("reason_code") or "")
     diagnostic = next(
         (d for d in output.get("diagnostics", [])

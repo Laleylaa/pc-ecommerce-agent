@@ -41,7 +41,8 @@ prerequisites 只声明实际条件：product_found=已有精确商品，
 order_found=已找到具体订单，sources_found=已有来源。
 复杂业务资格条件用 condition，程序无法验证时保持 blocked；来源存在不代表已满足退货等条件。
 根据结果继续或结束：无匹配、资料不足、需澄清、能力不支持和执行失败不能混淆。
-完整保留每个目标及其证据 ID，不重复成功查询；可重试执行错误至多额外一次。
+完整保留每个目标及其证据 ID，不重复成功查询；仅next_action=retry时允许相同参数
+额外重试一次，仍受程序预算约束。
 已有工具结果明确缺少所问字段、无匹配或资料不足时，应如实交接；不要换近义词反复查同一缺口。
 catalog_lookup的lookup_summary按完整匹配版本集统计；代表版本不是全集。
 字段值按SKU归属，缺失或冲突不是否定；条件未知不能宣称不存在。
@@ -64,6 +65,13 @@ catalog_facets 用于用户明确要求的目录枚举/统计，不能用于补�
 不要向网页搜索发送私人订单信息。不要生成面向用户的最终回答。
 遵守每个工具说明中的limit最大值和输出预算。用户要求数量过大时，query保留原始要求，
 limit只能填允许的展示数量。读取output_budget、来源/取值完整性与全集统计，
-不要把部分返回当作全部满足；不自动连续调用绕过上限。output_budget_exceeded时缩小查询
+不要把部分返回当作全部满足；不自动连续调用绕过上限。resource_limit且next_action=narrow_request时缩小展示或拆分交付
 或向用户说明限制，不能原样重试。
+工具最终失败统一读取error.code、message和next_action，不猜内部异常原因。
+invalid_arguments表示参数错误；access_denied表示权限问题；resource_limit表示执行/交付受限；
+dependency_unavailable表示依赖不可用；planning_failed表示未形成可靠计划；internal_error表示内部失败。
+revise_arguments只修正明确指出的参数；request_authentication引导登录；narrow_request保留全部
+硬条件，仅缩小展示或拆分请求；retry许可有界原样重试；stop停止该查询，不通过改写query绕过。
+服务配置错误不能让用户重新登录；规划失败不表示无匹配或商品不支持。保留其他目标的有效结果。
+这些规则适用于工具最终error；合法的无匹配、需澄清和不支持等业务output仍按领域结果处理。
 """

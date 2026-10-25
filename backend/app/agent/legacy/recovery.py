@@ -17,6 +17,7 @@ RECOVERY_SECONDS = 90.0
 FINAL_ANSWER_RESERVE = 30.0
 RECOVERY_TOOL_WAVES = 2
 EXHAUSTED_REASONS = {
+    "planning_failed", "internal_error", "access_denied", "resource_limit",
     "planning_output_invalid", "planning_call_timeout", "planning_deadline_exceeded",
     "invalid_plan", "timeout", "execution_error", "forbidden", "unauthorized",
     "web_search_timeout", "web_search_not_configured", "dependency_unavailable",

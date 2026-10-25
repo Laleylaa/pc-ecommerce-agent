@@ -16,6 +16,7 @@
 | `policy_search/` | 店铺政策检索、类型过滤、超时与后台工作槽生命周期 |
 | `knowledge_search/` | 正式网页搜索绑定、HTTP 替身、结果与错误边界 |
 | `shared/` | 跨工具的注册、执行、Prompt、商品规则和评测装置；不逐工具重复 |
+| [`error_contract/`](error_contract/README.md) | 业务工具对外错误契约专项；23条核心离线用例程序＋LLM证据复检通过，非全量/真实模型验收 |
 | `shared/local_retrieval/` | 保留的本地知识库、混合检索与 Chroma 服务检查，不代表正式 knowledge_search 网页工具 |
 | `catalog/` | 商品共用覆盖索引、评测说明跳转和历史 results；不再承载测试实现 |
 

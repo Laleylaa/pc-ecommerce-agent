@@ -16,8 +16,10 @@ from app.agent.legacy.recovery import repeats_invalidated_call
 from app.agent.legacy.routing import tool_planning_subqueries
 from app.agent.legacy.state import AgentState
 from app.agent.legacy.tool_loop import _find_reusable_tool_result
+from app.core.loop_budget import LoopLimit
 from app.core.tracing import trace_attributes, trace_event
 from app.repositories.conversations import ConversationRepository
+from app.tools.errors import error_payload
 from app.tools.schemas import ToolError, ToolExecutionResult
 from app.tools.structured_planning import scoped_plan_cache
 
@@ -97,10 +99,7 @@ async def execute_tool_wave(
                 tool_name=call.name,
                 ok=False,
                 error=ToolError(
-                    code="invalid_input",
-                    message=str(exc),
-                    retryable=True,
-                    recommended_action="replan_arguments",
+                    **error_payload("invalid_input"),
                 ),
             )
         else:
@@ -108,7 +107,12 @@ async def execute_tool_wave(
             reusable = _find_reusable_tool_result(state, call)
             if reusable is not None:
                 reused_from_tool_call_id = str(reusable["tool_call_id"])
-                execution = ToolExecutionResult.model_validate(reusable["execution"])
+                reused_execution = deepcopy(reusable["execution"])
+                reused_error = reused_execution.get("error")
+                if reused_error and "next_action" not in reused_error:
+                    # Normalize only this consumption copy; retain historical evidence.
+                    reused_execution["error"] = error_payload(reused_error.get("code", ""))
+                execution = ToolExecutionResult.model_validate(reused_execution)
         # Freeze the bound inputs once. A retry must not rebind dependencies or memory.
         call = call.model_copy(update={"arguments": deepcopy(call.arguments)})
         contract = runtime.contract_provider.get_contract(call.name)
@@ -116,7 +120,7 @@ async def execute_tool_wave(
             state, call.name, call.arguments, contract.public_input_model if contract else None,
         ):
             execution = ToolExecutionResult(tool_name=call.name, ok=False, error=ToolError(
-                code="recovery_repeated_call", message="Unchanged recovery call was not executed",
+                **error_payload("recovery_repeated_call"),
             ))
         runtime_context = (
             deepcopy(_runtime_context_for_call(state, call)) if execution is None else {}
@@ -155,8 +159,7 @@ async def execute_tool_wave(
                     except TimeoutError:
                         execution = ToolExecutionResult(
                             tool_name=call.name, ok=False, error=ToolError(
-                                code="recovery_budget_exhausted",
-                                message="Recovery deadline exceeded",
+                                **error_payload("recovery_budget_exhausted"),
                             ),
                         )
 
@@ -196,8 +199,10 @@ async def execute_tool_wave(
                 or execution.ok
                 or error is None
                 or not TOOL_RETRY_POLICY.allows_retry(
-                    completed_attempts=completed_attempts, code=error.code,
-                    retryable=error.retryable, action=error.recommended_action,
+                    completed_attempts=completed_attempts,
+                    code="timeout" if error.next_action == "retry" else error.code,
+                    retryable=error.next_action == "retry",
+                    action="retry_once" if error.next_action == "retry" else "stop",
                 )
             ):
                 break
@@ -264,7 +269,7 @@ async def _execute_tool_attempt(
     if contract is None:
         return ToolExecutionResult(
             tool_name=call.name, ok=False,
-            error=ToolError(code="unknown_tool", message=f"unknown tool: {call.name}"),
+            error=ToolError(**error_payload("unknown_tool")),
         )
     try:
         with trace_attributes(
@@ -274,18 +279,14 @@ async def _execute_tool_attempt(
             return await runtime.tool_executor.execute(
                 contract, deepcopy(call.arguments), deepcopy(runtime_context),
             )
-    except (ValidationError, ValueError) as exc:
+    except LoopLimit:
+        raise
+    except Exception as exc:  # defensive boundary; public input was already validated
+        await trace_event("tool_execution_boundary_error", tool_name=call.name,
+                          error_type=type(exc).__name__)
         return ToolExecutionResult(
             tool_name=call.name, ok=False,
-            error=ToolError(
-                code="invalid_input", message=str(exc),
-                retryable=True, recommended_action="replan_arguments",
-            ),
-        )
-    except Exception as exc:  # defensive orchestration boundary; cancellation propagates
-        return ToolExecutionResult(
-            tool_name=call.name, ok=False,
-            error=ToolError(code=type(exc).__name__, message=str(exc)),
+            error=ToolError(**error_payload("execution_error")),
         )
 
 
