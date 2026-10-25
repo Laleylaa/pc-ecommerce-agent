@@ -34,6 +34,31 @@ def spec(row, key):
 
 
 def derive(scenario, rows):
+    if scenario == "budget_search":
+        active = [r for r in rows if r["sku_status"] == r["spu_status"] == 1
+                  and r["category"] == "键盘"]
+        grouped = defaultdict(list)
+        for r in active:
+            grouped[r["spu_id"]].append(r)
+        ranked = sorted(grouped, key=lambda i: (min(Decimal(r["price"]) for r in grouped[i]), i))
+        if len(ranked) <= 10:
+            raise ValueError("budget_case_requires_more_than_ten_models")
+        return {"ranked_spu_ids": ranked, "total_spu": len(ranked), "total_sku": len(active),
+                "prices": {str(i): str(min(Decimal(r["price"]) for r in grouped[i])) for i in ranked}}
+    if scenario.startswith("acceptance_"):
+        active = [r for r in rows if r["sku_status"] == r["spu_status"] == 1]
+        model = [r for r in active if r["spu_title"] == "Keychron 星轴 K01 机械键盘"]
+        if not model or len({r["spu_id"] for r in model}) != 1:
+            raise ValueError("named_model_missing_or_ambiguous")
+        eligible = sorted([r for r in model if Decimal(r["price"]) <= 300],
+                          key=lambda r: (Decimal(r["price"]), r["sku_id"]))
+        if len(eligible) < 2:
+            raise ValueError("requires_two_budget_versions")
+        others = sorted({r["spu_id"] for r in active} - {model[0]["spu_id"]})
+        if not others:
+            raise ValueError("requires_disjoint_scope")
+        return {"model_rows": model, "budget_rows": eligible,
+                "scope": {"spu_ids": [others[0]]}}
     if scenario.startswith("core_"):
         from catalog_core_basis import derive_core
 

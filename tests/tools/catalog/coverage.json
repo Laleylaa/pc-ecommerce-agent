@@ -1,28 +1,28 @@
 {
-  "version": "catalog-boundary-correction-1",
-  "status": "原3—6修正为边界测试；重新只读核对并冻结4条，4/4可执行。28项定向离线检查通过；本次未调用业务工具或模型，未形成新的业务通过结论。",
-  "total_cases": 48,
+  "version": "catalog-output-budget-5",
+  "status": "输出预算追踪修复后：选定3条真实预算边界通过、相关离线140通过；未全量重跑65例，旧失败证据保留。",
+  "total_cases": 65,
   "groups": {
     "lookup": {
       "file": "../catalog_lookup/cases.json",
       "smoke": 1,
-      "contract": 3,
-      "business": 11,
-      "boundary": 2
+      "contract": 4,
+      "business": 13,
+      "boundary": 5
     },
     "search": {
       "file": "../catalog_search/cases.json",
       "smoke": 1,
-      "contract": 3,
-      "business": 12,
-      "boundary": 2
+      "contract": 4,
+      "business": 14,
+      "boundary": 5
     },
     "facets": {
       "file": "../catalog_facets/cases.json",
       "smoke": 1,
-      "contract": 3,
-      "business": 9,
-      "boundary": 0
+      "contract": 4,
+      "business": 10,
+      "boundary": 3
     }
   },
   "gaps": [
@@ -109,5 +109,30 @@
       "指定版本组合不存在且不报价",
       "简称跨品牌歧义且不擅自选定"
     ]
+  },
+  "latest_report": "results/summary-20261025-output-budget-retest.md",
+  "output_budget_acceptance": {
+    "total_cases": 65,
+    "selected_live_cases": 3,
+    "live_passed": 0,
+    "live_failed": 3,
+    "offline_passed": 394,
+    "offline_failed": 6,
+    "failure": "OB-001: output validation trace captures pre-budget data",
+    "report": "results/summary-20261025-output-budget.md"
+  },
+  "output_budget_retest": {
+    "selected_live_cases": 3,
+    "live_passed": 3,
+    "live_failed": 0,
+    "offline_passed": 140,
+    "offline_failed": 0,
+    "batches": [
+      "20261025T130609Z-search-5f42c0",
+      "20261025T130609Z-lookup-c3fc8a",
+      "20261025T130609Z-facets-96f096"
+    ],
+    "report": "results/summary-20261025-output-budget-retest.md",
+    "remaining": "非全量65例/完整聊天验收；search/lookup预算模板有旧歧义/零匹配说明待清理。"
   }
 }

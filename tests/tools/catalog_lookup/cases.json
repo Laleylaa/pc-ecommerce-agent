@@ -1,8 +1,8 @@
 {
-  "version": "catalog-review-boundary-3",
+  "version": "catalog-output-budget-5",
   "type": "lookup",
   "tool_name": "catalog_lookup",
-  "design_status": "修正原3—6的正例前提错误；按真实只读快照预标注边界行为，旧批次不改判。",
+  "design_status": "输出双上限验收：保留原场景，新契约下区分展示窗口、全集统计与来源预览。",
   "common_hard": [
     [
       "ok",
@@ -1357,6 +1357,170 @@
       ],
       "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
       "common_hard_override": []
+    },
+    {
+      "id": "lookup-conditioned-versions",
+      "kind": "business",
+      "input": {
+        "query": "Keychron 星轴 K01 机械键盘不超过300元的版本存不存在？按价格从低到高列两个，告诉我价格和库存，不需要选购建议。",
+        "limit": 2
+      },
+      "oracle_scenario": "acceptance_versions",
+      "intent": "条件版本事实：完整匹配汇总，展示最低价两个版本价格库存，不因数量或排序误判search。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "条件版本事实：完整匹配汇总，展示最低价两个版本价格库存，不因数量或排序误判search。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立只读快照核验型号、预算版本和scope来源；预期不从工具输出生成。",
+      "review_reference": [
+        [
+          "acceptance",
+          "semantic",
+          "条件版本事实：完整匹配汇总，展示最低价两个版本价格库存，不因数量或排序误判search。"
+        ]
+      ]
+    },
+    {
+      "id": "lookup-new-wording",
+      "kind": "business",
+      "input": {
+        "query": "把Keychron 星轴 K01 机械键盘的在售版本当作明细表：每个版本一行，列价格和剩余数量。",
+        "limit": 10
+      },
+      "oracle_scenario": "lookup_price",
+      "intent": "完整12版本作为事实总体；明细最多10且可因体积更少，明确未全展示，不能丢价格库存、缩小全集汇总或改成选购。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "完整12版本作为事实总体；明细最多10且可因体积更少，明确未全展示，不能丢价格库存、缩小全集汇总或改成选购。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立只读快照核验型号、预算版本和scope来源；预期不从工具输出生成。",
+      "review_reference": [
+        [
+          "acceptance",
+          "semantic",
+          "完整12版本作为事实总体；明细最多10且可因体积更少，明确未全展示，不能丢价格库存、缩小全集汇总或改成选购。"
+        ]
+      ]
+    },
+    {
+      "id": "lookup-wrong-recommendation",
+      "kind": "boundary",
+      "input": {
+        "query": "只考虑Keychron 星轴 K01 机械键盘，帮我挑一个300元以内最便宜的版本。"
+      },
+      "oracle_scenario": "acceptance_versions",
+      "intent": "误投lookup：应提示search，不能自行推荐选购版本。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "误投lookup：应提示search，不能自行推荐选购版本。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立只读快照核验型号、预算版本和scope来源；预期不从工具输出生成。",
+      "review_reference": [
+        [
+          "acceptance",
+          "semantic",
+          "误投lookup：应提示search，不能自行推荐选购版本。"
+        ]
+      ]
+    },
+    {
+      "id": "lookup-name-scope-conflict",
+      "kind": "boundary",
+      "input": {
+        "query": "Keychron 星轴 K01 机械键盘多少钱？",
+        "scope": "$oracle.scope"
+      },
+      "oracle_scenario": "acceptance_conflict",
+      "intent": "名称与可信scope冲突：不得报价其他型号或突破scope，明确身份范围问题。",
+      "hard": [],
+      "trace_route": "identity_pending",
+      "semantic_expectation": "名称与可信scope冲突：不得报价其他型号或突破scope，明确身份范围问题。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立只读快照核验型号、预算版本和scope来源；预期不从工具输出生成。",
+      "review_reference": [
+        [
+          "acceptance",
+          "semantic",
+          "名称与可信scope冲突：不得报价其他型号或突破scope，明确身份范围问题。"
+        ]
+      ]
+    },
+    {
+      "id": "lookup-over-limit",
+      "kind": "contract",
+      "input": {
+        "query": "查询商品",
+        "limit": 11
+      },
+      "oracle_scenario": null,
+      "intent": "limit最大10，11在正式输入契约处拒绝，handler、模型、SQL均不启动。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "非法limit拒绝，无业务输出和外部调用。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    },
+    {
+      "id": "lookup-output-budget",
+      "kind": "boundary",
+      "input": {
+        "query": "把Keychron 星轴 K01 机械键盘全部在售版本按价格升序列出，告诉我价格和库存。",
+        "limit": 10
+      },
+      "oracle_scenario": "lookup_price",
+      "intent": "同型号全部版本事实，显示窗口最多10且可能更少；价格库存及版本来源真实，全集版本数/价格范围保留，不能把未展示说成不存在。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "同型号全部版本事实，显示窗口最多10且可能更少；价格库存及版本来源真实，全集版本数/价格范围保留，不能把未展示说成不存在。",
+      "allowed_equivalences": [
+        "不逐字比较说明文字，必须保留每个条件和对象。",
+        "仅按本例冻结的独立数据及语义规则判定，不根据被测输出放宽预期。",
+        "候选可有界展示且顺序不限，但至少两个不同型号并属于冻结真实候选集；候选不能带可用价格/库存或标为已验证条件。",
+        "身份歧义可在范围识别+程序身份定位后提前返回，不要求详细规格规划和内部复核三阶段；仍须验证正式输出、Trace关联与预算。"
+      ],
+      "data_requirement": "独立SELECT确认星轴 K01至少对应两个在售型号；当前为Akko/Keychron/Razer/Wooting四品牌。歧义是待测正常边界，不再作为准备失败。",
+      "review_reference": [
+        [
+          "budget",
+          "semantic",
+          "同型号全部版本事实，显示窗口最多10且可能更少；价格库存及版本来源真实，全集版本数/价格范围保留，不能把未展示说成不存在。"
+        ]
+      ]
     }
   ],
   "revision_note": "用户授权：输入与业务目标不变；业务结果预期移为工具外语义复检参考，程序仅检查契约与追踪，不规定条件字段表达或语义匹配结论。"

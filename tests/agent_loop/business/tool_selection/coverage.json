@@ -1,9 +1,9 @@
 {
-  "version": "tool-selection-v3",
+  "version": "tool-selection-acceptance-v4",
   "measurement": "initial_tool_selection",
-  "status": "2026-10-24真实模型首次选择已完成：39例各3次，程序＋独立LLM复检117通过，0失败/无法判定/未执行。",
-  "latest_report": "results/summary-20261024-first-selection.md",
-  "total_cases": 39,
+  "status": "当前43例；本轮仅新增4例各3次，10通过2失败，不是全量复测。",
+  "latest_report": "results/20261025T062229Z-intent_boundaries-70bcc8c1/report.md",
+  "total_cases": 43,
   "groups": {
     "single_intent": {
       "cases": [
@@ -34,7 +34,11 @@
         "ib-07",
         "ib-08",
         "ib-09",
-        "ib-10"
+        "ib-10",
+        "ib-11",
+        "ib-12",
+        "ib-13",
+        "ib-14"
       ],
       "runner": "run_intent_boundaries.py",
       "case_file": "intent_boundaries_cases.json"

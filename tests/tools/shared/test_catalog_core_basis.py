@@ -101,12 +101,12 @@ def test_oracle_facet_window_keeps_full_total(basis):
 @pytest.mark.contract
 def test_core_cases_are_unique_and_preannotated():
     tools = Path(__file__).resolve().parents[1]
-    for tool, count in [("search", 12), ("lookup", 11), ("facets", 9)]:
+    for tool, count in [("search", 14), ("lookup", 13), ("facets", 10)]:
         suite = json.loads((tools / f"catalog_{tool}" / "cases.json").read_text())
         cases = suite["cases"]
         assert len({c["id"] for c in cases}) == len(cases)
         assert sum(c["kind"] == "business" for c in cases) == count
-        assert sum(c["kind"] == "boundary" for c in cases) == (0 if tool == "facets" else 2)
+        assert sum(c["kind"] == "boundary" for c in cases) == (3 if tool == "facets" else 5)
         for case in cases:
             assert case["semantic_expectation"] and case["data_requirement"]
             if case["kind"] == "contract":
