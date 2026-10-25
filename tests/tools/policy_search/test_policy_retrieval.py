@@ -5,87 +5,17 @@ from app.tools.contracts import (
 )
 from app.tools.knowledge import (
     KnowledgeRetrievalToolService,
-    KnowledgeVectorIndex,
-    KnowledgeVectorIndexChunk,
 )
 from app.tools.schemas import (
     DocumentSearchInput,
 )
 from pydantic import ValidationError
 
-
-class FakeEmbeddingProvider:
-    model_name = "fake-embedding"
-
-    def embed_query(self, text: str) -> list[float]:
-        lowered = text.lower()
-        if "wooting" in lowered or "brand" in lowered:
-            return [1.0, 0.0]
-        if "return" in lowered or "refund" in lowered:
-            return [0.0, 1.0]
-        return [0.5, 0.5]
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [self.embed_query(text) for text in texts]
-
-
-def test_sentence_transformer_model_is_shared_across_provider_instances(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sentinel = object()
-    loads: list[tuple[str, bool]] = []
-
-    def fake_sentence_transformer(model_name: str, *, local_files_only: bool = False):
-        loads.append((model_name, local_files_only))
-        return sentinel
-
-    monkeypatch.setattr(
-        "sentence_transformers.SentenceTransformer",
-        fake_sentence_transformer,
-    )
-    knowledge_tools._load_sentence_transformer_model.cache_clear()
-    try:
-        first = knowledge_tools.SentenceTransformerEmbeddingProvider("test-shared-model")
-        second = knowledge_tools.SentenceTransformerEmbeddingProvider("test-shared-model")
-
-        assert first._get_model() is sentinel
-        assert second._get_model() is sentinel
-        assert loads == [("test-shared-model", True)]
-    finally:
-        knowledge_tools._load_sentence_transformer_model.cache_clear()
-
-
-def _fake_vector_index() -> KnowledgeVectorIndex:
-    return KnowledgeVectorIndex(
-        version=1,
-        embedding_provider="sentence_transformers",
-        embedding_model=FakeEmbeddingProvider.model_name,
-        documents_hash="test-documents",
-        chunk_size=420,
-        chunk_overlap=80,
-        query_instruction="",
-        chunks=[
-            KnowledgeVectorIndexChunk(
-                document_id=1,
-                chunk_id="1:0",
-                text="return refund after sales",
-                embedding=[0.0, 1.0],
-            ),
-            KnowledgeVectorIndexChunk(
-                document_id=5,
-                chunk_id="5:0",
-                text="Logitech Razer Wooting brand",
-                embedding=[1.0, 0.0],
-            ),
-        ],
-    )
-
-
-def _knowledge_service() -> KnowledgeRetrievalToolService:
-    return KnowledgeRetrievalToolService(
-        embedding_provider=FakeEmbeddingProvider(),
-        vector_index=_fake_vector_index(),
-    )
+from tests.tools.shared.local_retrieval.hybrid_fixtures import (
+    FakeEmbeddingProvider,
+    _fake_vector_index,
+    _knowledge_service,
+)
 
 
 def test_document_search_public_schema_fixes_hybrid_retrieval() -> None:
@@ -106,29 +36,6 @@ def test_document_search_public_schema_fixes_hybrid_retrieval() -> None:
         )
         assert internal_input.retrieval_mode == "hybrid"
 
-
-@pytest.mark.asyncio
-async def test_policy_and_knowledge_search_support_hybrid_retrieval() -> None:
-    service = _knowledge_service()
-    policy = await service.search_policy(DocumentSearchInput(query="return refund", limit=3))
-    knowledge = await service.search_knowledge(
-        DocumentSearchInput(query="Logitech Razer brand", limit=3)
-    )
-
-    assert policy.result_type == "documents"
-    assert policy.search_strategy == "hybrid"
-    assert policy.documents[0].document_type in {"policy", "store_rule", "faq"}
-    assert "retrieval_debug" in policy.documents[0].metadata
-
-    assert knowledge.result_type == "documents"
-    assert knowledge.search_strategy == "hybrid"
-    assert knowledge.documents[0].document_type in {
-        "brand",
-        "peripheral_knowledge",
-        "faq",
-        "store_rule",
-    }
-    assert any(document.document_type == "brand" for document in knowledge.documents)
 
 
 @pytest.mark.asyncio
@@ -157,6 +64,7 @@ async def test_document_search_limit_bounds_returned_chunks() -> None:
     assert result.documents[0].metadata["retrieval_debug"]["chunk_id"] in {"1:0", "2:0"}
 
 
+
 @pytest.mark.asyncio
 async def test_document_search_returns_complete_top_chunks_without_overlap_only_tail() -> None:
     first_section = "退货条件：签收七天内、包装完整且不影响二次销售。" * 10
@@ -180,6 +88,7 @@ async def test_document_search_returns_complete_top_chunks_without_overlap_only_
     assert all(not item.snippet.endswith("...") for item in result.documents)
 
 
+
 @pytest.mark.asyncio
 async def test_policy_search_finds_customer_privacy_boundary() -> None:
     service = _knowledge_service()
@@ -195,6 +104,7 @@ async def test_policy_search_finds_customer_privacy_boundary() -> None:
     assert result.result_type == "documents"
     assert result.documents[0].title == "用户隐私与数据访问规则"
     assert any("不得查询、披露、汇总或推断其他用户" in item.snippet for item in result.documents)
+
 
 
 @pytest.mark.asyncio
@@ -215,6 +125,7 @@ async def test_document_search_can_select_retrieval_mode() -> None:
     assert vector.result_type == "documents"
     assert vector.documents[0].metadata["retrieval_debug"]["vector_score"] > 0
     assert vector.documents[0].snippet == "Logitech Razer Wooting brand"
+
 
 
 @pytest.mark.asyncio

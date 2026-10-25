@@ -12,14 +12,17 @@ from tests.support.execution_tool_concurrency import (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["success", "error", "cancel", "timeout"])
-@pytest.mark.parametrize("name", ["order_lookup", "catalog_search", "catalog_lookup", "catalog_facets"])
+@pytest.mark.parametrize("name", [
+    "order_lookup", "catalog_search", "catalog_lookup", "catalog_facets",
+])
 async def test_tool_sessions_are_per_call_and_closed_on_every_exit(monkeypatch, outcome, name):
     factory = SessionFactory()
     chat_session = object()
     seen = []
 
     async def lookup(self, request):
-        session = self.engine.repository.session if name in {"catalog_search", "catalog_lookup"} else self.session
+        session = (self.engine.repository.session
+                   if name in {"catalog_search", "catalog_lookup"} else self.session)
         seen.append((session, getattr(request, "user_id", None)))
         if outcome == "error":
             raise RuntimeError("synthetic failure")

@@ -12,6 +12,7 @@ from catalog_evidence import now
 SQL = """SELECT s.id sku_id, p.id spu_id, s.title sku_title, p.title spu_title,
  b.name brand, c.name category, s.price::text price, s.stock,
  s.status sku_status, p.status spu_status, s.specs_json,
+ p.sales_count spu_sales_count, s.sales_count sku_sales_count,
  coalesce((SELECT jsonb_agg(jsonb_build_object('key',k.name,'value',v.value)
  ORDER BY k.name,v.value) FROM goods_attribute_relation a
  JOIN attribute_key k ON k.id=a.attr_key_id JOIN attribute_value v ON v.id=a.attr_value_id
@@ -33,6 +34,10 @@ def spec(row, key):
 
 
 def derive(scenario, rows):
+    if scenario.startswith("core_"):
+        from catalog_core_basis import derive_core
+
+        return derive_core(scenario, rows, spec)
     active = [r for r in rows if r["sku_status"] == r["spu_status"] == 1]
     if not active:
         raise ValueError("no_active_products")

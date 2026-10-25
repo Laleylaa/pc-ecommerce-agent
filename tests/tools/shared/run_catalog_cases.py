@@ -17,7 +17,9 @@ from uuid import uuid4
 from catalog_basis import read_basis
 from catalog_evidence import (
     HERE,
+    RESULTS,
     ROOT,
+    TOOLS,
     batch_path,
     code_state,
     now,
@@ -90,7 +92,7 @@ async def live_main(group: str, args: argparse.Namespace) -> None:
                 ),
             }
             if args.prepare:
-                template = read_json(HERE / f"{group}_cases.json")
+                template = read_json(TOOLS / f"catalog_{group}" / "cases.json")
                 if args.kind:
                     template["cases"] = [
                         c for c in template["cases"] if c["kind"] == args.kind
@@ -98,7 +100,9 @@ async def live_main(group: str, args: argparse.Namespace) -> None:
                 if args.case:
                     template["cases"] = [c for c in template["cases"] if c["id"] == args.case]
                 if not template["cases"]:
-                    raise SystemExit("No case matches the selected tool/kind/case; nothing prepared")
+                    raise SystemExit(
+                        "No case matches the selected tool/kind/case; nothing prepared"
+                    )
                 bindings = read_json(Path(args.bindings)) if args.bindings else {}
                 if not isinstance(bindings, dict) or set(bindings) - {
                     c["id"] for c in template["cases"]
@@ -121,7 +125,7 @@ async def live_main(group: str, args: argparse.Namespace) -> None:
                     + "-"
                     + uuid4().hex[:6]
                 )
-                folder = HERE / "results" / name
+                folder = RESULTS / name
                 (folder / "evidence/traces").mkdir(parents=True, exist_ok=False)
                 (folder / "checks").mkdir()
                 prepared, suite = {}, copy.deepcopy(template)
@@ -141,6 +145,9 @@ async def live_main(group: str, args: argparse.Namespace) -> None:
                         )
                         case["hard"] = resolve(
                             case["hard"], basis["oracle"], basis["parameters"]
+                        )
+                        case["review_reference"] = resolve(
+                            case.get("review_reference", []), basis["oracle"], basis["parameters"]
                         )
                         if "allowed_identity_brand" in case:
                             case["allowed_identity_brand"] = resolve(
@@ -177,7 +184,9 @@ async def live_main(group: str, args: argparse.Namespace) -> None:
                                 "baseline.json",
                             )
                         },
-                        "database": "configured catalog; read-only transaction; credentials omitted",
+                        "database": (
+                            "configured catalog; read-only transaction; credentials omitted"
+                        ),
                         "execution": "formal single-tool binding; no agent/chat/frontend",
                     },
                 )
@@ -284,8 +293,8 @@ def cli(group: str) -> None:
     )
     parser.add_argument(
         "--kind",
-        choices=("smoke", "contract", "business"),
-        help="Prepare only one predeclared purpose; omit for all seven cases",
+        choices=("smoke", "contract", "business", "boundary"),
+        help="Prepare only one predeclared purpose; omit for all cases in this tool",
     )
     parser.add_argument("--case", help="Prepare only this exact case ID")
     modes = parser.add_mutually_exclusive_group(required=True)

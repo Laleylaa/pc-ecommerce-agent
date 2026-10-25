@@ -8,22 +8,17 @@ import asyncio
 import json
 from pathlib import Path
 
-import pytest
 from app.tools.contracts import BoundTool, execute_bound_tool, static_tool_catalog
 
-HERE = Path(__file__).resolve().parent
-CASES = [
-    (suite["tool_name"], case)
-    for path in sorted(HERE.glob("*_cases.json"))
-    for suite in [json.loads(path.read_text())]
-    for case in suite["cases"]
-    if case["kind"] == "contract"
-]
+
+def contract_cases(tool_name):
+    path = Path(__file__).resolve().parents[1] / tool_name / "cases.json"
+    suite = json.loads(path.read_text())
+    assert suite["tool_name"] == tool_name
+    return [case for case in suite["cases"] if case["kind"] == "contract"]
 
 
-@pytest.mark.contract
-@pytest.mark.parametrize("tool_name,case", CASES, ids=[c["id"] for _, c in CASES])
-def test_invalid_public_arguments_stop_before_handler(tool_name, case):
+def assert_invalid_public_arguments_stop_before_handler(tool_name, case):
     contract = static_tool_catalog().get_by_llm_name(tool_name).contract
     calls = []
 

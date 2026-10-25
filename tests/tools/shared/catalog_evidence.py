@@ -8,6 +8,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+TOOLS = HERE.parent
+RESULTS = TOOLS / "catalog/results"
 
 
 def now():
@@ -56,8 +58,8 @@ def code_state():
 
 
 def batch_path(name):
-    path = (HERE / "results" / name).resolve()
-    if path.parent != (HERE / "results").resolve() or not path.is_dir():
+    path = (RESULTS / name).resolve()
+    if path.parent != RESULTS.resolve() or not path.is_dir():
         raise ValueError("Batch must be an existing direct child of catalog/results")
     return path
 

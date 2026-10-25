@@ -1,18 +1,15 @@
 """Check frozen new-suite evidence. --render is local; --fetch reads local Phoenix.
 
 No database/model/tool calls. Semantic verdicts must be authored by a reviewer.
-Only catalog-basic-1 batches are supported; historical evidence stays unchanged.
+Current catalog suites only; historical evidence stays unchanged.
 """
 
 import argparse
-import copy
 import os
-import re
 import shutil
 import urllib.parse
 from collections import Counter
 from datetime import UTC, datetime
-from decimal import Decimal
 from uuid import uuid4
 
 from catalog_evidence import (
@@ -45,106 +42,18 @@ def value_at(value, path: str):
     return MISSING
 
 
-def number(value) -> Decimal:
-    # Only the predefined yuan-equivalent forms; never import the tested matcher.
-    literal = str(value).strip().lower()
-    literal = re.sub(r"^(?:人民币|rmb|cny|￥|¥)\s*", "", literal)
-    literal = re.sub(r"\s*(?:元|人民币|rmb|cny)$", "", literal)
-    result = Decimal(literal)
-    if not result.is_finite():
-        raise ValueError("Nonfinite number")
-    return result
-
-
-def compare(actual, mode: str, expected) -> bool:
-    if actual == MISSING:
-        return False
-    try:
-        if mode in {"eq", "ordered_eq"}:
-            return actual == expected
-        if mode == "set_eq":
-            # Multiplicity must not hide duplicate products or fields.
-            return (
-                isinstance(actual, list)
-                and len(actual) == len(expected)
-                and {compact(x) for x in actual} == {compact(x) for x in expected}
-            )
-        if mode == "required_optional_set":
-            required = set(expected["required"])
-            allowed = required | set(expected["optional"])
-            return (
-                isinstance(actual, list)
-                and len(actual) == len(set(actual))
-                and required <= set(actual) <= allowed
-            )
-        if mode == "decimal_eq":
-            return number(actual) == number(expected)
-        if mode == "decimal_list_eq":
-            return isinstance(actual, list) and [number(x) for x in actual] == [
-                number(x) for x in expected
-            ]
-        if mode == "one_of":
-            return actual in expected
-        if mode == "nonempty_subset":
-            return (
-                isinstance(actual, list)
-                and bool(actual)
-                and len(actual) == len(set(actual))
-                and set(actual) <= set(expected)
-            )
-        if mode == "contains":
-            return expected in actual
-        if mode == "contains_mapping":
-            return isinstance(actual, dict) and all(
-                actual.get(k, MISSING) == v for k, v in expected.items()
-            )
-    except (ValueError, TypeError, ArithmeticError):
-        return False
-    raise ValueError("Unrecognized comparison: " + mode)
-
-
-def projected_result(execution):
-    result = copy.deepcopy(execution.get("result") or {})
-    output = result.get("output") or {}
-    if output:
-        products = output.get("products", [])
-        output["product_spu_ids"] = [p["spu_id"] for p in products]
-        output["product_sku_ids"] = [
-            i for p in products for i in p["candidate_sku_ids"]
-        ]
-        output["product_sku_order"] = [p["sku_id"] for p in products]
-        output["product_prices"] = [p["price"] for p in products]
-        fields = (output.get("lookup_summary") or {}).get("fields", [])
-        output["lookup_fields"] = {f["field"]: f for f in fields}
-        output["field_versions"] = {
-            f["field"]: {
-                v["value"]: sorted(x["sku_id"] for x in v["versions"])
-                for v in f["values"]
-            }
-            for f in fields
-        }
-        items = output.get("items", [])
-        output["facet_counts"] = {
-            i["value"]: {k: i[k] for k in ("sku_count", "spu_count", "count")}
-            for i in items
-        }
-        output["facet_sources"] = {
-            i["value"]: {
-                "sku_ids": sorted(x for v in i["values"] for x in v["sku_ids"]),
-                "spu_ids": sorted(x for v in i["values"] for x in v["spu_ids"]),
-            }
-            for i in items
-        }
-        output["unique_facet_values"] = len(items) == len(output["facet_counts"])
-    return result
-
-
 def hard_checks(suite, case, execution):
-    result = projected_result(execution)
+    result = execution.get("result") or {}
     rows = []
     for field, mode, expected in (
         case.get("common_hard_override", suite["common_hard"]) + case["hard"]
     ):
+        # Business reference facts are reviewed by the external reviewer, never
+        # converted into automatic semantic verdicts or a required plan vocabulary.
+        if mode != "eq" or field not in {"ok", "error", "output", "error.code"}:
+            raise ValueError("Semantic assertions belong in review_reference: " + field)
+        if field in {"output", "error"} and expected is not None:
+            raise ValueError("Only null/presence contract assertions are automatic")
         actual = value_at(result, field)
         rows.append(
             {
@@ -152,7 +61,7 @@ def hard_checks(suite, case, execution):
                 "comparison": mode,
                 "expected": expected,
                 "actual": actual,
-                "status": "通过" if compare(actual, mode, expected) else "失败",
+                "status": "通过" if actual != MISSING and actual == expected else "失败",
             }
         )
     if case["trace_route"] == "input_rejected":
@@ -238,26 +147,28 @@ def trace_rows(case, execution, response):
             "catalog_facets": "FacetQueryPlan",
         }[execution["tool_name"]]
         accepted = [v["schema"] for v in validations if v["outcome"] == "accepted"]
+        required = ["CatalogScopePlan"] if case["trace_route"] == "identity_pending" else [
+            "CatalogScopePlan", plan, "ToolPlanReview",
+        ]
         check(
             "workflow_validations",
-            ["CatalogScopePlan", plan, "ToolPlanReview"],
+            required,
             accepted,
-            all(x in accepted for x in ["CatalogScopePlan", plan, "ToolPlanReview"]),
+            all(x in accepted for x in required),
         )
         check(
             "workflow_order",
-            "scope then detail then review",
+            "identity scope only" if len(required) == 1 else "scope then detail then review",
             accepted,
-            all(x in accepted for x in ["CatalogScopePlan", plan, "ToolPlanReview"])
-            and accepted.index("CatalogScopePlan")
-            < accepted.index(plan)
-            < accepted.index("ToolPlanReview"),
+            all(x in accepted for x in required)
+            and [accepted.index(x) for x in required]
+            == sorted(accepted.index(x) for x in required),
         )
         check(
             "models_complete",
-            ">=3 nontruncated model inputs/outputs",
+            f">={len(required)} nontruncated model inputs/outputs",
             len(models),
-            len(models) >= 3
+            len(models) >= len(required)
             and all(
                 m["input"] is not None
                 and m["output"] is not None
@@ -326,7 +237,7 @@ def archive_analysis(folder) -> None:
         {
             "archived_at": now(),
             "reason": "before explicit re-render; review reason in semantic",
-            "review_standard": ["review-v1", "catalog-review-v2"],
+            "review_standard": ["review-v1", "catalog-review-v3"],
             "sha256": {path.name: sha(path) for path in files},
         },
     )
@@ -355,7 +266,7 @@ def semantic_rows(
             and review.get("summary")
         )
         and review.get("reviewer_type") in {"independent_llm", "human"}
-        and set(review.get("review_standard", [])) >= {"review-v1", "catalog-review-v2"}
+        and set(review.get("review_standard", [])) >= {"review-v1", "catalog-review-v3"}
         and len(rows) == len(wanted)
         and {r.get("id") for r in rows} == wanted
         and all(
@@ -484,7 +395,7 @@ def render(folder) -> None:
                     "automatic": hard,
                     "trace_checks": traces,
                     "trace": evidence,
-                    "instruction": "先读冻结预期和独立事实，再逐项判读；不得把approve当验收。",
+                    "instruction": "先读review_reference与原始行，再核对全部阶段和结果；参考字段允许等价表达，程序不判语义，不得把approve当验收。",
                 }
             )
             semantic, complete = semantic_rows(suite, case, execution, reviews)

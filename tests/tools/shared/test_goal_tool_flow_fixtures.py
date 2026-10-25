@@ -24,7 +24,7 @@ from tests.support.tool_planning import Model
 
 @pytest.mark.asyncio
 async def test_fixture_search_reads_known_object_and_not_found():
-    service = CatalogSearchService(SearchRecords())
+    service = CatalogSearchService(SearchRecords(), operation="lookup")
     found = await service.search(CatalogSearchRequest(query="查SKU 101的价格"))
     assert found.products[0].price == 260
     absent = await service.search(CatalogSearchRequest(query="查SKU 999的价格"))

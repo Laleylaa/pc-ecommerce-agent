@@ -1,0 +1,1287 @@
+{
+  "version": "catalog-review-boundary-3",
+  "type": "search",
+  "tool_name": "catalog_search",
+  "design_status": "修正原3—6的正例前提错误；按真实只读快照预标注边界行为，旧批次不改判。",
+  "common_hard": [
+    [
+      "ok",
+      "eq",
+      true
+    ],
+    [
+      "error",
+      "eq",
+      null
+    ]
+  ],
+  "common_semantic": [
+    {
+      "id": "intent",
+      "criterion": "是否完整理解本例需求；功能事实不能改成筛选，目录不能变成单商品资料。"
+    },
+    {
+      "id": "scope",
+      "criterion": "身份、品类、可信scope及同SKU范围是否忠实；不得猜编号或缩小全店目录。"
+    },
+    {
+      "id": "workflow",
+      "criterion": "逐阶段检查范围计划、业务计划、复核和程序校验；有修正则检查全部尝试。approve不等于通过。"
+    },
+    {
+      "id": "facts",
+      "criterion": "逐项对照独立原始行、冻结预期、最终返回与Trace，不跨版本拼规格，不遗漏必要事实。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "search-smoke",
+      "kind": "smoke",
+      "input": {
+        "query": "300元以内的键盘，按价格从低到高推荐2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "search_price",
+      "intent": "不提供category_hint；识别键盘与预算上限（含300），返回最便宜两个型号。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "不提供category_hint；识别键盘与预算上限（含300），返回最便宜两个型号。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ]
+      ]
+    },
+    {
+      "id": "search-scope",
+      "kind": "business",
+      "input": {
+        "query": "只在给定商品范围里选最便宜的一款键盘。",
+        "limit": 1,
+        "scope": "$oracle.scope"
+      },
+      "oracle_scenario": "search_scope",
+      "intent": "可信SPU范围取交集；仅在指定型号中按最低在售SKU价格选一款。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "可信SPU范围取交集；仅在指定型号中按最低在售SKU价格选一款。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ]
+      ]
+    },
+    {
+      "id": "search-white",
+      "kind": "business",
+      "input": {
+        "query": "300元以内的白色键盘，按价格从低到高推荐2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "search_white",
+      "intent": "白色与预算在同一SKU成立；不能拿白色高价版本搭配另一版本低价。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "白色与预算在同一SKU成立；不能拿白色高价版本搭配另一版本低价。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ]
+      ]
+    },
+    {
+      "id": "search-wireless",
+      "kind": "business",
+      "input": {
+        "query": "300元以内支持无线的键盘，按价格从低到高推荐2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "search_wireless",
+      "intent": "无线与预算在同一SKU成立；这里是候选筛选，不是型号功能事实查询。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "无线与预算在同一SKU成立；这里是候选筛选，不是型号功能事实查询。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "独立SELECT需满足catalog_basis.py内本场景前提，否则未执行。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ]
+      ]
+    },
+    {
+      "id": "search-brand",
+      "kind": "business",
+      "input": {
+        "query": "只看 Keychron 的键盘，500元以内，按价格从低到高推荐2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_brand",
+      "intent": "品牌与预算交集，按匹配版本最低价推荐两个型号。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "品牌与预算交集，按匹配版本最低价推荐两个型号。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-exclusion",
+      "kind": "business",
+      "input": {
+        "query": "想买500元以内的键盘，不要 Keychron，也不要黑色，挑最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_exclusion",
+      "intent": "品牌和颜色两个排除都必须保留；未知颜色不能算非黑色。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "品牌和颜色两个排除都必须保留；未知颜色不能算非黑色。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-range",
+      "kind": "business",
+      "input": {
+        "query": "预算200到400元，含两头，推荐2款键盘，按每款最低符合条件的价格从高到低排。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_range",
+      "intent": "闭区间双端点、降序及型号内最低符合条件价格。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "闭区间双端点、降序及型号内最低符合条件价格。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_desc"
+        ]
+      ]
+    },
+    {
+      "id": "search-combination",
+      "kind": "boundary",
+      "input": {
+        "query": "想要白色、支持无线的红轴键盘，500元以内，推荐最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_combination",
+      "intent": "白色+无线+红轴+500元预算没有精确匹配；必须如实返回精确数量0。允许另附明确标记、同SKU最多差一个条件维度的替代，不得当成满足要求的两款。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "白色+无线+红轴+500元预算没有精确匹配；必须如实返回精确数量0。允许另附明确标记、同SKU最多差一个条件维度的替代，不得当成满足要求的两款。",
+      "allowed_equivalences": [
+        "不逐字比较说明文字，必须保留每个条件和对象。",
+        "仅按本例冻结的独立数据及语义规则判定，不根据被测输出放宽预期。",
+        "允许无匹配空结果或明确标记的替代；不强制替代排名/选中型号。替代价格与差异须有独立原始行证据。"
+      ],
+      "data_requirement": "完整一致的颜色/无线/轴体原始记录；独立SELECT确认精确型号数为0。零匹配是可执行预期，不再要求找到两款；若数据变为有精确匹配须重新设计批次。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.query_state",
+          "eq",
+          "completed"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          0
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.matched_spu_count",
+          "eq",
+          0
+        ],
+        [
+          "output.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.matching_complete",
+          "eq",
+          true
+        ],
+        [
+          "output.outcome_signature",
+          "one_of",
+          [
+            [
+              "no_match",
+              "no_matching_sku",
+              "none",
+              "explain_no_match"
+            ],
+            [
+              "partial",
+              "alternatives_found",
+              "alternative",
+              "explain_differences"
+            ]
+          ]
+        ],
+        [
+          "output",
+          "optional_alternatives",
+          "$oracle.alternative_material"
+        ],
+        [
+          "output.returned_count",
+          "one_of",
+          [
+            0,
+            1,
+            2
+          ]
+        ],
+        [
+          "output.lookup_summary",
+          "eq",
+          null
+        ]
+      ]
+    },
+    {
+      "id": "search-sales",
+      "kind": "business",
+      "input": {
+        "query": "500元以内的键盘，按型号总销量从高到低推荐。"
+      },
+      "oracle_scenario": "core_search_sales",
+      "intent": "先满足预算，再按型号总销量推荐；未指定数量时默认3款，不用版本销量替代。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "先满足预算，再按型号总销量推荐；未指定数量时默认3款，不用版本销量替代。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "sales"
+        ],
+        [
+          "output.ranking_strategy",
+          "eq",
+          "spu_total_sales"
+        ]
+      ]
+    },
+    {
+      "id": "search-mouse",
+      "kind": "business",
+      "input": {
+        "query": "鼠标要不超过60克，最高DPI至少20000，300元以内，给我最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_mouse",
+      "intent": "鼠标重量上限、DPI下限与预算；含端点，单位正确，同SKU成立。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "鼠标重量上限、DPI下限与预算；含端点，单位正确，同SKU成立。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-monitor",
+      "kind": "business",
+      "input": {
+        "query": "找27英寸、2K分辨率、刷新率至少144Hz的显示器，2000元以内，最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_monitor",
+      "intent": "显示器尺寸、分辨率别名、刷新率和预算的交集，不跨版本拼规格。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "显示器尺寸、分辨率别名、刷新率和预算的交集，不跨版本拼规格。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-headset",
+      "kind": "business",
+      "input": {
+        "query": "想买带麦克风的头戴式耳机，400元以内，最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_headset",
+      "intent": "佩戴类型和麦克风是不同字段；用途不额外推断无线等限制。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "佩戴类型和麦克风是不同字段；用途不额外推断无线等限制。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-speaker",
+      "kind": "business",
+      "input": {
+        "query": "音箱功率至少40瓦，400元以内，选最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_speaker",
+      "intent": "音箱功率数值及单位；不把声道或产品类型当功率。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "音箱功率数值及单位；不把声道或产品类型当功率。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-webcam",
+      "kind": "business",
+      "input": {
+        "query": "摄像头至少60帧，要带麦克风，500元以内，推荐最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_webcam",
+      "intent": "摄像头帧率与麦克风同SKU成立，不擅自添加分辨率条件。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "摄像头帧率与麦克风同SKU成立，不擅自添加分辨率条件。",
+      "allowed_equivalences": [
+        "不比较解释文字逐字一致；必须完整保留需求。",
+        "价格允许十进制等值；集合忽略顺序，指定排序另行比较。",
+        "允许型号名称中保留品牌或拆分品牌；不得改变确认对象。"
+      ],
+      "data_requirement": "prepare阶段独立SELECT；完整一致的原始字段、明确型号、足够候选且截断处无排序并列。前提不足记未执行，不建数、不改预期。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ]
+      ]
+    },
+    {
+      "id": "search-combination-black",
+      "kind": "boundary",
+      "input": {
+        "query": "想要黑色、支持无线的红轴键盘，500元以内，推荐最便宜的2款。",
+        "limit": 2
+      },
+      "oracle_scenario": "core_search_combination_black",
+      "intent": "用户请求2款但精确候选仅1型号；只返回独立快照中的实际候选及真实价格，requested_count仍为2，精确总数和returned_count均为1；不凑数、不引入替代。",
+      "hard": [],
+      "trace_route": "model",
+      "semantic_expectation": "用户请求2款但精确候选仅1型号；只返回独立快照中的实际候选及真实价格，requested_count仍为2，精确总数和returned_count均为1；不凑数、不引入替代。",
+      "allowed_equivalences": [
+        "不逐字比较说明文字，必须保留每个条件和对象。",
+        "仅按本例冻结的独立数据及语义规则判定，不根据被测输出放宽预期。"
+      ],
+      "data_requirement": "独立SELECT确认精确型号数大于0且小于请求2；当前快照为SPU33/SKU389/219元。少于请求数量是可执行预期，不是准备失败。",
+      "review_reference": [
+        [
+          "output.query_plan.operation",
+          "eq",
+          "search"
+        ],
+        [
+          "output.match_kind",
+          "eq",
+          "exact"
+        ],
+        [
+          "output.fallback_attempted",
+          "eq",
+          false
+        ],
+        [
+          "output.returned_count",
+          "eq",
+          "$oracle.returned"
+        ],
+        [
+          "output.total_match_count",
+          "eq",
+          "$oracle.total"
+        ],
+        [
+          "output.matched_sku_count",
+          "eq",
+          "$oracle.sku_count"
+        ],
+        [
+          "output.product_spu_ids",
+          "set_eq",
+          "$oracle.spu_ids"
+        ],
+        [
+          "output.product_sku_ids",
+          "nonempty_subset",
+          "$oracle.selected_sku_ids"
+        ],
+        [
+          "output.product_prices",
+          "decimal_list_eq",
+          "$oracle.selected_prices"
+        ],
+        [
+          "output.product_spu_ids",
+          "ordered_eq",
+          "$oracle.ordered_spu_ids"
+        ],
+        [
+          "output.query_plan.sort",
+          "eq",
+          "price_asc"
+        ],
+        [
+          "output.status",
+          "eq",
+          "success"
+        ],
+        [
+          "output.requested_count",
+          "eq",
+          2
+        ],
+        [
+          "output.is_exhaustive",
+          "eq",
+          true
+        ],
+        [
+          "output.unknown_sku_count",
+          "eq",
+          0
+        ],
+        [
+          "output.matching_complete",
+          "eq",
+          true
+        ]
+      ]
+    },
+    {
+      "id": "search-empty-scope",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "scope": {}
+      },
+      "oracle_scenario": null,
+      "intent": "显式空scope应拒绝，不能静默扩大到全店。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "显式空scope应拒绝，不能静默扩大到全店。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    },
+    {
+      "id": "search-bad-limit",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "limit": 0
+      },
+      "oracle_scenario": null,
+      "intent": "limit=0应拒绝，不能自动改成默认值。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "limit=0应拒绝，不能自动改成默认值。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    },
+    {
+      "id": "search-runtime-field",
+      "kind": "contract",
+      "input": {
+        "query": "店里有哪些商品？",
+        "user_id": 999
+      },
+      "oracle_scenario": null,
+      "intent": "拒绝用户注入服务端身份字段；不能透传给handler。",
+      "hard": [
+        [
+          "ok",
+          "eq",
+          false
+        ],
+        [
+          "output",
+          "eq",
+          null
+        ],
+        [
+          "error.code",
+          "eq",
+          "invalid_input"
+        ]
+      ],
+      "trace_route": "input_rejected",
+      "semantic_expectation": "拒绝用户注入服务端身份字段；不能透传给handler。",
+      "allowed_equivalences": [
+        "错误文字可以不同；必须是invalid_input且无业务输出。"
+      ],
+      "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
+      "common_hard_override": []
+    }
+  ],
+  "revision_note": "用户授权：输入与业务目标不变；业务结果预期移为工具外语义复检参考，程序仅检查契约与追踪，不规定条件字段表达或语义匹配结论。"
+}
