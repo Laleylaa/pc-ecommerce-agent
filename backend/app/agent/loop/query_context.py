@@ -3,7 +3,6 @@
 from app.agent.loop.query_schema import CandidateReference, ContextReference, QueryGoal
 from app.agent.loop.query_state import GoalBook
 from app.agent.loop.tool_adapter import AdmissionError
-from app.rules.product_identity import explicit_product_ids
 from app.schemas.context import PreparedTurn
 from app.tools.order_identity import explicit_order_ids
 
@@ -47,13 +46,15 @@ def resolve_references(prepared: PreparedTurn, goal: QueryGoal) -> list[dict]:
     ]
 
 
-def validate_identities(
+def validate_private_access(
     prepared: PreparedTurn,
     book: GoalBook,
     goal: QueryGoal,
     name: str,
     arguments: dict,
 ) -> None:
+    # Natural-language identity interpretation belongs to the model/tool.
+    # Server-injected ownership and typed arguments remain authoritative.
     if name == "knowledge_search":
         query = arguments.get("query", "")
         # The external web provider never needs private order identities or tracking numbers.
@@ -65,37 +66,23 @@ def validate_identities(
                 private_values.add(str(tracking))
         if explicit_order_ids(query) or any(value in query for value in private_values):
             raise AdmissionError("private_order_data_disallowed_in_web_query")
-    products = explicit_product_ids(prepared.message)
-    orders = explicit_order_ids(prepared.message)
-    for resolved in resolve_references(prepared, goal):
-        reference = resolved["identity"]
-        for kind in ("sku", "spu"):
-            if reference.get(f"{kind}_id"):
-                products.add((kind, reference[f"{kind}_id"]))
-        if reference.get("order_id"):
-            orders.add(reference["order_id"])
-    source_goals = {goal.id, *(p.goal_id for p in goal.prerequisites)}
-    for record in book.evidence.active_records():
-        if record.invocation.goal_id not in source_goals or not record.result.ok:
-            continue
-        output = record.result.output or {}
-        for product in output.get("products", []):
-            products.add(("spu", product["spu_id"]))
-            products.add(("sku", product["sku_id"]))
-            products.update(("sku", sku) for sku in product.get("candidate_sku_ids", []))
-        if output.get("order"):
-            orders.add(output["order"]["id"])
-        orders.update(item["id"] for item in output.get("candidates", []))
-        orders.update(item["id"] for item in output.get("analysis_orders", []))
-        # Relaxed order suggestions are deliberately not trusted automatic inputs.
-    if name in {"catalog_search", "catalog_lookup", "catalog_facets"}:
-        requested = explicit_product_ids(arguments.get("query", ""))
-        scope = arguments.get("scope") or {}
-        for kind in ("sku", "spu"):
-            requested.update((kind, value) for value in scope.get(f"{kind}_ids", []))
-        if not requested <= products:
-            raise AdmissionError("unsourced_product_identity")
+
+
     if name == "order_lookup":
+        # Private records retain request/evidence authorization; public catalog IDs do not.
+        orders = explicit_order_ids(prepared.message)
+        for resolved in resolve_references(prepared, goal):
+            if identity := resolved["identity"].get("order_id"):
+                orders.add(identity)
+        source_goals = {goal.id, *(p.goal_id for p in goal.prerequisites)}
+        for record in book.evidence.active_records():
+            if record.invocation.goal_id not in source_goals or not record.result.ok:
+                continue
+            output = record.result.output or {}
+            if output.get("order"):
+                orders.add(output["order"]["id"])
+            orders.update(item["id"] for item in output.get("candidates", []))
+            orders.update(item["id"] for item in output.get("analysis_orders", []))
         requested = explicit_order_ids(arguments.get("query") or "")
         if arguments.get("order_id") is not None:
             requested.add(arguments["order_id"])

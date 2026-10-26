@@ -119,8 +119,6 @@ async def test_free_text_is_not_answer_or_evidence(monkeypatch):
     "tool_request,code",
     [
         (SEARCH, "duplicate_query"),
-        (calls(("catalog_search", {"query": "SKU 9999"})), "unsourced_product_identity"),
-        (calls(("order_lookup", {"order_id": 9999})), "unsourced_order_identity"),
         (calls(("catalog_search", {"query": "SKU 9101", "user_id": 99})), "invalid_input"),
     ],
 )
@@ -234,7 +232,7 @@ async def test_explicit_retry_replaces_failed_evidence_but_preserves_attempt_aud
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise OSError("synthetic temporary dependency failure")
+            raise TimeoutError("synthetic ordinary query timeout")
         return await original.handler(request)
 
     response, provider, repo = await run(

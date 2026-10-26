@@ -73,7 +73,8 @@ def test_tool_deadline_rejects_expired_and_cancels_running_call(loop_kind):
         record = await asyncio.wait_for(query.execute(op), 1)
         assert entered.is_set() and cleaned.is_set()
         assert not record.result.ok
-        assert record.result.error.code == "deadline_exhausted"
+        assert record.result.error.code == "resource_limit"
+        assert record.result.error.next_action == "stop"
         assert len(query.attempts(op)) == 1
 
     with asyncio.Runner(loop_factory=lambda: new_loop(loop_kind)) as runner:

@@ -113,7 +113,7 @@ def make_catalog(monkeypatch, *, products=None):
     web = WebSearchToolService("synthetic", transport=httpx.MockTransport(
         lambda request: httpx.Response(200, json={"results": [{
             "title": "合成接口文档", "url": "https://example.test/p1/interfaces",
-            "content": "合成资料：此版本有 USB 接口。", "score": 0.9,
+            "snippet": "接口文档", "summary": "合成资料：此版本有 USB 接口。", "rerank_score": 2.7,
         }]}),
     ))
     session = NoDatabase()

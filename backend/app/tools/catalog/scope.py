@@ -3,10 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.core.llm_feedback import OutputValidationError
 from app.core.loop_tracing import program_event
 from app.repositories.catalog_search import CatalogIdentityRecord, CatalogSearchRepository
-from app.rules.product_identity import explicit_product_ids
 from app.schemas.catalog_scope import CatalogScopePlan
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
@@ -64,8 +62,6 @@ async def prepare_catalog_scope(
             category = normalize_category_hint(plan.category)
             if category is not None:
                 plan.category = category
-        if plan.target and (plan.target.kind, plan.target.id) not in explicit_product_ids(query):
-            raise OutputValidationError("编号必须来自原文明示SKU/SPU，不能复制scope或猜编号。")
 
     draft = await generate_tool_plan(
         model, schema=CatalogScopePlan, required=(), prompt=build_scope_prompt(operation),

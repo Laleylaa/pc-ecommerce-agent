@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, HttpUrl, StrictStr, ValidationError
 from app.tools.schemas import WebSearchHit, WebSearchInput, WebSearchOutput
 
 WEB_SEARCH_TIMEOUT_SECONDS = 8.0
-TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+DEEPSEEK_SEARCH_URL = "https://api.deepseek.com/v1/tools/search"
 
 
 class WebSearchError(Exception):
@@ -18,15 +18,16 @@ class WebSearchError(Exception):
         self.code = code
 
 
-class _TavilyHit(BaseModel):
+class _DeepSeekHit(BaseModel):
     title: StrictStr
     url: HttpUrl
-    content: StrictStr
-    score: float = Field(allow_inf_nan=False)
+    snippet: StrictStr
+    summary: StrictStr
+    rerank_score: float = Field(ge=0, le=3, allow_inf_nan=False)
 
 
-class _TavilyResponse(BaseModel):
-    results: list[_TavilyHit]
+class _DeepSeekResponse(BaseModel):
+    results: list[_DeepSeekHit]
 
 
 class WebSearchToolService:
@@ -37,7 +38,7 @@ class WebSearchToolService:
     async def search(self, request: WebSearchInput) -> WebSearchOutput:
         if not self._api_key:
             raise WebSearchError(
-                "web_search_not_configured", "Web search is not configured (TAVILY_API_KEY).",
+                "web_search_not_configured", "Web search requires an official DeepSeek API key.",
             )
         try:
             # One total deadline, including client setup/connection/body reads. No automatic
@@ -48,13 +49,11 @@ class WebSearchToolService:
                     follow_redirects=False,
                 ) as client:
                     response = await client.post(
-                        TAVILY_SEARCH_URL,
+                        DEEPSEEK_SEARCH_URL,
                         headers={"Authorization": f"Bearer {self._api_key}"},
                         json={
-                            "query": request.query, "max_results": request.limit,
-                            "topic": "general", "search_depth": "basic",
-                            "auto_parameters": False, "include_answer": False,
-                            "include_raw_content": False,
+                            "query": request.query, "count": request.limit,
+                            "need_content": False,
                         },
                     )
         except (TimeoutError, httpx.TimeoutException) as from_error:
@@ -70,16 +69,20 @@ class WebSearchToolService:
             raise WebSearchError(
                 "web_search_auth_failed", "Web search API credentials were rejected.",
             )
-        if response.status_code in {429, 432, 433}:
+        if response.status_code in {402, 429}:
             raise WebSearchError(
                 "web_search_quota_exceeded", "Web search rate or credit limit was reached.",
+            )
+        if response.status_code in {408, 504}:
+            raise WebSearchError(
+                "web_search_timeout", "Web search timed out; no automatic retry was made.",
             )
         if not response.is_success:
             raise WebSearchError(
                 "web_search_unavailable", "Web search provider could not complete the request.",
             )
         try:
-            data = _TavilyResponse.model_validate(response.json())
+            data = _DeepSeekResponse.model_validate(response.json())
         except (ValueError, ValidationError) as exc:
             raise WebSearchError(
                 "web_search_invalid_response", "Web search provider returned an invalid response.",
@@ -94,8 +97,9 @@ class WebSearchToolService:
             hits.append(WebSearchHit(
                 # Stable, JS-safe ID supports existing evidence deduplication and memory.
                 source_id=int(sha256(url.encode()).hexdigest()[:12], 16),
-                url=url, title=item.title, snippet=item.content, score=item.score,
-                metadata={"provider": "tavily"},
+                url=url, title=item.title, snippet=item.summary.strip() or item.snippet,
+                score=item.rerank_score,
+                metadata={"provider": "deepseek"},
             ))
             if len(hits) == request.limit:
                 break

@@ -37,4 +37,11 @@ def assert_invalid_public_arguments_stop_before_handler(tool_name, case):
     assert result.tool_name == tool_name
     assert result.ok is False
     assert result.output is None
-    assert result.error.code == "invalid_input"
+    # Read the same authored assertions used by live batches, so labels cannot drift.
+    payload = result.model_dump(mode="json")
+    for field, comparison, expected in case["hard"]:
+        assert comparison == "eq"
+        actual = payload
+        for key in field.split("."):
+            actual = actual[key]
+        assert actual == expected, (field, actual, expected)

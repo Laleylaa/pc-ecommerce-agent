@@ -7,7 +7,10 @@ import pytest
 from app.schemas.catalog_scope import CatalogScopePlan
 from app.schemas.catalog_search import CatalogDiscoveryPlan, CatalogLookupPlan
 from app.schemas.tool_plan_review import ToolPlanReview
-from app.tools.catalog.compatibility import FacetQueryPlan, _catalog_planner_system_prompt
+from app.tools.catalog.compatibility import (
+    FacetQueryPlan,
+    _catalog_planner_system_prompt,
+)
 from app.tools.orders import OrderQueryPlan, _order_planner_system_prompt
 from app.tools.prompts.catalog_facets import (
     build_facets_prompt,
@@ -59,7 +62,10 @@ def test_plan_and_review_have_distinct_contracts(operation, schema):
     review = build_review_prompt(build_search_review_context(
         operation=operation, spec_context=context,
     ))
-    assert trailing_schema(prompt) == output_schema(schema, schema.model_required_fields)
+    expected = output_schema(schema, schema.model_required_fields)
+    expected["properties"].pop("requested_limit")  # Trusted caller value, not a model decision.
+    assert trailing_schema(prompt) == expected
+    assert "requested_limit" not in trailing_schema(prompt)["properties"]
     assert trailing_schema(review) == ToolPlanReview.model_json_schema()
     assert "## 显示器规格" in prompt
     assert "## 键盘规格" not in prompt

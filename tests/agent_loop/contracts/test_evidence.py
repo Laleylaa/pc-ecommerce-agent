@@ -59,7 +59,7 @@ async def test_read_copies_cannot_rewrite_facts_or_cards(monkeypatch):
      "is_exhaustive"),
     (OrderLookupOutput(result_type="order_candidates", next_offset=5), "remaining_window"),
     (OrderLookupOutput(result_type="order_suggestions"), "domain_status:order_suggestions"),
-    (OrderLookupOutput(result_type="planning_failed"), "domain_status:planning_failed"),
+    (OrderLookupOutput(result_type="planning_failed"), "execution_failed"),
     (OrderLookupOutput(result_type="unsupported"), "domain_status:unsupported"),
     (OrderLookupOutput(result_type="invalid_query"), "domain_status:invalid_query"),
     (OrderLookupOutput(result_type="not_found", diagnostics=[ToolDiagnostic(
@@ -73,6 +73,16 @@ async def test_ok_is_not_complete_and_restrictions_are_lossless(output, blocker)
     contract = next(c for c in default_tool_contracts() if c.llm_name == "order_lookup")
     query = adapter(ToolCatalog([BoundTool(contract, handler)]))
     record = await order_record(query)
+    if output.result_type == "planning_failed":
+        assert not record.result.ok and record.result.output is None
+        assert record.result.error.code == "planning_failed"
+        assert record.result.error.next_action == "stop"
+        assert record.completion_blockers == (blocker,)
+        with pytest.raises(EvidenceError, match="execution_failed"):
+            query.evidence.presentation("g1", record.evidence_id)
+        with pytest.raises(EvidenceError, match="incomplete_evidence"):
+            query.evidence.reference("g1", record.evidence_id, require_complete=True)
+        return
     assert record.result.ok
     expected = output.model_dump(mode="json", exclude={"output_budget"})
     assert {k:v for k,v in record.result.output.items() if k != "output_budget"} == expected
@@ -105,7 +115,8 @@ async def test_error_can_explain_failure_but_never_supply_cards_or_completion(mo
     contract = catalog.get_by_llm_name("order_lookup").contract
     query = adapter(ToolCatalog([BoundTool(contract, failed)]))
     record = await order_record(query)
-    assert record.result.error.code == "execution_error"
+    assert record.result.error.code == "internal_error"
+    assert record.result.error.next_action == "stop"
     assert "secret" not in str(record.observation())
     assert query.evidence.reference("g1", record.evidence_id).result.error
     with pytest.raises(EvidenceError, match="incomplete_evidence"):

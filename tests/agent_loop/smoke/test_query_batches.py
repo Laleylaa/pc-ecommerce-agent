@@ -40,6 +40,15 @@ async def test_independent_goals_need_two_query_requests_and_one_answer(monkeypa
     assert len(provider.requests) == 3 and "tools" not in provider.requests[-1]
     assert response.products[0].sku_id == 9101
     assert (response.order is None) == failure
+    facts = json.loads(provider.requests[-1]["messages"][1]["content"])
+    order_result = next(e["result"] for e in facts["evidence"]
+                        if e["invocation"]["tool_name"] == "order_lookup")
+    if failure:
+        assert order_result["output"] is None
+        assert order_result["error"]["code"] == "dependency_unavailable"
+        assert order_result["error"]["next_action"] == "stop"
+    else:
+        assert order_result["ok"] and order_result["error"] is None
     audit = repo.data["audit"]["agent_loop"]
     assert [b["goal_id"] for b in audit["query_batches"][0]["bindings"]] == ["g1", "g2"]
     assert audit["tool_attempts"] == 2 and audit["stop_reason"] == "completed"

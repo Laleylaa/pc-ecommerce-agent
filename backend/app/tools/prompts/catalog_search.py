@@ -21,7 +21,7 @@ from app.tools.prompts.catalog_workflow import (
 from app.tools.prompts.templates import load_prompt
 from app.tools.structured_planning import output_schema
 
-PROMPT_VERSION = "catalog-query-markdown-v28"
+PROMPT_VERSION = "catalog-query-markdown-v29"
 
 
 ROLE = load_prompt("catalog/role.md")
@@ -57,6 +57,7 @@ def _domain_sections(
         ("阶段交接", RESOLVED_SCOPE_RULES),
         ("请求上下文与任务范围", CONTEXT),
         ("工具职责与返回视图", OPERATIONS[operation]),
+        ("职责对照", load_prompt("catalog/intent_examples.md")),
         ("商品身份共同定义", PRODUCT_IDENTITY_GUIDANCE),
         ("名称与可信范围", IDENTITY),
         ("筛选条件与事实字段", CONDITIONS),
@@ -88,8 +89,10 @@ def build_search_prompt(
     spec_context: str | None = None,
 ) -> str:
     schema = CatalogLookupPlan if operation == "lookup" else CatalogDiscoveryPlan
+    model_schema = output_schema(schema, schema.model_required_fields)
+    model_schema["properties"].pop("requested_limit", None)
     output = json.dumps(
-        output_schema(schema, schema.model_required_fields),
+        model_schema,
         ensure_ascii=False,
         separators=(",", ":"),
     )

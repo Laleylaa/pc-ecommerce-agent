@@ -107,7 +107,7 @@ class CatalogSearchPlanner:
         # Context comes from scope preparation, never from the caller hint.
         payload = request.model_dump(mode="json", exclude={"category_hint"})
         payload["resolved_scope"] = prepared.payload()
-        payload["limit_source"] = "explicit" if "limit" in request.model_fields_set else "default"
+        payload["effective_requested_count"] = request.requested_count or request.limit
 
         def validate(plan: SearchPlan) -> dict:
             issue = validate_plan(plan, request, resolved_categories=prepared.categories)
@@ -128,5 +128,6 @@ class CatalogSearchPlanner:
             payload=payload,
             validate=validate,
             review=self.review, budget=budget,
-            trusted=prepared.search_binding(),
+            trusted={**prepared.search_binding(),
+                     "requested_limit": request.requested_count or request.limit},
         )

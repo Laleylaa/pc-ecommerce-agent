@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import OrderInfo, OrderItem, OrderLogistics
+from app.rules.order_matching import item_name_parts, item_part_pattern
 from app.schemas.order import LogisticsCard, OrderCard, OrderFilters, OrderItemCard
 from app.tools.catalog.fields import product_term_aliases
 
@@ -115,7 +116,9 @@ def _order_conditions(user_id: int, filters: OrderFilters | None = None) -> list
     if filters.product_terms:
         item_conditions = [OrderItem.order_id == OrderInfo.id]
         spec_entries = func.jsonb_each_text(OrderItem.sku_specs).table_valued("key", "value")
-        for term in filters.product_terms:
+        parts = [part for term in filters.product_terms for part in item_name_parts(term)]
+        # A nonempty, punctuation-only term must not silently remove the product filter.
+        for term in parts or filters.product_terms:
             aliases = product_term_aliases(term)
             spec_match = (
                 select(1)
@@ -123,7 +126,9 @@ def _order_conditions(user_id: int, filters: OrderFilters | None = None) -> list
                 .where(
                     or_(
                         *(
-                            spec_entries.c.value.icontains(alias, autoescape=True)
+                            _normalized_item_text(spec_entries.c.value).op("~*")(
+                                item_part_pattern(alias)
+                            )
                             for alias in aliases
                         )
                     )
@@ -133,12 +138,23 @@ def _order_conditions(user_id: int, filters: OrderFilters | None = None) -> list
             )
             item_conditions.append(
                 or_(
-                    *(OrderItem.sku_name.icontains(alias, autoescape=True) for alias in aliases),
+                    *(_normalized_item_text(OrderItem.sku_name).op("~*")(
+                        item_part_pattern(alias)
+                    ) for alias in aliases),
                     spec_match,
                 )
             )
         conditions.append(select(OrderItem.id).where(*item_conditions).exists())
     return conditions
+
+
+def _normalized_item_text(column):
+    return func.regexp_replace(
+        func.regexp_replace(
+            func.lower(func.normalize(column, literal_column("NFKC"))),
+            r"([a-z]+)[[:space:]_-]+([0-9])", r"\1\2", "g",
+        ), r"([一-鿿])[[:space:]_-]+(?=[一-鿿])", r"\1", "g",
+    )
 
 
 def _to_order_card(order: OrderInfo) -> OrderCard:

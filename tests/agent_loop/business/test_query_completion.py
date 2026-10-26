@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from agent_loop.support.domain_tools import make_catalog
+from agent_loop.support.domain_tools import FixtureSearchPlanner, make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -16,7 +16,6 @@ from agent_loop.support.query_batches import with_handlers
 from app.agent.loop.independent_answer import AnswerInput, fallback_answer
 from app.schemas.catalog_search import SearchPlan
 from app.schemas.chat import ChatRequest
-from app.tools.catalog.planner import CatalogSearchPlanner
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
 
@@ -26,14 +25,14 @@ async def test_failed_lookup_then_two_successes_stops_once_and_keeps_every_recor
     monkeypatch, failure,
 ):
     message = "比较 SKU 9101 和 SKU 9102 的价格"
-    original_plan = CatalogSearchPlanner.plan
+    original_plan = FixtureSearchPlanner.plan
 
     async def plan(self, request):
         if request.query == "比较两款":
             return SearchPlan(disposition="split_required")
         return await original_plan(self, request)
 
-    monkeypatch.setattr(CatalogSearchPlanner, "plan", plan)
+    monkeypatch.setattr(FixtureSearchPlanner, "plan", plan)
     catalog = make_catalog(monkeypatch)
     handler = catalog.get_by_llm_name("catalog_search").handler
 

@@ -23,7 +23,6 @@ from app.schemas.catalog_search import (
     SearchScope,
 )
 from app.tools.catalog.fields import (
-    FIELD_DEFINITIONS,
     hard_condition_verdict,
     preference_rank,
 )
@@ -61,14 +60,6 @@ class SearchExecution:
     ranking_strategy: str
 
 
-class UnsupportedCatalogFilter(ValueError):
-    """A resolved category cannot execute a requested filter; no record verdict is implied."""
-
-    def __init__(self, category: str, field: str):
-        self.category, self.field = category, field
-        super().__init__(f"{category}未定义{field}筛选能力，不能据此判定商品不支持。")
-
-
 class CatalogSearchEngine:
     def __init__(self, repository: CatalogSearchRepository):
         self.repository = repository
@@ -94,12 +85,6 @@ class CatalogSearchEngine:
                 None, SearchScope(), sku_ids=[r.product.sku_id for r in identity.records],
             )
             identity = replace(identity, records=[r for r in records if r.active])
-        if plan.operation == "lookup":
-            for category in {r.product.category for r in identity.records}:
-                for condition in plan.conditions:
-                    definition = FIELD_DEFINITIONS[condition.key]
-                    if category not in definition.categories:
-                        raise UnsupportedCatalogFilter(category, condition.key)
         return await self._search(request, plan, identity)
 
     async def _search(
@@ -136,7 +121,7 @@ class CatalogSearchEngine:
         )
         if (
             identity_rows and not eligible and not unknown
-            and plan.conditions and fallback_category
+            and plan.matching_conditions and fallback_category
         ):
             fallback_attempted = True
             selected = []
@@ -200,7 +185,7 @@ class CatalogSearchEngine:
             relevance = max((text_scores.get(r.product.sku_id, 0) for r in group), default=0)
             return (-relevance, stable_id)
 
-        has_preferences = any(c.strength == "preference" for c in plan.conditions)
+        has_preferences = any(c.strength == "preference" for c in plan.matching_conditions)
         preference_scores = {
             r.product.sku_id: preference_rank(
                 (c.condition.strength, c.verdict)
@@ -219,11 +204,9 @@ class CatalogSearchEngine:
         if plan.operation == "lookup" and plan.version_view == "summary":
             requested_count, offset, limit = None, 0, 1
         else:
-            requested_count = (
-                request.limit if "limit" in request.model_fields_set
-                else plan.requested_limit or request.limit
-            )
-            offset, limit = request.offset, min(requested_count, MAX_DISPLAY_COUNT)
+            requested_count = request.requested_count or request.limit
+            cap = request.limit
+            offset, limit = request.offset, min(requested_count, cap, MAX_DISPLAY_COUNT)
         total = len(groups)
         page = groups[offset : offset + limit]
         next_offset = offset + len(page)

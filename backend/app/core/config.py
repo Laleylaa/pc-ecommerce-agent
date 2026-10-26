@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     chroma_port: int = 8001
     knowledge_collection: str = "pc_agent_knowledge"
     knowledge_score_threshold: float = 0.16
-    tavily_api_key: SecretStr = SecretStr("")
+    deepseek_search_api_key: SecretStr = SecretStr("")
 
     llm_provider: str = "deepseek"
     llm_api_key: str = ""
@@ -45,6 +46,21 @@ class Settings(BaseSettings):
         extra="ignore",
         enable_decoding=False,
     )
+
+    @property
+    def resolved_search_api_key(self) -> str:
+        """Reuse only official DeepSeek credentials, never a different provider/proxy key."""
+        explicit = self.deepseek_search_api_key.get_secret_value().strip()
+        if explicit:
+            return explicit
+        base_url = self.llm_base_url.strip()
+        if self.llm_provider.strip().lower() != "deepseek":
+            return ""
+        if base_url:
+            parsed = urlsplit(base_url)
+            if parsed.scheme != "https" or parsed.netloc != "api.deepseek.com":
+                return ""
+        return self.llm_api_key.strip()
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

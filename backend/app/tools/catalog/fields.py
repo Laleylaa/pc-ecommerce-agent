@@ -350,7 +350,7 @@ def explain_conditions(conditions: Iterable[SearchCondition]) -> dict:
         })
     return {
         "requirements": "all_on_same_sku", "preferences": "ranking_only",
-        "missing_record_value": "unknown_even_for_negation",
+        "missing_record_value": "complete_catalog_absent_capability; conflicts_remain_unknown",
         "examples_only": True, "conditions": explained,
     }
 

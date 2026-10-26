@@ -4,7 +4,6 @@ from dataclasses import replace
 from decimal import Decimal
 
 from app.core.llm_feedback import OutputErrorType, OutputValidationError, ValidationIssue
-from app.rules.product_identity import explicit_product_ids
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
     ProductReference,
@@ -62,13 +61,6 @@ def collect_plan_issues(
 ) -> list[QueryIssue]:
     # Check executable structure/capability, never certify intent through quoted prose.
     issues: list[QueryIssue] = []
-    query_refs = explicit_product_ids(request.query)
-    if target := plan.target:
-        scope_ids = getattr(request.scope, f"{target.kind}_ids")
-        if not query_refs and scope_ids == [target.id]:
-            plan.target = None  # Caller scope is already authoritative; never widen it.
-        elif (target.kind, target.id) not in query_refs:
-            issues.append(invalid_plan("target必须来自原文明确的SKU/SPU编号", ("target",)))
     if plan.category:
         plan.category = CATEGORY_ALIASES.get(plan.category.casefold(), plan.category)
         if plan.category not in CATEGORY_FIELDS:
@@ -122,26 +114,12 @@ def collect_plan_issues(
                     )
                 )
             else:
-                issues.append(
-                    QueryIssue(
-                        ResultReason.FILTER_DATA_UNAVAILABLE,
-                        f"字段体系没有可可靠筛选的定义：{key}。",
-                        {"path": list(path), "field": key, "evidence": c.evidence},
-                    )
-                )
+                issues.append(invalid_plan(
+                    f"{key}不是可执行字段。保留具体规格要求于unresolved_requirements，"
+                    "本店未销售的规格用spec_not_carried；用途模糊用requirement_needs_clarification。",
+                    (*path, "key"), "invalid_filter_field",
+                ))
             continue
-        if (
-            plan.category in CATEGORY_FIELDS
-            and plan.category not in FIELD_DEFINITIONS[key].categories
-        ):
-            issues.append(
-                QueryIssue(
-                    ResultReason.FILTER_DATA_UNAVAILABLE,
-                    f"{plan.category}资料未定义筛选字段：{key}，不能据此判定商品不支持。",
-                    {"path": list(path), "field": key, "evidence": c.evidence},
-                )
-            )
-            # Also validate malformed values/operators, independently of capability.
         invalid = False
         if c.operator not in FIELD_DEFINITIONS[key].operators:
             issues.append(
@@ -227,15 +205,6 @@ def validate_plan(
 ) -> QueryIssue | None:
     issues = collect_plan_issues(plan, request, allow_scope_aggregation=allow_scope_aggregation)
     issues.extend(extra_issues or [])
-    if plan.operation == "lookup" and not plan.category:
-        for condition in plan.conditions:
-            definition = FIELD_DEFINITIONS.get(condition.key)
-            if definition and any(c not in definition.categories for c in resolved_categories):
-                issues.append(QueryIssue(
-                    ResultReason.FILTER_DATA_UNAVAILABLE,
-                    f"已确认品类未定义{condition.key}筛选能力，不能据此判定商品不支持。",
-                    {"field": condition.key, "categories": list(resolved_categories)},
-                ))
     if not issues:
         return None
     # Invalid plans must be repaired before trusting any user-facing business limitation.

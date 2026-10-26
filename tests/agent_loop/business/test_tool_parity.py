@@ -185,7 +185,8 @@ async def test_missing_web_material_and_missing_configuration_remain_distinct(co
         assert "no_retrieval_evidence" in record.completion_blockers
     else:
         assert not record.result.ok
-        assert record.result.error.code == "web_search_not_configured"
+        assert record.result.error.code == "dependency_unavailable"
+        assert record.result.error.next_action == "stop"
         assert record.result.output is None
     with pytest.raises(EvidenceError, match="incomplete_evidence"):
         query.evidence.reference("g1", record.evidence_id, require_complete=True)

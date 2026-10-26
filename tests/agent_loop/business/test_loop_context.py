@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from agent_loop.support.domain_tools import make_catalog
+from agent_loop.support.domain_tools import FixtureSearchPlanner, make_catalog
 from agent_loop.support.loop_runtime import (
     calls,
     final_answer,
@@ -15,7 +15,6 @@ from agent_loop.support.loop_runtime import (
 from app.schemas.catalog_search import SearchCondition, SearchPlan
 from app.schemas.chat import ChatRequest
 from app.schemas.context import WorkingMemoryV2
-from app.tools.catalog.planner import CatalogSearchPlanner
 from app.tools.contracts import BoundTool, ToolCatalog
 
 pytestmark = [pytest.mark.business, pytest.mark.asyncio]
@@ -88,7 +87,7 @@ async def test_current_requirements_replace_old_filters_with_formal_search(
         captured.append(request)
         return SearchPlan.model_validate(plan)
 
-    monkeypatch.setattr(CatalogSearchPlanner, "plan", fixed_plan)
+    monkeypatch.setattr(FixtureSearchPlanner, "plan", fixed_plan)
     runtime, provider, repo = runtime_fixture(
         monkeypatch,
         [
@@ -110,7 +109,7 @@ async def test_current_requirements_replace_old_filters_with_formal_search(
 
 async def test_cheaper_variant_refreshes_reference_price_before_filtering(monkeypatch):
     message = "第一款同系列有没有更便宜的版本"
-    original = CatalogSearchPlanner.plan
+    original = FixtureSearchPlanner.plan
 
     async def plan(self, request):
         if request.query == "SKU 9101":
@@ -123,7 +122,7 @@ async def test_cheaper_variant_refreshes_reference_price_before_filtering(monkey
             ],
         )
 
-    monkeypatch.setattr(CatalogSearchPlanner, "plan", plan)
+    monkeypatch.setattr(FixtureSearchPlanner, "plan", plan)
 
     def cheaper(payload):
         from agent_loop.support.loop_runtime import observations

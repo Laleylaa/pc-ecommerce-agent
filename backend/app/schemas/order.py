@@ -110,7 +110,7 @@ class OrderQueryMeta(BaseModel):
 
 
 class OrderConditionDifference(BaseModel):
-    field: Literal["time_range", "statuses"]
+    field: Literal["time_range", "statuses", "product_terms"]
     expected: dict[str, Any]
     actual: str | int | None
     state: Literal["not_matched", "unknown"]

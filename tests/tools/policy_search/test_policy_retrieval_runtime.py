@@ -60,7 +60,8 @@ async def test_sync_embedding_obeys_formal_timeout_without_blocking_loop():
             {"query": "我想退货，需要提供什么？"}, {"user_id": 7},
         )
         await beat
-        assert not result.ok and result.error.code == "timeout"
+        assert not result.ok and result.error.code == "dependency_unavailable"
+        assert result.error.next_action == "retry"
         assert beats == [True]
         assert not finished.is_set()
     finally:
@@ -103,10 +104,11 @@ async def test_timeout_or_cancel_keeps_worker_slot_until_real_work_finishes(canc
                 await running
         else:
             result = await running
-            assert result.error.code == "timeout"
+            assert result.error.code == "dependency_unavailable"
+            assert result.error.next_action == "retry"
         busy = await execute()
-        assert not busy.ok and busy.error.code == "retrieval_busy"
-        assert not busy.error.retryable
+        assert not busy.ok and busy.error.code == "dependency_unavailable"
+        assert busy.error.next_action == "stop"
         assert len(calls) == 1
     finally:
         release.set()

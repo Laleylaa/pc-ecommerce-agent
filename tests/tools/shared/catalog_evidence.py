@@ -93,7 +93,7 @@ async def run_cases(session, settings, folder, suite):
                     for v in (
                         settings.llm_api_key,
                         settings.auth_token_secret,
-                        settings.tavily_api_key.get_secret_value(),
+                        settings.deepseek_search_api_key.get_secret_value(),
                         settings.langsmith_api_key.get_secret_value(),
                     )
                     if v

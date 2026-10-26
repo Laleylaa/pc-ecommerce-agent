@@ -44,13 +44,13 @@ async def test_attempts_inputs_handoff_and_model_parentage(monkeypatch, memory_t
     root = next(s for s in spans if s.name == "用户请求")
     models = [s for s in spans if s.attributes['openinference.span.kind'] == 'LLM']
     tools = [s for s in spans if s.attributes['openinference.span.kind'] == 'TOOL']
-    assert len(models) == len(provider.requests) == 9
-    assert len(tools) == len(attempts) == 3
+    assert len(models) == len(provider.requests) == 7
+    assert len(tools) == len(attempts) == 2
     assert result.answer == ANSWER
-    assert [json.loads(s.attributes['output.value'])['ok'] for s in tools] == [False, False, True]
+    assert [json.loads(s.attributes['output.value'])['ok'] for s in tools] == [False, True]
     assert all(s.parent.span_id in {t.context.span_id for t in tools}
                for s in models if s.attributes['stage'] == 'tool_planning')
-    assert sum(s.attributes['llm.token_count.prompt'] for s in models) == 99
+    assert sum(s.attributes['llm.token_count.prompt'] for s in models) == 77
     for span, request in zip(models, provider.requests, strict=True):
         for i, message in enumerate(request['messages']):
             prefix = f'llm.input_messages.{i}.message'
@@ -79,7 +79,7 @@ async def test_attempts_inputs_handoff_and_model_parentage(monkeypatch, memory_t
     assert '目标登记提案、业务工具请求' in models[0].name
     assert json.loads(models[-2].attributes['trace.output.categories']) == ['query_completion']
     assert json.loads(models[-1].attributes['trace.output.categories']) == ['answer_candidate']
-    assert models[-1].attributes['trace.model.request_index'] == 9
+    assert models[-1].attributes['trace.model.request_index'] == 7
     overview = json.loads(models[0].attributes['metadata'])
     assert overview['purpose'] == '任务规划与调度'
     assert [a['action'] for a in overview['submitted_actions']] == [
@@ -94,7 +94,7 @@ async def test_attempts_inputs_handoff_and_model_parentage(monkeypatch, memory_t
     assert 'bad' in event.attributes['submission'] and 'limit' in event.attributes['error']
     assert event.attributes['model_span_id'] in {format(s.context.span_id, '016x') for s in models}
     facts = json.loads(models[-1].attributes['llm.input_messages.1.message.content'])
-    assert facts['goals'][0]['execution']['attempt_count'] == 3
+    assert facts['goals'][0]['execution']['attempt_count'] == 2
     assert facts['evidence'][-1]['result']['output']['products'][0]['price'] == '299'
     assert 'model_stop_reason' not in facts
     assert json.loads(root.attributes['output.value']) == ANSWER
@@ -108,14 +108,14 @@ async def test_concurrent_and_disabled_results_match(monkeypatch, memory_traces)
         runtime.run(ChatRequest(message=MESSAGE), 41) for runtime, *_ in fixtures
     ])
     assert [r.answer for r in results] == [ANSWER] * 3
-    assert [len(p.requests) for _, p, _, _ in fixtures] == [9] * 3
-    assert [len(attempts) for *_, attempts in fixtures] == [3] * 3
+    assert [len(p.requests) for _, p, _, _ in fixtures] == [7] * 3
+    assert [len(attempts) for *_, attempts in fixtures] == [2] * 3
     spans = memory_traces.get_finished_spans()
     roots = [s for s in spans if s.parent is None]
     assert len(roots) == 2 and len({s.context.trace_id for s in spans}) == 2
     for root in roots:
         children = [s for s in spans if s.context.trace_id == root.context.trace_id]
-        assert len(children) == 16
+        assert len(children) == 13  # One timeout + one permitted retry; no third query.
         ids = {s.context.span_id for s in children}
         assert all(s.parent is None or s.parent.span_id in ids for s in children)
 
@@ -157,7 +157,7 @@ async def test_export_failure_and_cancel_do_not_change_business(monkeypatch, cap
     monkeypatch.setattr(tracing, '_provider', provider)
     runtime, model, _repo, attempts = scenario(monkeypatch)
     result = await runtime.run(ChatRequest(message=MESSAGE), 41)
-    assert result.answer == ANSWER and len(model.requests) == 9 and len(attempts) == 3
+    assert result.answer == ANSWER and len(model.requests) == 7 and len(attempts) == 2
     assert 'spans lost' in caplog.text
     for enabled in (False, True):
         runtime.settings = runtime.settings.model_copy(update={'loop_trace_enabled': enabled})
@@ -222,7 +222,8 @@ async def test_cancellation_inside_tool_preserves_attempt(monkeypatch, memory_tr
         await runtime.run(ChatRequest(message='查 SKU 9101'), 41)
     spans = memory_traces.get_finished_spans()
     tool = next(s for s in spans if s.attributes.get('tool.name') == 'catalog_search')
-    assert json.loads(tool.attributes['output.value'])['error']['code'] == 'cancelled'
+    assert json.loads(tool.attributes['output.value'])['error']['code'] == 'resource_limit'
+    assert json.loads(tool.attributes['output.value'])['error']['next_action'] == 'stop'
     assert tool.attributes['outcome'] == 'cancelled'
     root = next(s for s in spans if s.parent is None)
     assert root.attributes['outcome'] == 'cancelled'
@@ -348,7 +349,8 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
     assert [s.name for s in validations] == [
         '程序 · 计划校验【通过】', '程序 · 计划校验【通过】',
         '程序 · 复核输出校验【拒绝】',
-        '程序 · 复核输出校验【通过】', '程序 · 工具原始结果校验【通过】', '程序 · 工具输出预算处理【通过】',
+        '程序 · 复核输出校验【通过】', '程序 · 工具原始结果校验【通过】',
+        '程序 · 工具输出预算处理【通过】',
         '程序 · 工具输出校验【通过】',
     ]
     assert all(s.parent.span_id == tool.context.span_id for s in validations)
@@ -405,7 +407,7 @@ async def test_projection_event_explains_omission_without_changing_evidence(memo
     assert details['projected_chars'] < 16000 and 'products' in details['omitted_fields']
     assert details['invocation_id'] == 'a1'
     assert result['result']['output'] is None
-    assert details['delivery_error'] == 'observation_budget_exceeded'
+    assert details['delivery_error'] == 'resource_limit'
     assert record.result.output['products'][0]['title'] == 'large' * 4000
 
 
@@ -466,7 +468,8 @@ async def test_tool_budget_trace_follows_raw_budget_and_delivered_output(memory_
     budget = validations["工具输出预算处理"]
     assert validations["工具原始结果校验"].end_time <= budget.start_time
     if oversized:
-        assert not result.ok and result.error.code == "output_budget_exceeded"
+        assert not result.ok and result.error.code == "resource_limit"
+        assert result.error.next_action == "narrow_request"
         assert budget.attributes["validation_outcome"] == "rejected"
         assert "工具输出校验" not in validations
     else:

@@ -31,7 +31,7 @@ for name in list(os.environ):
     }:
         os.environ.pop(name, None)
 os.environ.update(
-    LLM_API_KEY="", TAVILY_API_KEY="", LANGSMITH_API_KEY="",
+    LLM_API_KEY="", DEEPSEEK_SEARCH_API_KEY="", LANGSMITH_API_KEY="",
     LOOP_TRACE_ENABLED="false",
     AGENT_TRACE_MODE="off", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1",
     DATABASE_URL="postgresql+asyncpg://offline:offline@invalid/offline",

@@ -121,7 +121,7 @@ async def test_partial_batch_retry_keeps_success_and_only_replaces_failed_operat
         nonlocal count
         count += 1
         if count == 1 or not recover:
-            raise OSError("synthetic dependency outage")
+            raise TimeoutError("synthetic ordinary query timeout")
         return await original(request)
 
     runtime, provider, repo = runtime_fixture(monkeypatch, [
@@ -208,6 +208,7 @@ async def test_cancel_second_goal_preserves_attempt_audit_without_answer_or_memo
         await task
     assert released.is_set() and len(provider.requests) == 1
     records = sessions[0].adapter.evidence.all_records()
-    assert records[0].result.ok and records[1].result.error.code == "cancelled"
+    assert records[0].result.ok and records[1].result.error.code == "resource_limit"
+    assert records[1].result.error.next_action == "stop"
     assert json.dumps(repo.data["working_memory"], sort_keys=True) == previous
     assert [m.role for m in repo.data["messages"]] == ["user"]

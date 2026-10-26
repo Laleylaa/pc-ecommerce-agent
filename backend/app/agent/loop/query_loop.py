@@ -14,7 +14,7 @@ from app.agent.loop.prompts.query_loop import QUERY_PROMPT
 from app.agent.loop.query_context import (
     query_context,
     resolve_references,
-    validate_identities,
+    validate_private_access,
 )
 from app.agent.loop.query_schema import (
     CompletionCall,
@@ -147,8 +147,9 @@ class QuerySession:
         call = self.bindings.decode(use)
         goal_id = call.goal_id
         self.book.admit(goal_id)
-        goal = self.book.goals[goal_id]
-        validate_identities(self.prepared, self.book, goal, use["name"], call.arguments)
+        validate_private_access(
+            self.prepared, self.book, self.book.goals[goal_id], use["name"], call.arguments,
+        )
         operation_id = self.adapter.prepare(
             goal_id,
             use["name"],

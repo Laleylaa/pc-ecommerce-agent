@@ -76,14 +76,18 @@ class CatalogSearchRequest(BaseModel):
     query: QueryText = Field(description="完整的单目标商品查询")
     category_hint: CategoryHint = None
     scope: SearchScope = Field(default_factory=SearchScope)
+    requested_count: int | None = Field(
+        default=None, ge=1, strict=True,
+        description="调用方从用户要求确定的总数量；无明确数字或要求全部时省略。工具内部模型不可改写。",
+    )
     limit: int = Field(
         default=3,
         ge=1,
         le=MAX_DISPLAY_COUNT,
         strict=True,
         description=(
-            "请求展示数量，最大10；超限参数拒绝。用户要求更多时query保留原要求，limit最多10并解释部分交付；"
-            "仅未指定数量时省略，默认最多3款。"
+            "单次展示上限，最大10，不等于用户要求数量；明确要N款时requested_count=N、limit=min(N,10)。"
+            "要求全部时limit=10；没有数量要求时省略，默认最多3款。"
         ),
     )
     offset: int = Field(default=0, ge=0, le=10000, strict=True)
@@ -136,13 +140,33 @@ class SearchCondition(BaseModel):
 
 
 class UnresolvedCatalogRequirement(BaseModel):
-    """A preserved user requirement with an explicit reason it cannot execute."""
+    """Preserve absent specifications, subjective ambiguity or unsupported tasks."""
 
     model_config = ConfigDict(extra="forbid")
-    evidence: QueryText = Field(description="无法执行的具体要求，可简要转述，不要求逐字摘录。")
+    evidence: QueryText = Field(description="未销售的具体规格、需澄清用途或任务边界，可简要转述。")
     reason: Literal[
-        "filter_data_unavailable", "requirement_needs_clarification", "request_not_supported",
+        "spec_not_carried", "filter_data_unavailable",
+        "requirement_needs_clarification", "request_not_supported",
     ]
+    strength: Literal["requirement", "preference"] = "requirement"
+
+
+def matching_conditions(
+    conditions: list[SearchCondition], requirements: list[UnresolvedCatalogRequirement],
+) -> list[SearchCondition]:
+    """Represent reviewed absent specifications as explicit nonmatching dimensions.
+
+    Legacy filter_data_unavailable declarations use the same complete-catalog policy.
+    These keys are evidence dimensions, never executable database fields.
+    """
+    return [*conditions, *[
+        SearchCondition(
+            key=f"not_carried_spec:{index}", values=["是"],
+            evidence=requirement.evidence, strength=requirement.strength,
+        )
+        for index, requirement in enumerate(requirements)
+        if requirement.reason in {"spec_not_carried", "filter_data_unavailable"}
+    ]]
 
 
 class SearchPlan(BaseModel):
@@ -151,8 +175,16 @@ class SearchPlan(BaseModel):
         "operation", "disposition", "conditions", "requested_fields",
         "unresolved_requirements",
     )
+    model_optional_on_stop: ClassVar[tuple[str, tuple[str, ...], tuple[str, ...]]] = (
+        "disposition", ("unsupported", "clarification_required", "split_required"),
+        ("requested_fields", "candidate_unit"),
+    )
 
     model_config = ConfigDict(extra="forbid")
+
+    @property
+    def matching_conditions(self) -> list[SearchCondition]:
+        return matching_conditions(self.conditions, self.unresolved_requirements)
 
     operation: Literal["search", "lookup"] = "search"
     version_view: Literal["summary", "list"] = Field(
@@ -188,7 +220,7 @@ class SearchPlan(BaseModel):
     conditions: list[SearchCondition] = Field(default_factory=list, max_length=24)
     unresolved_requirements: list[UnresolvedCatalogRequirement] = Field(
         default_factory=list, max_length=12,
-        description="不能执行的具体要求及明确原因，不删除要求；说明可简要转述。",
+        description="未销售规格用spec_not_carried并保留查询；用途模糊用requirement_needs_clarification；不删除要求。",
     )
     requested_fields: list[str] = Field(default_factory=list, max_length=24)
     unsupported_requirements: list[str] = Field(
@@ -508,13 +540,13 @@ class CatalogSearchResult(BoundedToolOutput):
                 raise ValueError(
                     "empty exact population cannot contain facts or alternative prices"
                 )
-            if summary.matched_sku_count and (
-                summary.min_price is None or summary.max_price is None
-                or summary.min_price > summary.max_price
-                or not 1 <= summary.price_level_count <= summary.matched_sku_count
-                or len(summary.representative_versions) != min(3, summary.matched_sku_count)
-            ):
-                raise ValueError("nonempty exact population requires complete price statistics")
+            if summary.min_price is not None or summary.max_price is not None:
+                if (summary.min_price is None or summary.max_price is None
+                    or summary.min_price > summary.max_price
+                    or not 1 <= summary.price_level_count <= summary.matched_sku_count):
+                    raise ValueError("requested price statistics must be complete")
+            elif summary.price_level_count:
+                raise ValueError("price level count requires price statistics")
         if self.status == ResultStatus.INVALID_QUERY:
             conflicts = [d for d in self.diagnostics if d.code == self.reason_code]
             if not conflicts:
@@ -657,9 +689,12 @@ class CatalogSearchResult(BoundedToolOutput):
             for product in self.products:
                 if product.match_kind != self.match_kind:
                     raise ValueError("card match kind must agree with the result")
-                conditions = [
-                    SearchCondition.model_validate(c) for c in self.query_plan.get("conditions", [])
-                ]
+                conditions = matching_conditions(
+                    [SearchCondition.model_validate(c)
+                     for c in self.query_plan.get("conditions", [])],
+                    [UnresolvedCatalogRequirement.model_validate(r)
+                     for r in self.query_plan.get("unresolved_requirements", [])],
+                )
                 for sku_id in product.candidate_sku_ids:
                     checks = [c for c in product.condition_checks if c.sku_id == sku_id]
                     if [c.condition for c in checks] != conditions:

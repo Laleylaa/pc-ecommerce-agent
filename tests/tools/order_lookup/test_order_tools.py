@@ -426,13 +426,13 @@ async def test_order_planner_failure_is_not_reported_as_unsupported() -> None:
         planner=BrokenOrderPlanner(),
     )
 
-    result = await service.lookup(
-        OrderLookupInput(user_id=1, query="帮我找找那次比较特别的购买记录")
+    contract = DefaultToolContractProvider().get_contract("order_lookup")
+    result = await execute_bound_tool(
+        BoundTool(contract, service.lookup), {"query": "帮我找找那次比较特别的购买记录"},
+        {"user_id": 1},
     )
+    assert not result.ok and result.error.code == "internal_error"
 
-    assert result.result_type == "planning_failed"
-    assert result.diagnostics[0].code == "invalid_order_plan"
-    assert all(item.code != "unsupported_query" for item in result.diagnostics)
 
 
 @pytest.mark.asyncio
@@ -556,7 +556,6 @@ async def test_order_lookup_rejects_conflicting_explicit_selection(monkeypatch, 
 
         async def get_order(self, user_id, order_id):
             calls.append((user_id, order_id))
-            return None
 
     monkeypatch.setattr(order_tools, "OrderRepository", Repository)
     contract = DefaultToolContractProvider().get_contract("order_lookup")
@@ -564,7 +563,7 @@ async def test_order_lookup_rejects_conflicting_explicit_selection(monkeypatch, 
         BoundTool(contract, order_tools.OrderToolService(None).lookup), arguments, {"user_id": 7},
     )
     assert calls == []
-    assert not result.ok and result.error.code == "invalid_input"
+    assert not result.ok and result.error.code == "invalid_arguments"
     with pytest.raises(ValidationError):
         OrderLookupInput(user_id=7, **arguments)
 

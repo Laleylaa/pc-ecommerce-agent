@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.rules.product_identity import PRODUCT_REFERENCE_PREFIX, product_reference_kind
-from app.schemas.catalog_search import FieldIssue, SearchCondition, SearchPlan, SearchScope
+from app.schemas.catalog_search import SearchCondition, SearchPlan, SearchScope
 from app.tools.catalog.fields import (
     hard_condition_verdict,
     normalize_category_hint,
@@ -136,7 +136,9 @@ async def execute_facets(
         )
     eligible, issues, unknown = [], [], 0
     scores: dict[int, tuple[int, int]] = {}
-    condition_plan = SearchPlan(conditions=conditions)
+    condition_plan = SearchPlan(
+        conditions=conditions, unresolved_requirements=plan.unresolved_requirements,
+    )
     for record in records:
         checks = check_record(record, condition_plan)
         verdicts = [(c.condition.strength, c.verdict) for c in checks]
@@ -167,13 +169,6 @@ async def execute_facets(
                 for key, value in product.specs.items()
                 if key not in conflicted and (not plan.spec_key or key == plan.spec_key)
             ]
-            if plan.spec_key and plan.spec_key not in product.specs:
-                issues.append(
-                    FieldIssue(sku_id=product.sku_id, field=plan.spec_key, status="missing")
-                )
-            elif plan.facet == "spec_key" and not product.specs and not conflicted:
-                # No recorded dimensions is missing evidence, not proof of no specifications.
-                issues.append(FieldIssue(sku_id=product.sku_id, field="specs", status="missing"))
         for key, value in facts:
             dimension = key if plan.facet == "spec_key" else "values"
             bucket = values[dimension]
@@ -232,7 +227,7 @@ async def execute_facets(
         -item.count, item.value,
     ))
     total = len(items)
-    items = items[: request.limit]
+    items = items[: min(request.limit, plan.limit)]
     diagnostics = []
     if unknown or issues:
         diagnostics.append(

@@ -41,7 +41,6 @@ def capture_session(monkeypatch):
 @pytest.mark.parametrize("bad,code", [
     (("catalog_search", {"query": MESSAGE, "user_id": 99}), "invalid_input"),
     (("catalog_search", {"query": MESSAGE, "limit": "2"}), "invalid_input"),
-    (("catalog_search", {"query": "SKU 1234"}), "unsourced_product_identity"),
     (("order_lookup", {"order_id": 1234}), "unsourced_order_identity"),
     (("made_up_tool", {}), "unknown_or_non_query_tool"),
     (SEARCH, "duplicate_pending_query"),
@@ -53,7 +52,7 @@ async def test_bad_second_call_rolls_back_whole_initial_batch(monkeypatch, bad, 
         session = sessions[0]
         assert session.book.goals == {}
         assert session.adapter.evidence.all_records() == []
-        assert session.adapter._operations == {} and session.adapter._contexts == {}
+        assert session.adapter._operations == {} and session.adapter._attempts == {}
         assert session._operations == {} and session.bindings._bindings == {}
         assert session.bindings._seen == set()
         assert code in str(payload["messages"])
@@ -225,3 +224,21 @@ async def test_cancel_first_batched_query_does_not_answer_or_persist_success(mon
     assert released.is_set() and len(provider.requests) == 1
     assert [m.role for m in repo.data["messages"]] == ["user"]
     assert repo.data["failures"][-1]["error"]["type"] == "cancelled"
+
+
+@pytest.mark.parametrize('message,queries', [
+    ('商品编号101和999999分别多少钱、有货吗？', ['SKU101价格库存', 'SKU999999价格库存']),
+    ('我说的101是SKU；再查一下SPU10有哪些版本。', ['SKU101价格库存', 'SPU10版本']),
+])
+async def test_natural_number_interpretation_reaches_tools_without_regex_gate(
+    monkeypatch, message, queries,
+):
+    runtime, _, repo = runtime_fixture(monkeypatch, [
+        calls(*register(goal(message))['calls'], *[
+            ('catalog_lookup', {'query': query}) for query in queries
+        ]),
+        finish(), final_answer(),
+    ])
+    response = await runtime.run(ChatRequest(message=message), 41)
+    assert len(response.execution_details.tool_calls) == 2
+    assert repo.data['audit']['agent_loop']['rejections'] == []

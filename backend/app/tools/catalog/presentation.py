@@ -16,8 +16,12 @@ from app.schemas.catalog_search import (
     SearchProduct,
 )
 from app.tools.catalog.engine import SearchExecution
-from app.tools.catalog.fields import FACT_FIELDS, hard_condition_verdict, same_recorded_value
-from app.tools.catalog.limits import MAX_VARIANT_PREVIEW
+from app.tools.catalog.fields import (
+    FACT_FIELDS,
+    FIELD_DEFINITIONS,
+    hard_condition_verdict,
+    same_recorded_value,
+)
 from app.tools.catalog.matching import field_value
 from app.tools.catalog.outcomes import completed_policy, data_quality, fact_diagnostics
 from app.tools.catalog.requirements import requirement_assessment
@@ -64,7 +68,6 @@ def build_result(
         card = make_card(
             group, model, bool(sku_scope), fact_fields,
             preferred_ranks=preference_scores if has_preferences else None,
-            representative_preview=plan.operation == "lookup" and plan.version_view == "summary",
         )
         card.match_kind = match_kind
         card.condition_checks = [
@@ -140,23 +143,6 @@ def build_result(
     return result
 
 
-def representative_records(records: list[CatalogRecord]) -> list[CatalogRecord]:
-    ordered = sorted(records, key=lambda r: (r.product.price, r.product.sku_id))
-    if not ordered:
-        return []
-    # Lower middle for even populations; stable SKU ID resolves equal prices.
-    positions = sorted({0, (len(ordered) - 1) // 2, len(ordered) - 1})
-    return [ordered[i] for i in positions]
-
-
-def variant_card(record: CatalogRecord) -> ProductVariantCard:
-    p = record.product
-    return ProductVariantCard(
-        sku_id=p.sku_id, title=p.title, price=p.price, stock=p.stock,
-        specs=p.specs, sku_sales_count=p.sku_sales_count, image_url=p.image_url,
-    )
-
-
 def lookup_summary(plan: SearchPlan, execution: SearchExecution) -> CatalogLookupSummary | None:
     selection = execution.selection
     if plan.operation != "lookup" or not selection.identity_records or selection.suggestions:
@@ -169,8 +155,10 @@ def lookup_summary(plan: SearchPlan, execution: SearchExecution) -> CatalogLooku
         ) == "match"
     ]
     fields = set(plan.requested_fields) - {"variants", "price_levels", "specifications"}
-    if "specifications" in plan.requested_fields or "variants" in plan.requested_fields:
+    if "specifications" in plan.requested_fields:
         fields.update(key for r in exact for key in r.product.specs)
+    if plan.version_view == "list":
+        fields.clear()  # Requested facts live on the selected rows, not a second full list.
     titles = {r.product.sku_id: r.product.title for r in exact}
     facts = []
     for field in sorted(fields) if exact else []:
@@ -193,14 +181,16 @@ def lookup_summary(plan: SearchPlan, execution: SearchExecution) -> CatalogLooku
             ],
             missing_sku_count=missing, conflicted_sku_count=conflict,
         ))
-    prices = [r.product.price for r in exact]
+    prices = [r.product.price for r in exact] if (
+        {"price", "price_levels"} & set(plan.requested_fields)
+    ) else []
     return CatalogLookupSummary(
         exists=True if exact else None if selection.unknown else False,
         matching_complete=selection.unknown == 0,
         matched_sku_count=len(exact), unknown_sku_count=selection.unknown,
         min_price=min(prices) if prices else None, max_price=max(prices) if prices else None,
         price_level_count=len(set(prices)), fields=facts,
-        representative_versions=[variant_card(r) for r in representative_records(exact)],
+        representative_versions=[],
     )
 
 
@@ -227,7 +217,6 @@ def make_card(
     requested_fields: list[str],
     *,
     preferred_ranks: dict[int, tuple[int, int]] | None = None,
-    representative_preview: bool = False,
 ) -> SearchProduct:
     records = sorted(records, key=lambda r: (
         (preferred_ranks or {}).get(r.product.sku_id, (0, 0)),
@@ -236,8 +225,11 @@ def make_card(
     first = records[0].product
     issues = [issue for r in records for issue in record_issues(r, requested_fields)]
     conflicts = {(issue.sku_id, issue.field) for issue in issues if issue.status == "conflict"}
+    requested_specs = set(requested_fields)
+    if "specifications" in requested_specs:
+        requested_specs.update(key for r in records for key in r.product.specs)
     common, options = {}, {}
-    for key in sorted({key for r in records for key in r.product.specs}):
+    for key in sorted({key for r in records for key in r.product.specs} & requested_specs):
         values = list(
             dict.fromkeys(
                 r.product.specs[key]
@@ -251,10 +243,8 @@ def make_card(
             common[key] = values[0]
         elif values:
             options[key] = values
-    detail_records = (
-        records if as_sku else representative_records(records) if representative_preview
-        else records[:MAX_VARIANT_PREVIEW]
-    )
+    # One representative identifies the returned SPU; extra versions are not candidates.
+    detail_records = records if as_sku else records[:1]
     # Compatibility fields always refer to an actually displayed representative.
     if first.sku_id not in {r.product.sku_id for r in detail_records}:
         first = detail_records[0].product
@@ -264,13 +254,14 @@ def make_card(
             title=r.product.title,
             price=r.product.price,
             stock=r.product.stock,
-            specs=r.product.specs,
+            specs={k: v for k, v in r.product.specs.items() if k in requested_specs},
             sku_sales_count=r.product.sku_sales_count,
             image_url=r.product.image_url,
         )
         for r in detail_records
     ]
     data = first.model_dump() | {
+        "specs": {k: v for k, v in first.specs.items() if k in requested_specs},
         "description": next(r.description for r in records if r.product.sku_id == first.sku_id)
         or None,
         "entity_scope": "sku" if as_sku else "spu",
@@ -302,6 +293,8 @@ def record_issues(record: CatalogRecord, requested_fields: list[str]) -> list[Fi
     for field in dict.fromkeys(requested_fields):
         if field in {"specifications", "variants", "price_levels"}:
             continue
+        if field in FIELD_DEFINITIONS and field not in {"price", "stock", "brand", "category"}:
+            continue  # Complete catalog: absent optional specification is not a data defect.
         if field not in FACT_FIELDS or field_value(record, field) is None:
             issues.append(FieldIssue(sku_id=record.product.sku_id, field=field, status="missing"))
     return issues

@@ -435,7 +435,7 @@ def traced_turn(fn):
             return await fn(self, request, user_id)
         secrets = tuple(v for v in (
             self.settings.llm_api_key, self.settings.auth_token_secret,
-            self.settings.tavily_api_key.get_secret_value(),
+            self.settings.deepseek_search_api_key.get_secret_value(),
             self.settings.langsmith_api_key.get_secret_value(),
         ) if v)
         secret_token = _secrets.set(secrets)

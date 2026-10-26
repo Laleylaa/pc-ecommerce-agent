@@ -62,30 +62,44 @@ def prepare_tool_output(name: str, output: BaseModel, token_limit: int) -> BaseM
                 for field in ("sku_ids", "spu_ids"):
                     ids = value[field]
                     value[f"total_{field}_count"] = len(ids)
-                    if len(ids) > MAX_RESULT_ITEMS:
-                        value[field] = ids[:MAX_RESULT_ITEMS]
+                    # Full provenance is recorded before delivery; counts remain public.
+                    if ids:
+                        value[field] = []
                         value["sources_exhaustive"] = False
-                        omitted(f"items.values.{field}")
 
-    if not fits():
+    if name.startswith("catalog_") or not fits():
         # Executed plans are audit material; operation/conditions are also used
         # by catalog result invariants and must survive output validation.
         plan = data.get("query_plan")
-        if plan and (data.get("query_state") == "completed" or data.get("result_type") in {
+        if plan and (name.startswith("catalog_") or data.get("query_state") == "completed"
+                     or data.get("result_type") in {
             "facets", "single_order", "order_candidates", "order_analysis", "order_suggestions",
         }):
-            keep = {"operation", "conditions", "search_text", "name", "scope"}
+            keep = {
+                "operation", "conditions", "category", "search_text", "name", "scope",
+                "version_view",
+                "disposition", "reason", "supported", "unsupported_reason",
+                "unresolved_requirements",
+            }
             compact = {k: v for k, v in plan.items() if k in keep}
             if compact != plan:
                 data["query_plan"] = compact
-                omitted("query_plan.audit_details")
+                if not name.startswith("catalog_"):
+                    omitted("query_plan.audit_details")
+        if name.startswith("catalog_"):
+            for diagnostic in data.get("diagnostics", []):
+                details = diagnostic.get("details", {})
+                # Identity inventories and requirement audits remain in the raw trace.
+                details.pop("resolved_scope", None)
+                details.pop("requirement_assessment", None)
         # Invalid-query diagnostics contain structured conflict evidence; never
         # remove those. For normal results retain code/message/unknown warnings.
-        if data.get("query_state") == "completed" or name == "catalog_facets":
+        if data.get("query_state") == "completed" or data.get("result_type") == "facets":
             for diagnostic in data.get("diagnostics", []):
                 if diagnostic.get("details"):
                     diagnostic["details"] = {}
-                    omitted("diagnostics.details")
+                    if not name.startswith("catalog_"):
+                        omitted("diagnostics.details")
 
     collection = {
         "catalog_search": "products", "catalog_lookup": "products",

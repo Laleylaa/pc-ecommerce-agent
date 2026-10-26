@@ -15,6 +15,7 @@
   requested_fields只声明用户所问事实；允许附带price，不因附带价格判定计划错误。
 - 普通选购不筛库存；只有明确要求可买/现货才加stock，问有没有货只询问availability。
 - sort默认relevance。明确价格/库存/销量排序才改变；选购推荐的默认排序由工具专属规则定义。
-  requested_limit记录query明确要求的数量；没有要求就null，不复制默认limit。
-  显式limit优先；limit_source=default时程序可采用requested_limit，否则默认最多3项。
+  数量由调用方requested_count（未给时使用limit默认值）确定，limit仅是展示上限。
+  requested_limit由程序注入，规划模型不要输出；复核也不得要求改写数量或把limit当用户总数量。
+  数量参数与query明显冲突时指出调用参数冲突，不通过重写requested_limit修补。
   数量超过展示上限仍是合法请求，不改写数量、不要求澄清、不返回unsupported；程序截断并说明。

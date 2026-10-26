@@ -363,7 +363,7 @@ class DocumentSearchOutput(BoundedToolOutput):
 class WebSearchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    query: NonBlankQuery
+    query: NonBlankQuery = Field(max_length=128)
     limit: int = Field(default=3, ge=1, le=MAX_RESULT_ITEMS, strict=True)
 
 

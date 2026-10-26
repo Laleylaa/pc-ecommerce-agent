@@ -13,7 +13,7 @@ from app.schemas.catalog_search import (
     SearchDiagnostic,
     SearchPlan,
 )
-from app.tools.catalog.engine import CatalogSearchEngine, UnsupportedCatalogFilter
+from app.tools.catalog.engine import CatalogSearchEngine
 from app.tools.catalog.identity import within_scope as within_scope
 from app.tools.catalog.outcomes import ResultReason, policy_for
 from app.tools.catalog.planner import CatalogSearchPlanner, SearchPlanner, explicit_lookup
@@ -49,6 +49,7 @@ class CatalogSearchService:
             else:
                 plan = await self.planner.plan(request)
             plan = SearchPlan.model_validate(plan)
+            plan.requested_limit = request.requested_count or request.limit
         except (ValidationError, OutputValidationError) as exc:
             return self._stop(
                 ResultReason.INVALID_PLAN,
@@ -78,13 +79,6 @@ class CatalogSearchService:
         try:
             execution = await self.engine.execute(
                 request, plan, identity=prepared.identity if prepared else None,
-            )
-        except UnsupportedCatalogFilter as exc:
-            return self._stop(
-                ResultReason.FILTER_DATA_UNAVAILABLE, str(exc), plan=plan, planner=planner_name,
-                details={"phase": "capability_after_identity", "category": exc.category,
-                         "field": exc.field,
-                         "resolved_scope": prepared.payload() if prepared else None},
             )
         except ValueError as exc:
             if str(exc) != "catalog_scope_too_large":

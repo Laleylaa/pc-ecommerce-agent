@@ -86,4 +86,4 @@ async def test_no_silent_relaxation_of_unsupported_or_identity_requirements(look
     result = await run(filters, **options)
     assert not result.suggestions
     assert result.result_type in {"not_found", "order_count", "unsupported"}
-    assert len(calls) <= (3 if case == "wrong_model" else 1)
+    assert len(calls) <= (4 if case == "wrong_model" else 1)

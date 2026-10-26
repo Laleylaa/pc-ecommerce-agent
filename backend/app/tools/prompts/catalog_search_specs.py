@@ -177,7 +177,7 @@ def build_spec_context(
         lines.append("边界：" + _CATEGORY_NOTES[selected])
     lines.append("## 未记录能力")
     lines.extend(
-        f"{key}：{d.meaning}；询问保留缺失，硬筛选标记filter_data_unavailable。"
+        f"{key}：{d.meaning}；询问保留缺失，具体规格硬筛选标记spec_not_carried，用途模糊标记requirement_needs_clarification。"
         for key, d in FIELD_DEFINITIONS.items()
         if not d.recorded
     )

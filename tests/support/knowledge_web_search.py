@@ -8,7 +8,8 @@ from app.tools.web_search import WebSearchToolService
 
 HIT = {
     "title": "磁轴技术说明", "url": "https://example.com/switches",
-    "content": "磁轴通过霍尔传感器检测位移。", "score": 0.92,
+    "snippet": "磁轴技术简介", "summary": "磁轴通过霍尔传感器检测位移。",
+    "content": "", "rerank_score": 2.4,
 }
 
 

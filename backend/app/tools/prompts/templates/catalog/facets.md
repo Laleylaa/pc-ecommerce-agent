@@ -25,7 +25,13 @@ selection是本阶段按所求结果作出的判断，不是范围阶段scope_ki
 
 ## 要求表达
 
-按字段定义提交所有可执行的用户条件到conditions，保留单位、上下界、否定和多选，条件在同一SKU成立。模型省略filters、brand、min_price/max_price；品牌和价格要求也提交为conditions。调用方explicit_overrides由程序执行，不复制到这些模型字段。筛选条件不能因为没有记录值或可能无结果而删除。可执行conditions只用字段说明中可筛选的字段；不能创造字段或把无线充电映射成无线连接。不能执行的要求放unresolved_requirements，每项以evidence简述具体要求并给出reason：字段体系缺少对应能力用filter_data_unavailable；用途/主观要求待具体化用requirement_needs_clarification；超出工具任务能力才用request_not_supported。不能只提交可执行部分。旧unsupported_requirements和clarification_requirements仅兼容历史计划，本次省略。指定对象请求用selection=object保留，交给程序提示使用catalog_lookup，也不要把对象询问放入筛选要求。supported只在任务形态不支持时为false；字段缺能力、待澄清要求由结构化原因表达，不靠unsupported_reason自由文本分类。事实缺失不代表商品不支持。count_scope默认spu，仅明说SKU才sku。
+按字段定义提交所有可执行的用户条件到conditions，保留单位、上下界、否定和多选，条件在同一SKU成立。模型省略filters、brand、min_price/max_price；品牌和价格要求也提交为conditions。调用方explicit_overrides由程序执行，不复制到这些模型字段。筛选条件不能因为没有记录值或可能无结果而删除。可执行conditions只用字段说明中可筛选的字段；不能创造字段或把无线充电映射成无线连接。不能执行的要求放unresolved_requirements，每项以evidence简述具体要求并给出reason：完整目录未销售的具体规格用spec_not_carried（保留查询，结果无匹配）；用途/主观要求待具体化用requirement_needs_clarification；超出工具任务能力才用request_not_supported。不能只提交可执行部分。旧unsupported_requirements和clarification_requirements仅兼容历史计划，本次省略。指定对象请求用selection=object保留，交给程序提示使用catalog_lookup，也不要把对象询问放入筛选要求。supported只在任务形态不支持时为false；未销售规格、待澄清要求由结构化原因表达，不靠unsupported_reason自由文本分类。未记录可选规格表示不具备；数据冲突和查询故障仍不可作为否定事实。count_scope默认spu，仅明说SKU才sku。
+
+## 计数能力
+
+每个统计项同时返回sku_count（符合条件的版本数）和spu_count（去重后的型号数），二者来自同一可信范围内的完整匹配集合，不因展示窗口缩小。
+count_scope只选择主计数count及计数排序口径：spu时count=spu_count，sku时count=sku_count；它不是返回字段开关，不会关闭另一种计数。
+用户同时要求型号数和版本数时，一次统计即可满足；未指定主计数或排序口径时保留默认spu。不能因此要求拆分查询、添加request_not_supported或判为遗漏版本数。规划与复核均应依据程序会返回的双计数判断完整性，无须在计划中再声明两个输出字段。
 
 ## 偏好与完整性
 
@@ -33,7 +39,7 @@ selection是本阶段按所求结果作出的判断，不是范围阶段scope_ki
 
 ## 错误处理
 
-字段放错位置、非法操作符/数值/单位、无可信来源的编号属于计划错误，应保留要求并按反馈修复；不是用户缺资料。spec_value必须提供spec_key；字段体系没有定义的能力才是能力限制。没有筛选条件仍可以列目录或读对象规格，不能仅因conditions为空判定失败。
+字段放错位置、非法操作符/数值/单位、无可信来源的编号属于计划错误，应保留要求并按反馈修复；不是用户缺资料。执行spec_value统计必须提供spec_key；supported=false的停止计划可省略facet、count_scope及执行所需spec_key，不编造统计维度。保留selection、supported、conditions、unresolved_requirements及停止原因，仍须复核；已填写字段仍须合法。字段体系没有定义的能力才是能力限制。没有筛选条件仍可以列目录或读对象规格，不能仅因conditions为空判定失败。
 
 ## 动态字段能力
 
@@ -46,3 +52,9 @@ selection是本阶段按所求结果作出的判断，不是范围阶段scope_ki
 范围形态不能代替职责判断，未执行查询不能推断无匹配或资料缺失。
 
 单次最多展示10个统计选项；每维取值和来源编号也可能只展示有标记的窗口。仍在完整限定集合上计算数量，不能把展示窗口当全集。limit不得大于10。
+
+一个计划只能表达一个统计维度。用户同时要求品牌和轴体、颜色和配列等独立维度时，
+提交split_required=true、supported=false并保留拆分原因，不查询任一维度冒充全部完成。
+按同一个维度统计多个值/多个品牌范围不需要拆分；列规格维度用spec_key也无需拆分。
+复核必须认可单维度schema的能力边界，不能要求一个facet同时表示brand和spec_value，
+不能因为两个维度各自支持就否定split_required。由调用方分别发起后续单维度查询。

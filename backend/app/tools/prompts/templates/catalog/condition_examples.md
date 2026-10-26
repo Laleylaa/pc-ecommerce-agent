@@ -14,7 +14,10 @@ conditions=[{"key":"connection_type","operator":"eq","values":["蓝牙"],"streng
 这些是能力谓词，三模记录可同时满足两项；不能按字符串必须同时等于两种值而误判冲突。
 反向不成立：“蓝牙和2.4G都要有”不能直接改写成“三模”，不得增加原文没要求的配置。
 5. “支持无线充电”：保留unresolved_requirements=
-[{"evidence":"支持无线充电","reason":"filter_data_unavailable"}]。
-字段体系缺少此能力；正确停止计划应approve，替换成wireless=是应revise。
+[{"evidence":"支持无线充电","reason":"spec_not_carried","strength":"requirement"}]。
+完整目录未销售此规格；保留该条件并查询相近候选的计划应approve，替换成wireless=是应revise。
 “支持无线连接”才按连接能力表达，不能把连接和充电混为一谈。
 审核以上片段时仍要核对实际原文的其他要求；生成时补齐schema要求，不能复制无关条件。
+
+6. “推荐办公用键盘”：用途不能直接映射具体规格，保留reason=requirement_needs_clarification；不得声称本店没有办公键盘。
+7. “无线显示器”：具体规格不是模糊用途；保留wireless=是条件（若字段已定义），由实际完整记录判不满足；不能改成带Wi-Fi或USB-C。

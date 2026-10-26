@@ -35,7 +35,7 @@ async def test_tool_registry_exposes_expected_business_tools() -> None:
     ]
     assert DefaultToolContractProvider().get_contract("catalog_compare") is None
     retired = await registry.execute("catalog.compare", {"query": "比较两款键盘"})
-    assert not retired.ok and retired.error.code == "unknown_tool"
+    assert not retired.ok and retired.error.code == "internal_error"
 
 
 def test_tool_contracts_expose_llm_safe_metadata() -> None:
@@ -146,9 +146,8 @@ async def test_registry_rejects_unknown_fields_without_calling_handler() -> None
         result = await executor.execute(contract, args, {"user_id": 1})
         assert not result.ok
         assert result.error is not None
-        assert result.error.code == "invalid_input"
-        assert result.error.retryable is True
-        assert result.error.recommended_action == "replan_arguments"
+        assert result.error.code == "invalid_arguments"
+        assert result.error.next_action == "revise_arguments"
 
 
 @pytest.mark.asyncio
@@ -199,7 +198,7 @@ async def test_registry_tool_executor_rejects_llm_supplied_runtime_field() -> No
     assert not result.ok
     assert result.tool_name == "order_lookup"
     assert result.error is not None
-    assert result.error.code == "invalid_input"
+    assert result.error.code == "invalid_arguments"
 
 
 @pytest.mark.asyncio
@@ -223,9 +222,8 @@ async def test_registry_tool_executor_returns_timeout_error() -> None:
     assert not result.ok
     assert result.tool_name == "catalog_search"
     assert result.error is not None
-    assert result.error.code == "timeout"
-    assert result.error.retryable is True
-    assert result.error.recommended_action == "retry_once"
+    assert result.error.code == "dependency_unavailable"
+    assert result.error.next_action == "retry"
 
 
 @pytest.mark.asyncio
@@ -246,10 +244,9 @@ async def test_registry_tool_executor_returns_execution_error_for_unknown_except
 
     assert not result.ok
     assert result.error is not None
-    assert result.error.code == "execution_error"
-    assert result.error.message == "tool execution failed"
-    assert result.error.retryable is False
-    assert result.error.recommended_action == "stop"
+    assert result.error.code == "internal_error"
+    assert result.error.message == "工具内部处理失败，本次未取得可用结果。"
+    assert result.error.next_action == "stop"
 
 
 @pytest.mark.asyncio
@@ -271,27 +268,27 @@ async def test_registry_tool_executor_returns_dependency_unavailable() -> None:
     assert not result.ok
     assert result.error is not None
     assert result.error.code == "dependency_unavailable"
-    assert result.error.message == "tool dependency is temporarily unavailable"
-    assert result.error.retryable is True
-    assert result.error.recommended_action == "explain_temporary_unavailability"
+    assert result.error.message == "查询依赖当前不可用，本次未取得可用结果。"
+    assert result.error.next_action == "stop"
 
 
 def test_stable_tool_error_codes_have_recovery_semantics() -> None:
     from app.tools.contracts import _error_result
 
     expected = {
-        "unknown_tool": (False, "stop"),
-        "invalid_input": (True, "replan_arguments"),
-        "unauthorized": (False, "request_authentication"),
-        "forbidden": (False, "stop"),
-        "timeout": (True, "retry_once"),
-        "dependency_unavailable": (True, "explain_temporary_unavailability"),
-        "execution_error": (False, "stop"),
+        "unknown_tool": ("internal_error", "stop"),
+        "invalid_input": ("invalid_arguments", "revise_arguments"),
+        "unauthorized": ("access_denied", "request_authentication"),
+        "forbidden": ("access_denied", "stop"),
+        "timeout": ("dependency_unavailable", "retry"),
+        "dependency_unavailable": ("dependency_unavailable", "stop"),
+        "execution_error": ("internal_error", "stop"),
     }
 
-    for code, (retryable, recommended_action) in expected.items():
-        result = _error_result("catalog_search", code)
+    for reason, (code, next_action) in expected.items():
+        result = _error_result("catalog_search", reason)
         assert result.error is not None
         assert result.error.code == code
-        assert result.error.retryable is retryable
-        assert result.error.recommended_action == recommended_action
+        assert result.error.next_action == next_action
+        assert result.output is None
+        assert not {"retryable", "recommended_action", "phase"} & result.error.model_dump().keys()

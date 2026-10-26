@@ -36,7 +36,7 @@ Trace来源及完整性，不判用户语义、商品候选集合或条件字段
 
 查具体商品功能属于 lookup；按条件找候选属于 search；查看范围内选项属于 facets。
 全部正常业务都使用自然语言，无强制 category_hint；可信 scope 来自独立数据。
-输入契约要求 `invalid_input`，没有业务输出，handler、模型与SQL均不得启动。
+输入契约要求 `invalid_arguments` 与 `next_action=revise_arguments`，没有业务输出，handler、模型与SQL均不得启动。
 输出契约通过正常业务的正式绑定校验和 Trace 检查覆盖；尚未加入非法输出故障注入。
 
 [coverage.json](../catalog/coverage.json) 记录缺口。本轮不覆盖聊天、编排选工具、回答或前端。

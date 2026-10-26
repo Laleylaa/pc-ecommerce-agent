@@ -76,7 +76,7 @@ async def test_invalid_limit_never_reaches_handler(name, bad):
         {"query": "查询", "limit": bad},
         {"user_id": 41},
     )
-    assert not result.ok and result.error.code == "invalid_input"
+    assert not result.ok and result.error.code == "invalid_arguments"
 
 
 @pytest.mark.contract
@@ -91,7 +91,7 @@ async def test_one_over_limit_rejected(name):
         {"query": "查询", "limit": 6 if name == "order_lookup" else 11},
         {"user_id": 41},
     )
-    assert result.error.code == "invalid_input"
+    assert result.error.code == "invalid_arguments"
 
 
 @pytest.mark.contract
@@ -137,8 +137,9 @@ async def test_facets_nested_previews_preserve_counts_and_source_provenance():
     assert item["total_nested_value_count"] == 12 and not item["values_exhaustive"]
     assert len(item["values"]) == 10
     for v in item["values"]:
-        assert v["sku_ids"] == list(range(1, 11)) and v["total_sku_ids_count"] == 30
-        assert not v["sources_exhaustive"] and v["spu_ids"] == [1, 2, 3]
+        assert v["sku_ids"] == [] and v["total_sku_ids_count"] == 30
+        assert not v["sources_exhaustive"] and v["spu_ids"] == []
+        assert v["total_spu_ids_count"] == 3
     assert result.output["total_value_count"] == 1
 
 
@@ -214,9 +215,9 @@ async def test_single_oversize_entry_is_explicit_error_not_empty_success(name):
     )
     result = await execute(name, original)
     assert not result.ok and result.output is None
-    assert result.error.code == "output_budget_exceeded"
+    assert result.error.code == "resource_limit"
     assert (
-        not result.error.retryable and result.error.recommended_action == "narrow_query"
+        result.error.next_action == "narrow_request"
     )
 
 
@@ -302,7 +303,7 @@ async def test_minimum_catalog_fact_set_too_large_is_not_partial_success(name):
         original = catalog_output(name.removeprefix("catalog_"), count=1, padding=20000)
     result = await execute(name, original, limit=1)
     assert not result.ok and result.output is None
-    assert result.error.code == "output_budget_exceeded"
+    assert result.error.code == "resource_limit"
 
 
 @pytest.mark.contract

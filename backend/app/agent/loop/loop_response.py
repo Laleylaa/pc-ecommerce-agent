@@ -98,6 +98,9 @@ def response_state(
                 orders[order.id] = order_summary(order).model_dump(mode="json")
             for value in output.get("candidates", []):
                 orders[value["id"]] = value
+            for value in output.get("analysis_orders", []):
+                card = OrderCard.model_validate(value)
+                orders[card.id] = order_summary(card).model_dump(mode="json")
             order_queries.append({
                 "operation_id": record.invocation.operation_id,
                 "goal_id": record.invocation.goal_id,

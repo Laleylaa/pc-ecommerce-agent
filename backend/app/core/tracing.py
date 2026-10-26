@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 _active: ContextVar[Any] = ContextVar("agent_recording", default=None)
 _attributes: ContextVar[dict | None] = ContextVar("agent_trace_attributes", default=None)
 _SECRET_KEYS = {
-    "api_key", "llm_api_key", "langsmith_api_key", "tavily_api_key", "authorization", "password",
+    "api_key", "llm_api_key", "langsmith_api_key", "deepseek_search_api_key",
+    "authorization", "password",
     "access_token", "refresh_token", "auth_token_secret", "database_url", "redis_url",
 }
 

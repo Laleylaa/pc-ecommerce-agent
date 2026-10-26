@@ -50,7 +50,9 @@ def hard_checks(suite, case, execution):
     ):
         # Business reference facts are reviewed by the external reviewer, never
         # converted into automatic semantic verdicts or a required plan vocabulary.
-        if mode != "eq" or field not in {"ok", "error", "output", "error.code"}:
+        if mode != "eq" or field not in {
+            "ok", "error", "output", "error.code", "error.next_action",
+        }:
             raise ValueError("Semantic assertions belong in review_reference: " + field)
         if field in {"output", "error"} and expected is not None:
             raise ValueError("Only null/presence contract assertions are automatic")
@@ -292,7 +294,7 @@ def summary(output: dict) -> str:
     return f"{output.get('result_type')} / {detail}"
 
 
-def render(folder) -> None:
+def render(folder, *, write_report: bool = True) -> None:
     data = folder / "evidence"
     suite = read_json(data / "cases.json")
     manifest = read_json(data / "environment.json")
@@ -395,7 +397,10 @@ def render(folder) -> None:
                     "automatic": hard,
                     "trace_checks": traces,
                     "trace": evidence,
-                    "instruction": "先读review_reference与原始行，再核对全部阶段和结果；参考字段允许等价表达，程序不判语义，不得把approve当验收。",
+                    "instruction": (
+                        "先读review_reference与原始行，再核对全部阶段和结果；"
+                        "参考字段允许等价表达，程序不判语义，不得把approve当验收。"
+                    ),
                 }
             )
             semantic, complete = semantic_rows(suite, case, execution, reviews)
@@ -536,7 +541,8 @@ def render(folder) -> None:
         "",
         reference_line + "。",
     ]
-    (folder / "report.md").write_text("\n".join(lines) + "\n")
+    if write_report:
+        (folder / "report.md").write_text("\n".join(lines) + "\n")
     print(totals)
 
 
@@ -545,6 +551,7 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fetch", metavar="BATCH")
     mode.add_argument("--render", metavar="BATCH")
+    parser.add_argument("--no-report", action="store_true", help="Write checks without report.md")
     args = parser.parse_args()
     folder = batch_path(args.fetch or args.render)
     if args.fetch:
@@ -572,7 +579,7 @@ def main() -> None:
                 row["case_id"], []
             ).append(record)
         write_json(data / "environment.json", manifest)
-    render(folder)
+    render(folder, write_report=not args.no_report)
 
 
 if __name__ == "__main__":

@@ -92,12 +92,12 @@ async def test_two_product_references_keep_prices_evidence_and_no_single_selecti
         assert repo.data["working_memory"]["catalog"]["referenced_sku_id"] == 9101
 
 
-@pytest.mark.parametrize("fault", ["unselected_product", "out_of_range"])
-async def test_multiple_selection_does_not_allow_all_historical_products(monkeypatch, fault):
+@pytest.mark.parametrize("fault", ["out_of_range"])
+async def test_multiple_selection_rejects_nonexistent_structured_reference(monkeypatch, fault):
     message = "比较前两款的价格"
     sessions = capture_sessions(monkeypatch)
     refs = [{"kind": "catalog_candidate", "position": i} for i in (1, 2)]
-    invalid_refs = refs if fault == "unselected_product" else [
+    invalid_refs = [
         refs[0], {"kind": "catalog_candidate", "position": 4},
     ]
 
@@ -118,8 +118,7 @@ async def test_multiple_selection_does_not_allow_all_historical_products(monkeyp
     response = await runtime.run(ChatRequest(message=message), 41)
     assert [p.sku_id for p in response.products] == [9102, 9101]
     assert repo.data["audit"]["agent_loop"]["rejections"] == [
-        "unsourced_product_identity" if fault == "unselected_product"
-        else "reference_ambiguous_or_missing",
+        "reference_ambiguous_or_missing",
     ]
 
 

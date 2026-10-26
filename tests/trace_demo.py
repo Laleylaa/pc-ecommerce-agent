@@ -67,7 +67,7 @@ async def run(export):
             response = await runtime.run(ChatRequest(message=MESSAGE), 41)
             elapsed = perf_counter() - started
             assert response.answer == ANSWER
-            assert len(model.requests) == 9 and len(attempts) == 3
+            assert len(model.requests) == 7 and len(attempts) == 2
             assert [c.outcome for c in response.execution_details.tool_calls] == [
                 'error', 'error', 'usable',
             ]
@@ -96,7 +96,7 @@ async def run(export):
                         received = result.json()['data']
                         if len(received) == len(spans):
                             models = [s for s in received if s['span_kind'] == 'LLM']
-                            assert len(models) == 9
+                            assert len(models) == 7
                             for model in models:
                                 attrs = model['attributes']
                                 assert 'llm.input_messages.0.message.role' in attrs

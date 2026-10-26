@@ -15,7 +15,7 @@ from app.core.loop_budget import model_stage
 from app.tools.contracts import BoundTool, ToolCatalog
 from langchain_core.messages import HumanMessage
 
-MESSAGE = "P4 合成演示：查 SKU 9101 测试键盘当前价格，两次失败后补查"
+MESSAGE = "P4 合成演示：查 SKU 9101 测试键盘当前价格，超时后有界重试"
 ANSWER = "补查成功：P1 测试键盘 9101 当前价格为 299 元。"
 
 
@@ -31,8 +31,8 @@ def scenario(monkeypatch, *, enabled=True):
                 await model.ainvoke([HumanMessage(content=json.dumps({
                     "query": request.query, "synthetic": True,
                 }, ensure_ascii=False))])
-            if len(attempts) <= 2:
-                raise OSError(f"synthetic temporary failure {len(attempts)}")
+            if len(attempts) == 1:
+                raise TimeoutError("synthetic ordinary query timeout")
             return await original.handler(request)
 
         return ToolCatalog([
@@ -53,8 +53,6 @@ def scenario(monkeypatch, *, enabled=True):
         invalid, first, {"content": '{"plan":"synthetic attempt 1"}'},
         calls(("catalog_search", {"query": "SKU 9101"})),
         {"content": '{"plan":"synthetic attempt 2"}'},
-        calls(("catalog_search", {"query": "SKU 9101", "limit": 1})),
-        {"content": '{"plan":"synthetic supplemental lookup"}'},
         finish(), checked_answer,
     ], catalog_factory=factory)
     runtime.settings = runtime.settings.model_copy(update={"loop_trace_enabled": enabled})

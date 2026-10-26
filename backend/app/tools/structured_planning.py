@@ -58,6 +58,14 @@ def output_schema(schema: type[BaseModel], required: tuple[str, ...]) -> dict:
     """Use field definitions and require only the plan's execution decisions."""
     result = schema.model_json_schema()
     result["required"] = sorted(set(result.get("required", [])) | set(required))
+    if stop_rule := getattr(schema, "model_optional_on_stop", None):
+        field, values, optional = stop_rule
+        execution_required = sorted(set(result["required"]) & set(optional))
+        result["required"] = sorted(set(result["required"]) - set(optional))
+        result.setdefault("allOf", []).append({
+            "if": {"properties": {field: {"enum": list(values)}}, "required": [field]},
+            "else": {"required": execution_required},
+        })
     for nested in _nested_models(schema):
         definition = result.get("$defs", {}).get(nested.__name__)
         if definition is not None:
@@ -132,6 +140,12 @@ def require_decisions(
     path: tuple = (),
     schema: type[BaseModel] | None = None,
 ) -> None:
+    # Only an explicit stop decision may omit execution choices. Supplied fields
+    # still pass Pydantic and domain validation, including nested requirements.
+    if schema is not None and (stop_rule := getattr(schema, "model_optional_on_stop", None)):
+        field, values, optional = stop_rule
+        if any(type(data.get(field)) is type(v) and data.get(field) == v for v in values):
+            required = tuple(name for name in required if name not in optional)
     for field in required:
         if field not in data:
             raise OutputValidationError(

@@ -166,12 +166,14 @@ async def test_explicit_retry_preserves_operation_and_caps_attempts():
 
     async def handler(request):
         calls.append(request)
-        raise OSError("synthetic dependency down")
+        raise TimeoutError("synthetic ordinary query timeout")
 
     query = adapter(one_tool(handler))
     operation = query.prepare("g1", "order_lookup", {"order_id": 8201})
     first = await query.execute(operation)
     assert len(calls) == 1  # No automatic retry.
+    assert first.result.error.code == "dependency_unavailable"
+    assert first.result.error.next_action == "retry"
     second = await query.execute(operation)
     assert first.invocation.operation_id == second.invocation.operation_id
     assert first.invocation.invocation_id != second.invocation.invocation_id
@@ -179,6 +181,29 @@ async def test_explicit_retry_preserves_operation_and_caps_attempts():
     with pytest.raises(AdmissionError, match="retry_not_allowed"):
         await query.execute(operation)
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure,code", [
+    (OSError("synthetic dependency unavailable"), "dependency_unavailable"),
+    (RuntimeError("synthetic internal failure"), "internal_error"),
+])
+async def test_stop_errors_cannot_replay_same_operation(failure, code):
+    calls = []
+
+    async def handler(request):
+        calls.append(request)
+        raise failure
+
+    query = adapter(one_tool(handler))
+    operation = query.prepare("g1", "order_lookup", {"order_id": 8201})
+    first = await query.execute(operation)
+    assert not first.result.ok and first.result.output is None
+    assert first.result.error.code == code and first.result.error.next_action == "stop"
+    with pytest.raises(AdmissionError, match="retry_not_allowed"):
+        await query.execute(operation)
+    assert len(calls) == 1 and len(query.attempts(operation)) == 1
+    assert query.evidence.reference("g1", first.evidence_id).result == first.result
 
 
 @pytest.mark.asyncio
@@ -233,9 +258,10 @@ async def test_hanging_tool_cleanup_and_failure_evidence(mode):
     assert cleaned.is_set()
     record, = query.attempts(operation)
     assert record.result.error.code == {
-        "contract_timeout": "timeout", "shared_deadline": "deadline_exhausted",
-        "cancel": "cancelled",
+        "contract_timeout": "dependency_unavailable", "shared_deadline": "resource_limit",
+        "cancel": "resource_limit",
     }[mode]
+    assert record.result.error.next_action == ("retry" if mode == "contract_timeout" else "stop")
     assert record.completion_blockers == ("execution_failed",)
 
 
@@ -247,7 +273,10 @@ async def test_invalid_handler_output_is_execution_failure():
     query = adapter(one_tool(handler))
     record = await query.execute(query.prepare("g1", "order_lookup", {"order_id": 8201}))
     assert not record.result.ok
-    assert record.result.error.details == {"failure_type": "output_contract_error"}
+    assert record.result.error.code == "internal_error"
+    assert record.result.error.next_action == "stop"
+    assert record.result.error.details is None
+    assert record.result.output is None
 
 
 def test_tool_imports_do_not_load_agent_or_strands():

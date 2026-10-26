@@ -25,6 +25,11 @@ match_orders must submit product_terms. Preserve product, status and time requir
 Split distinct product requirements into separate terms (e.g. 雷蛇 and 鼠标); do not merge them
 into one invented product name. Standard catalog brand/category/color aliases are matched by
 the program; arbitrary model/version names remain literal terms. Do not infer specifications.
+Split a product expression into brand, model and category where identifiable, even if the user
+omits spaces (e.g. 测研茶语K1键盘 -> 测研, 茶语, K1, 键盘). Retain every identity component.
+The program normalizes layout/case, matches all components on one item, and may propose similar
+item names only after no exact result. Such suggestions require confirmation, never declare them
+the requested order or relax its owner. Do not rewrite a model number to improve recall.
 Only recorded specification VALUES are searched, not JSON keys. Numeric item-price/quantity
 predicates are unavailable; preserve them in unresolved_requirements, not product_terms.
 Unsupported or ambiguous filtering requirements go to unresolved_requirements; do not widen query.

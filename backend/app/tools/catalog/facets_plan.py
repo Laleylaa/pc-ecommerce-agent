@@ -32,6 +32,9 @@ class FacetQueryPlan(BaseModel):
         "selection", "facet", "conditions", "count_scope", "supported",
         "unresolved_requirements",
     )
+    model_optional_on_stop: ClassVar[tuple[str, tuple[bool, ...], tuple[str, ...]]] = (
+        "supported", (False,), ("facet", "count_scope"),
+    )
     selection: Literal["catalog", "object"] = Field(
         default="catalog",
         description="详细规划的结果职责：集合选项统计或误投的对象事实；不是查询范围层级。",
@@ -66,6 +69,10 @@ class FacetQueryPlan(BaseModel):
     count_scope: Literal["sku", "spu"] = "spu"
     limit: int = Field(default=MAX_RESULT_ITEMS, ge=1, le=MAX_RESULT_ITEMS)
     supported: bool = Field(default=True, strict=True)
+    split_required: bool = Field(
+        default=False, strict=True,
+        description="请求包含多个独立统计维度，单个facet计划无法交付时为true；程序停止并要求拆分。",
+    )
     unsupported_reason: str | None = None
     planner: str = "rule_based"
     normalization_debug: dict = Field(default_factory=dict)
@@ -90,7 +97,6 @@ def _validate_catalog_facet_plan(
         plan.spec_key = canonical_field(plan.spec_key)
     for condition in plan.conditions:
         condition.key = canonical_field(condition.key)
-    from app.tools.catalog.outcomes import ResultReason
     from app.tools.catalog.requirements import requirement_assessment
     from app.tools.catalog.validation import (
         invalid_plan,
@@ -105,19 +111,9 @@ def _validate_catalog_facet_plan(
             "保留原请求，在详细计划中明确是否属于对象事实或其他工具职责。",
             ("selection",), "unhandled_object_scope",
         ))
-    if plan.facet == "spec_value" and not plan.spec_key:
+    if plan.supported and plan.facet == "spec_value" and not plan.spec_key:
         extra_issues.append(invalid_plan(
             "spec_value requires spec_key", ("spec_key",), "missing_spec_key",
-        ))
-    if plan.spec_key and (
-        plan.spec_key not in ALLOWED_FILTERS
-        or (normalize_category_hint(category) and plan.spec_key not in
-            CATEGORY_FIELDS[normalize_category_hint(category)].split())
-    ):
-        extra_issues.append(QueryIssue(
-            ResultReason.FILTER_DATA_UNAVAILABLE,
-            f"当前字段体系没有该范围的规格取值定义：{plan.spec_key}。",
-            {"path": ["spec_key"], "field": plan.spec_key},
         ))
 
     probe = SearchPlan(
@@ -127,6 +123,7 @@ def _validate_catalog_facet_plan(
         clarification_requirements=plan.clarification_requirements,
         unsupported_requirements=plan.unsupported_requirements,
         disposition=(
+            "split_required" if plan.split_required else
             "ready" if plan.supported or plan.unresolved_requirements
             or plan.clarification_requirements
             or (plan.selection == "object" and not plan.target and not (

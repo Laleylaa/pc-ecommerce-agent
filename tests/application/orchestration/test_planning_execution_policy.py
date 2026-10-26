@@ -31,7 +31,7 @@ async def test_real_document_tool_returns_at_most_requested_evidence(monkeypatch
     web = WebSearchToolService("fixture", transport=httpx.MockTransport(
         lambda _: httpx.Response(200, json={"results": [
             {"title": f"材料{i}", "url": f"https://example.com/{i}",
-             "content": "事实", "score": 1}
+             "snippet": "事实", "summary": "事实", "rerank_score": 1}
             for i in range(5)
         ]}),
     ))

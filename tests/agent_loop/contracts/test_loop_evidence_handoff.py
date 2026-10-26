@@ -159,7 +159,8 @@ def test_large_observation_preserves_limits_and_does_not_fake_empty_sources():
     assert view["projection_truncated"]
     assert view["result"]["output"] is None
     assert not view["result"]["ok"]
-    assert view["result"]["error"]["code"] == "observation_budget_exceeded"
+    assert view["result"]["error"]["code"] == "resource_limit"
+    assert view["result"]["error"]["next_action"] == "narrow_request"
     assert "observation_budget_exceeded" in view["completion_blockers"]
     assert store.reference("g1", record.evidence_id).result.output["documents"]
 

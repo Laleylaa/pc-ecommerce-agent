@@ -27,6 +27,7 @@ class PlannedRequirement:
 def planned_requirements(plan: SearchPlan) -> list[PlannedRequirement]:
     # Paths identify plan entries; audit notes cannot establish semantic identity.
     entries: list[PlannedRequirement] = []
+    match_conditions = {c.key: c for c in plan.matching_conditions}
 
     def add(source: str, path: tuple[str | int, ...]) -> PlannedRequirement:
         row = PlannedRequirement(source, paths=[path])
@@ -37,6 +38,10 @@ def planned_requirements(plan: SearchPlan) -> list[PlannedRequirement]:
         add(condition.evidence, ("conditions", index)).conditions.append(condition)
     for index, requirement in enumerate(plan.unresolved_requirements):
         row = add(requirement.evidence, ("unresolved_requirements", index))
+        if requirement.reason in {"spec_not_carried", "filter_data_unavailable"}:
+            # Complete catalog: this is an executable known mismatch, not an unknown fact.
+            row.conditions.append(match_conditions[f"not_carried_spec:{index}"])
+            continue
         reason = ResultReason(requirement.reason)
         if reason not in row.declared_reasons:
             row.declared_reasons.append(reason)

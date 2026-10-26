@@ -1,5 +1,5 @@
 {
-  "version": "catalog-output-budget-5",
+  "version": "catalog-error-contract-6",
   "type": "facets",
   "tool_name": "catalog_facets",
   "design_status": "输出双上限验收：保留原场景，新契约下区分展示窗口、全集统计与来源预览。",
@@ -679,13 +679,18 @@
         [
           "error.code",
           "eq",
-          "invalid_input"
+          "invalid_arguments"
+        ],
+        [
+          "error.next_action",
+          "eq",
+          "revise_arguments"
         ]
       ],
       "trace_route": "input_rejected",
       "semantic_expectation": "显式空scope应拒绝，不能静默扩大到全店。",
       "allowed_equivalences": [
-        "错误文字可以不同；必须是invalid_input且无业务输出。"
+        "错误文字可以不同；必须是invalid_arguments、next_action=revise_arguments且无业务输出。"
       ],
       "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
       "common_hard_override": []
@@ -713,13 +718,18 @@
         [
           "error.code",
           "eq",
-          "invalid_input"
+          "invalid_arguments"
+        ],
+        [
+          "error.next_action",
+          "eq",
+          "revise_arguments"
         ]
       ],
       "trace_route": "input_rejected",
       "semantic_expectation": "limit=0应拒绝，不能自动改成默认值。",
       "allowed_equivalences": [
-        "错误文字可以不同；必须是invalid_input且无业务输出。"
+        "错误文字可以不同；必须是invalid_arguments、next_action=revise_arguments且无业务输出。"
       ],
       "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
       "common_hard_override": []
@@ -747,13 +757,18 @@
         [
           "error.code",
           "eq",
-          "invalid_input"
+          "invalid_arguments"
+        ],
+        [
+          "error.next_action",
+          "eq",
+          "revise_arguments"
         ]
       ],
       "trace_route": "input_rejected",
       "semantic_expectation": "拒绝用户注入服务端身份字段；不能透传给handler。",
       "allowed_equivalences": [
-        "错误文字可以不同；必须是invalid_input且无业务输出。"
+        "错误文字可以不同；必须是invalid_arguments、next_action=revise_arguments且无业务输出。"
       ],
       "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
       "common_hard_override": []
@@ -875,13 +890,18 @@
         [
           "error.code",
           "eq",
-          "invalid_input"
+          "invalid_arguments"
+        ],
+        [
+          "error.next_action",
+          "eq",
+          "revise_arguments"
         ]
       ],
       "trace_route": "input_rejected",
       "semantic_expectation": "非法limit拒绝，无业务输出和外部调用。",
       "allowed_equivalences": [
-        "错误文字可以不同；必须是invalid_input且无业务输出。"
+        "错误文字可以不同；必须是invalid_arguments、next_action=revise_arguments且无业务输出。"
       ],
       "data_requirement": "无商品数据依赖；输入校验必须在handler、SQL、模型调用之前拒绝。",
       "common_hard_override": []

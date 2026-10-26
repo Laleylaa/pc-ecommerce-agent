@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from app.repositories.catalog_search import CatalogRecord
 from app.schemas.catalog_search import ConditionCheck, SearchPlan
-from app.tools.catalog.fields import matches, number
+from app.tools.catalog.fields import FIELD_DEFINITIONS, matches, number
 
 
 def field_value(record: CatalogRecord, field: str) -> str | None:
@@ -14,15 +14,32 @@ def field_value(record: CatalogRecord, field: str) -> str | None:
         return "是" if record.product.stock > 0 else "否"
     if field == "description":
         return record.description or None
-    return record.product.specs.get(field)
+    actual = record.product.specs.get(field)
+    definition = FIELD_DEFINITIONS.get(field)
+    if actual is None and definition and definition.kind == "boolean":
+        return "否"
+    return actual
 
 
 def check_record(record: CatalogRecord, plan: SearchPlan) -> list[ConditionCheck]:
     conflicts = {issue.field for issue in record.issues if issue.status == "conflict"}
     checks = []
-    for condition in plan.conditions:
+    for condition in plan.matching_conditions:
         actual = field_value(record, condition.key)
-        decision = None if condition.key in conflicts else matches(actual, condition)
+        definition = FIELD_DEFINITIONS.get(condition.key)
+        if condition.key.startswith("not_carried_spec:"):
+            actual, decision = "否", False
+        elif condition.key in conflicts:
+            decision = None  # Conflicting source records remain a data integrity issue.
+        elif actual is None or not actual.strip():
+            # Complete specification catalog: absent capability does not satisfy it.
+            # Boolean absence is 'no'; other absent values satisfy explicit exclusions.
+            decision = (
+                matches("否", condition) if definition and definition.kind == "boolean"
+                else condition.operator in {"ne", "not_in"}
+            )
+        else:
+            decision = matches(actual, condition)
         checks.append(
             ConditionCheck(
                 sku_id=record.product.sku_id,

@@ -23,7 +23,7 @@ def _domain_context(
 ) -> str:
     return render_prompt(
         "catalog/facets.md",
-        catalog_boundary=CATALOG_BOUNDARY,
+        catalog_boundary=CATALOG_BOUNDARY + "\n\n" + load_prompt("catalog/intent_examples.md"),
         requirement_rules=REQUIREMENT_RULES,
         resolved_scope_rules=RESOLVED_SCOPE_RULES,
         preferences=PREFERENCES,

@@ -377,10 +377,10 @@ async def _suggest_orders(
     validated: ValidatedOrderQueryPlan,
     diagnostics: list[ToolDiagnostic],
 ) -> OrderLookupOutput | None:
-    """After zero exact matches, relax one dimension, retaining the purchased product.
+    """After zero exact matches, propose one-dimensional differences for confirmation.
 
-    At most two additional reads. Identity, product terms, unresolved requirements,
-    explicit IDs and counts are never relaxed. Suggestions require user confirmation.
+    At most three additional reads, including a bounded name-similarity scan.
+    Identity, unresolved requirements, explicit IDs and exact counts never relax.
     """
     plan = validated.plan
     original = plan.filters
@@ -436,7 +436,53 @@ async def _suggest_orders(
                 details={"relaxed_condition": field},
             )],
         )
-    return None
+    return await _suggest_similar_item_names(repository, request, validated, diagnostics)
+
+
+async def _suggest_similar_item_names(
+    repository: OrderRepository,
+    request: OrderLookupInput,
+    validated: ValidatedOrderQueryPlan,
+    diagnostics: list[ToolDiagnostic],
+) -> OrderLookupOutput | None:
+    from app.rules.order_matching import item_name_similarity
+
+    original = validated.plan.filters
+    filters = original.model_copy(update={"product_terms": []})
+    # Keep owner, time and status. Only names differ, and this is never an exact result.
+    page = await repository.list_recent_orders_page(request.user_id, limit=200, offset=0,
+                                                   filters=filters)
+    ranked = []
+    for order in page.orders:
+        score, item = max(
+            ((item_name_similarity(original.product_terms, i.sku_name, i.sku_specs), i)
+             for i in order.items), key=lambda pair: pair[0], default=(0, None),
+        )
+        if score >= 0.66 and item is not None:
+            ranked.append((score, order, item))
+    ranked.sort(key=lambda entry: (-entry[0], -entry[1].id))
+    if not ranked:
+        return None
+    suggestions = [OrderSuggestion(order=order, differences=[OrderConditionDifference(
+        field="product_terms", expected={"product_terms": original.product_terms},
+        actual=item.sku_name, state="not_matched",
+    )]) for _, order, item in ranked[:validated.plan.limit]]
+    scanned_all = len(page.orders) >= page.total_count
+    return OrderLookupOutput(
+        result_type="order_suggestions", query_mode=validated.query_mode,
+        suggestions=suggestions, suggestion_filters=filters,
+        suggestion_total_count=len(ranked),
+        suggestion_is_exhaustive=scanned_all and len(suggestions) == len(ranked),
+        query_plan=_validated_plan_dump(validated, order_id=None),
+        diagnostics=[*diagnostics, ToolDiagnostic(
+            code="order_confirmation_required", severity="warning",
+            message="没有完全匹配的订单；以下商品名称相似，请用户确认，不能当作指定订单。",
+            recommended_action="ask_user_to_confirm_order",
+            details={"relaxed_condition": "product_terms", "scanned_order_count": len(page.orders),
+                     "scan_exhaustive": scanned_all,
+                     "suggestion_count_scope": "scanned_orders_only"},
+        )],
+    )
 
 
 def validate_order_query_plan(

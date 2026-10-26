@@ -69,7 +69,7 @@ async def test_tool_sessions_are_per_call_and_closed_on_every_exit(monkeypatch, 
             result = await call
             assert result.ok == (outcome == "success")
             if outcome == "timeout":
-                assert result.error.code == "timeout"
+                assert result.error.code == "dependency_unavailable"
     assert len(factory.opened) == 2 and factory.closed == factory.opened
     assert factory.opened[0] is not factory.opened[1]
     assert all(session is not chat_session for session, _ in seen)

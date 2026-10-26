@@ -50,7 +50,7 @@ flowchart LR
     API --> DB[(PostgreSQL)]
     Tools --> DB
     Tools --> Index["本店政策索引<br/>BM25 + 向量检索"]
-    Tools --> Web["Tavily · 外设知识网页检索"]
+    Tools --> Web["DeepSeek Search · 外设知识网页检索"]
     DB -. 知识同步 .-> Chroma[(ChromaDB)]
 
     classDef entry fill:#eff6ff,stroke:#3b82f6,color:#1e3a8a
@@ -66,11 +66,11 @@ flowchart LR
 | 前端 | React 19 · TypeScript · Vite，提供聊天与业务信息展示 |
 | API 与编排 | Python 3.11 · FastAPI · LangGraph，负责认证、任务执行和回答生成 |
 | 数据存储 | PostgreSQL · SQLAlchemy · Alembic，保存业务数据、会话与运行记录 |
-| 知识检索 | 本店政策：本地 JSON · BM25 + SentenceTransformer；外设知识：Tavily Web Search |
+| 知识检索 | 本店政策：本地 JSON · BM25 + SentenceTransformer；外设知识：DeepSeek Search API |
 | 本地基础设施 | Podman 管理 PostgreSQL、Redis 和 ChromaDB |
 | 依赖管理 | uv 与 npm，分别通过锁文件安装后端和前端依赖 |
 
-政策工具使用本地索引，外设知识工具使用 Tavily；ChromaDB 保留知识同步路径，Redis 当前用于健康检查。页面通过 `/api/chat` 一次性获取完整回答及执行详情。
+政策工具使用本地索引，外设知识工具使用 DeepSeek Search；ChromaDB 保留知识同步路径，Redis 当前用于健康检查。页面通过 `/api/chat` 一次性获取完整回答及执行详情。
 
 <a id="quick-start"></a>
 ## 快速开始
@@ -118,7 +118,7 @@ cp .env.example .env
 | 配置 | 填写方式 |
 | --- | --- |
 | `LLM_API_KEY` | 填入自己的模型 API key，默认使用 DeepSeek |
-| `TAVILY_API_KEY` | 外设知识网页搜索：在 [Tavily](https://app.tavily.com) 注册后填入 key；留空时明确返回未配置，本店政策检索不受影响 |
+| `DEEPSEEK_SEARCH_API_KEY` | 可选的搜索专用 DeepSeek key；留空时，官方 DeepSeek 配置复用 `LLM_API_KEY`。使用其他模型提供方或代理地址时须单独填写 |
 | `AUTH_TOKEN_SECRET` | 填入私有随机字符串，用于后端签发和验证登录凭证 |
 
 生成认证密钥：
@@ -129,7 +129,7 @@ openssl rand -hex 32
 
 将输出复制到 `AUTH_TOKEN_SECRET`，保留在本机。已有 `.env` 时直接核对配置，不要重新覆盖。前端默认通过 `/api` 代理访问后端，无需另配环境文件。
 
-Tavily 使用 basic 搜索，每次请求最多 10 条，8 秒总超时，不自动重试或请求生成式答案。官方目前提供每月 1,000 免费 credits，无需绑卡，basic 每次 1 credit；以 [官方额度说明](https://docs.tavily.com/documentation/api-credits) 为准。填好 key 后重启后端。key 仅放根目录 `.env`，不要放入 `VITE_*`。
+外设知识使用 [DeepSeek Search API](https://api-docs.deepseek.com/guides/search/)，搜索词最多 128 字符，每次最多返回 10 条，8 秒总超时，不自动重试或获取网页全文。优先使用返回的模型摘要作为证据，保留来源链接。默认 `LLM_PROVIDER=deepseek` 且 `LLM_BASE_URL` 留空或指向官方 HTTPS 地址时复用模型 key；否则需填写搜索专用 key。修改配置后重启后端；key 仅放根目录 `.env`，不要放入 `VITE_*`。无可用 key 时明确返回服务不可用，本店政策检索不受影响。
 
 本店政策默认使用 BM25 + 本地向量混合检索，索引缺失或过期时退回 BM25 并标明实际策略。请求内不下载模型；缺少模型时运行已有的 `make model-prepare` 显式准备。政策超时为 8 秒；同步计算移到单个后台线程，超时或取消后运行中的计算仍占用名额直到完成，期间新请求返回忙碌状态。
 
