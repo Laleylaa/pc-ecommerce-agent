@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Markdown Content — Dark PCB Theme
+   Markdown Content — shared answer typography
    Styles for react-markdown rendered content inside assistant bubbles.
    ========================================================================== */
 
@@ -51,7 +51,7 @@
 
 /* Links */
 .markdown-content a {
-  color: var(--copper);
+  color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   transition: color var(--duration-fast) var(--ease-out);
@@ -86,7 +86,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 1px 5px;
-  color: var(--copper);
+  color: var(--accent);
 }
 
 /* Code blocks */
@@ -123,7 +123,7 @@
 }
 
 .markdown-content th {
-  background: var(--bg-card);
+  background: var(--bg-panel);
   color: var(--text-primary);
   font-weight: 600;
   text-align: left;
@@ -147,8 +147,8 @@
 .markdown-content blockquote {
   margin: var(--space-3) 0;
   padding: var(--space-2) var(--space-4);
-  border-left: 3px solid var(--copper-dim);
-  background: var(--copper-weak);
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
   color: var(--text-secondary);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }

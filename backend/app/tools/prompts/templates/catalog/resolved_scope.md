@@ -1,7 +1,11 @@
 resolved_scope由程序提供，包含范围识别结果和实际定位信息。
 binding.scope_kind只说明查谁/在哪查，不决定是事实、选购或统计；详细规划须根据原始query
 判断是否符合当前工具职责，误投明确说明应使用哪个工具，不改写目标或静默换工具。
-其中binding中的名称、显式品类和编号已固定，本阶段不要修改或重新猜测；仍核对原始query的全部要求。
+其中binding中的对象身份identity_text、显式品类和编号已固定，本阶段不要修改或重新猜测；仍核对原始query的全部要求。
+identity_text只表示指定对象名称，不是普通发现查询的搜索条件。catalog/category/candidates范围且没有
+指定名称或编号时，详细规划根据完整query生成search_text和conditions；identity_text=null不要求
+search_text=null。标题类型词由详细规划保留在search_text，结构化条件仍按字段规则表达。
+指定对象的search_text沿用identity_text（facets对应name），不能改成其他对象或扩大身份范围。
 categories只用于加载适用规则，不自动增加category筛选。identity_scope、identity_count和
 identity_statuses说明程序已执行的身份定位；identity_preview仅是身份预览，不是条件匹配结果。
 scope_kind中的spu/sku是原请求的范围层级，实际确认层级以identity_scope为准。

@@ -33,7 +33,12 @@ async def test_contract_rejection_and_handler_failure_are_distinct(tmp_path, fai
 
     with agent_trace(settings_at(tmp_path)) as recording:
         result = await RunnableLambda(operation).ainvoke({}, trace_config())
-    assert not result.ok and result.error.code == failure
+    public_code, next_action = {
+        "invalid_input": ("invalid_arguments", "revise_arguments"),
+        "execution_error": ("internal_error", "stop"),
+    }[failure]
+    assert not result.ok and result.error.code == public_code
+    assert result.error.next_action == next_action
     assert len(events(recording, "tool_handler_start")) == (failure != "invalid_input")
     expected = "tool_contract_rejected" if failure == "invalid_input" else "tool_handler_error"
     assert len(events(recording, expected)) == 1

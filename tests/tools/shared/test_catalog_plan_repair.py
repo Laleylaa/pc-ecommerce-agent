@@ -15,7 +15,7 @@ from tests.support.tool_planning import Model
 @pytest.mark.boundary
 @pytest.mark.parametrize('tool', ['search', 'lookup', 'facets'])
 async def test_malformed_detail_is_repaired_without_losing_scope(tool):
-    scope = {'scope_kind': 'candidates', 'category': None, 'search_text': None,
+    scope = {'scope_kind': 'candidates', 'category': None, 'identity_text': None,
              'target': None, 'needs_specifications': False}
     if tool == 'facets':
         detail = facet_plan({'facet': 'brand'})

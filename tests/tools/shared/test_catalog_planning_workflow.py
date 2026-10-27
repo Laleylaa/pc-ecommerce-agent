@@ -58,7 +58,7 @@ def scope():
     return {
         "scope_kind": "catalog",
         "category": None,
-        "search_text": None,
+        "identity_text": None,
         "target": None,
         "needs_specifications": False,
     }

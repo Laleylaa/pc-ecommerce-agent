@@ -1,6 +1,12 @@
 """Domain evidence boundaries shared by both LLM3 answer paths."""
 
 CATALOG_FACTS = """
+spec_display是程序从统一字段定义派生的展示字典，不是商品事实，也不增加任何商品能力。
+对本店商品/订单规格，正文使用spec_display.fields中的label；有明确品类时使用categoryLabels，
+没有品类时用通用label，不根据名称猜品类。values只解释已知等价值，不能补全缺失或冲突资料。
+unit仅为无单位数值的展示单位；已有单位不重复添加，不改写原始数值或推断单位换算。
+未知字段保留原意，不编造中文含义；缺失值说明未提供，不能当作否/不支持。
+中文名称仅用于面向用户的表达，证据关联和规格归属仍按原始字段与SKU/SPU保持不变。
 商品和目录事实只取自catalog_search/catalog_lookup/catalog_facets，不能把字段说明当作商品事实。
 lookup_summary仅统计满足全部硬条件的在售版本，替代候选绝不能混入其数量和价格范围。
 exists=null表示条件证据不足，不是没有版本。fields的values、缺失和冲突数量共同决定结论；
@@ -16,6 +22,21 @@ limit_capped=true时说明用户请求requested_count项、系统单次最多展
 再按同一SKU的condition_checks说明差异，不代用户接受。本店规格目录完整：工具确认未销售/未具备的具体规格应说明不满足；数据冲突仍不能判否定。
 型号与版本分开，不跨SKU拼配置。series_*的数量、价格、库存及共有规格须限定为“本次候选版本”，
 可在对应句、紧邻的引言或表头统一标明适用范围，不重复免责声明；替代候选不称“符合全部条件”。
+正文（包括表格、列表、开头与结尾）必须沿用每项商品的entity_scope，与商品卡片的对象层级一致；
+未提供entity_scope时才参考该结果的selection_scope，不因存在sku_id或series_variants自行改成版本推荐。
+entity_scope=spu时每一项代表一个型号：使用spu_title或型号title，不擅自替用户选颜色、轴体或版本。
+报价使用series_min_price—series_max_price（相同则单价），说明这是本次候选版本的价格，
+不能用代表SKU的price替代区间，也不能用model_*全型号价格混入不满足本次条件的版本。
+规格只按series_common_specs及series_option_specs说明本次候选的共有属性或差异；
+price、stock、representative_sku_id、series_variants里的名称与属性是代表版本材料，
+即使代表版本恰好都是白色或蓝牙，也不能把型号推荐改写成白色/蓝牙版本清单。
+普通选购未询问库存时不主动加库存列；需要库存时，型号候选合计用series_total_stock并标明范围，
+单个版本库存不得写成型号库存。聚合价格/规格缺失时说明缺口，不拿代表版本或全型号字段补齐。
+entity_scope=sku或用户明确询问具体版本事实时，按该版本的名称、price、stock和specs回答；
+不能反过来强制汇总成型号，也不能用型号最低价替代指定版本价格。明确询问版本例子时可以引用
+series_variants，但必须标明它是本次返回的具体样本，不能代替型号主推荐或冒充全部版本。
+例如型号候选价格为219—319元、代表白色版219元且库存7件，普通推荐应列型号及候选价格区间，
+不应列“白色版219元、库存7件”；用户明确问白色版时才按该版本事实回答。
 不写“该型号有N个版本”或把共有规格接在型号名后
 暗示全型号具备。model_*只支持全型号数量/价格背景，不能证明其他版本也满足条件或共有规格。
 total_match_count、candidate_count、returned_count分别是严格匹配、候选池和返回数量；

@@ -32,6 +32,23 @@ def one_tool(handler, *, timeout=1):
     return ToolCatalog([BoundTool(contract, handler)])
 
 
+def test_non_read_only_tool_is_hidden_and_rejected_at_both_admission_entries():
+    async def forbidden(_):
+        pytest.fail("a non-read-only handler must never execute in the query loop")
+
+    contract = next(c for c in default_tool_contracts() if c.llm_name == "order_lookup")
+    contract = contract.model_copy(update={"read_only": False})
+    query = adapter(ToolCatalog([BoundTool(contract, forbidden)]))
+    bindings = StrandsToolBindings(query)
+    assert bindings.tools() == []
+    with pytest.raises(AdmissionError, match="unknown_or_non_query_tool"):
+        query.prepare("g1", "order_lookup", {"order_id": 1})
+    with pytest.raises(AdmissionError, match="unknown_or_non_query_tool"):
+        bindings.decode({"name": "order_lookup", "toolUseId": "write-attempt", "input": {
+            "goal_id": "g1", "arguments": {"order_id": 1},
+        }})
+
+
 @pytest.mark.parametrize("name", TOOL_ARGUMENTS)
 def test_schema_is_derived_and_detached(monkeypatch, name):
     catalog = make_catalog(monkeypatch)

@@ -1,4 +1,6 @@
 import {
+  PanelLeftClose,
+  Settings2,
   Loader2,
   LogOut,
   MessageSquarePlus,
@@ -17,6 +19,8 @@ type SidebarProps = {
   activeConversationId?: number;
   conversationsLoading: boolean;
   disabled: boolean;
+  onClose: () => void;
+  onPreferences: () => void;
   onLogout: () => void;
   onNewConversation: () => void;
   onSelectConversation: (conversationId: number) => void;
@@ -54,13 +58,15 @@ export function Sidebar({
   activeConversationId,
   conversationsLoading,
   disabled,
+  onClose,
+  onPreferences,
   onLogout,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation
 }: SidebarProps) {
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" aria-label="历史咨询">
       <div className="sidebar-header">
         <div className="brand-row">
           <span className="brand-mark">
@@ -68,8 +74,9 @@ export function Sidebar({
           </span>
           <div>
             <strong>小帕瓦</strong>
-            <small>在线咨询</small>
+            <small>外设选购助手</small>
           </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="收起历史咨询"><PanelLeftClose size={19} /></button>
         </div>
 
         <button
@@ -79,7 +86,7 @@ export function Sidebar({
           disabled={disabled}
         >
           <Plus size={16} />
-          新对话
+          新咨询
         </button>
       </div>
 
@@ -88,15 +95,15 @@ export function Sidebar({
           <UserRound size={15} />
         </span>
         <span className="operator-name">{operator.name}</span>
-        <span className="auth-chip">{operator.statusLabel}</span>
-        <button type="button" className="logout-link" onClick={onLogout} disabled={disabled}>
+        <button type="button" className="icon-button" onClick={onPreferences} aria-label="偏好管理"><Settings2 size={16} /></button>
+        <button type="button" className="logout-link" aria-label="退出登录" onClick={onLogout} disabled={disabled}>
           <LogOut size={14} />
         </button>
       </div>
 
       <section className="conversation-section">
         <div className="conversation-section-head">
-          <h2>历史对话</h2>
+          <h2>历史咨询</h2>
         </div>
         <div className="conversation-list">
           {groupConversations(conversations).map((group) => (

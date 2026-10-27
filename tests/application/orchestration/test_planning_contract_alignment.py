@@ -76,7 +76,8 @@ async def test_order_owner_predicate_and_server_identity_without_configured_data
         forged = await execute_bound_tool(
             BoundTool(contract, handler), {"order_id": 456, "user_id": 8}, {"user_id": 7}
         )
-        assert not forged.ok and forged.error.code == "invalid_input"
+        assert not forged.ok and forged.error.code == "invalid_arguments"
+        assert forged.error.next_action == "revise_arguments"
         assert seen == [(7, 456)]
     finally:
         db.close()

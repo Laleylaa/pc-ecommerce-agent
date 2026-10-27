@@ -209,6 +209,13 @@ make frontend
 
 ## 日常开发
 
+规格中文标签、基础展示单位与品类标签统一维护在
+[`backend/app/tools/catalog/fields.py`](backend/app/tools/catalog/fields.py)，展示入口为
+[`spec_display.py`](backend/app/tools/catalog/spec_display.py)。修改后运行 `make spec-display`
+生成前端字典，勿手改 `frontend/src/generated/spec-display.ts`。`make spec-display-check`
+检查同步，`make frontend-build` 和 `make check` 已包含此检查；这些命令不读取业务数据库。
+前端使用同一格式化入口展示商品/订单规格，最终回答材料附带本轮字段说明；内部工具字段保持不变。
+
 完成首次安装后，每次启动只需：
 
 ```bash

@@ -212,6 +212,10 @@ export type ChatMessage = {
   orderId?: number;
   suggestedActions?: SuggestedAction[];
   products?: ProductCard[];
+  order?: OrderCard | null;
+  orders?: OrderSummary[];
+  orderQuery?: OrderQueryMeta | null;
+  evidence?: EvidenceItem[];
 };
 
 export type AfterSalesTicket = {

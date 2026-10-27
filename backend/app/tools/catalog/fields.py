@@ -84,6 +84,9 @@ class FieldDefinition:
     units: Mapping[str, int] = field(default_factory=dict)
     aliases: Mapping[str, str] = field(default_factory=dict)
     meaning: str = ""
+    display_label: str = ""
+    display_unit: str = ""
+    category_labels: Mapping[str, str] = field(default_factory=dict)
     examples: tuple[str, ...] = ()
     value_groups: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     category_meanings: Mapping[str, str] = field(default_factory=dict)
@@ -95,6 +98,7 @@ class FieldDefinition:
         object.__setattr__(
             self, "category_meanings", MappingProxyType(dict(self.category_meanings))
         )
+        object.__setattr__(self, "category_labels", MappingProxyType(dict(self.category_labels)))
         if self.category_meanings:
             object.__setattr__(
                 self,
@@ -118,6 +122,7 @@ class FieldDefinition:
 # field semantics are declared here; all consumers use the derived registry.
 _FIELD_DEFINITIONS = {
     "connection_type": FieldDefinition(
+        display_label="连接方式",
         aliases={
             "bluetooth": "蓝牙",
             "bt": "蓝牙",
@@ -139,51 +144,75 @@ _FIELD_DEFINITIONS = {
         },
     ),
     "wireless": FieldDefinition(
+        display_label="支持无线",
         kind="boolean", meaning="仅表示是否无线；不能替代蓝牙或2.4G等具体连接要求"
     ),
-    "max_dpi": FieldDefinition(kind="number", units={"": 1, "dpi": 1}, meaning="最高DPI"),
+    "max_dpi": FieldDefinition(
+        display_label="最高 DPI",
+        kind="number", units={"": 1, "dpi": 1}, meaning="最高DPI",
+    ),
     "weight_g": FieldDefinition(
+        display_label="重量", display_unit="g",
         kind="number", units={"": 1, "g": 1, "克": 1, "kg": 1000, "千克": 1000}, meaning="重量"
     ),
     "hand_orientation": FieldDefinition(
+        display_label="适用手型",
         aliases={"right": "右手", "left": "左手"}, meaning="适用手型", examples=("右手", "左手")
     ),
     "tracking_method": FieldDefinition(
+        display_label="追踪方式",
         aliases={"optical": "光学"}, meaning="追踪方式", examples=("光学",)
     ),
     "color": FieldDefinition(
+        display_label="颜色",
         aliases={"black": "黑色", "white": "白色", "silver": "银色", "pink": "粉色"}, meaning="颜色"
     ),
     "switches": FieldDefinition(
+        display_label="轴体",
         aliases={"red": "红轴", "brown": "茶轴", "blue": "青轴", "magnetic": "磁轴"},
         meaning="实际轴体类型；系列名称即使含轴字也只用于name，不能据此推断轴体条件",
         examples=("线性红轴", "段落茶轴", "静音红轴", "磁轴"),
     ),
     "style": FieldDefinition(
+        display_label="配列",
         meaning="键盘配列/布局（layout），如75%、87键；标准版/无线版等版本名不属于此字段"
     ),
     "backlit": FieldDefinition(
+        display_label="背光",
         meaning="背光模式；有无背光也可用是/否筛选",
         aliases={"有背光": "是", "带背光": "是"},
         examples=("RGB", "白光", "无背光"),
         value_groups={"是": ("RGB", "白光"), "否": ("无背光",)},
     ),
-    "tenkeyless": FieldDefinition(kind="boolean", meaning="是否无独立数字键区；不代替具体配列"),
+    "tenkeyless": FieldDefinition(
+        display_label="无独立数字键区",
+        kind="boolean", meaning="是否无独立数字键区；不代替具体配列",
+    ),
     "type": FieldDefinition(
+        display_label="类型", category_labels={"耳机": "佩戴类型", "音箱": "产品类型"},
         category_meanings={
             "耳机": "佩戴类型(头戴式/入耳式)",
             "音箱": "产品类型(2.0/2.1/Soundbar/监听音箱)",
         }
     ),
     "enclosure_type": FieldDefinition(
+        display_label="声学结构",
         meaning="耳机声学结构；佩戴类型另用type", examples=("封闭式", "开放式")
     ),
-    "microphone": FieldDefinition(kind="boolean", meaning="是否有麦克风"),
-    "frequency_response": FieldDefinition(meaning="频率响应，按完整记录文本匹配，不做区间推断"),
+    "microphone": FieldDefinition(
+        display_label="配备麦克风",
+        kind="boolean", meaning="是否有麦克风",
+    ),
+    "frequency_response": FieldDefinition(
+        display_label="频率响应",
+        meaning="频率响应，按完整记录文本匹配，不做区间推断",
+    ),
     "size_inch": FieldDefinition(
+        display_label="屏幕尺寸", display_unit="英寸",
         kind="number", units={"": 1, "inch": 1, "英寸": 1, "寸": 1, '"': 1}, meaning="屏幕尺寸"
     ),
     "resolution": FieldDefinition(
+        display_label="分辨率",
         aliases={
             "2k": "2560x1440",
             "1440p": "2560x1440",
@@ -194,18 +223,31 @@ _FIELD_DEFINITIONS = {
         meaning="分辨率，支持像素尺寸及别名",
     ),
     "refresh_rate": FieldDefinition(
+        display_label="刷新率", display_unit="Hz",
         kind="number", units={"": 1, "hz": 1, "赫兹": 1}, meaning="刷新率"
     ),
-    "panel_type": FieldDefinition(meaning="面板类型", examples=("IPS", "VA", "TN", "OLED")),
+    "panel_type": FieldDefinition(
+        display_label="面板类型",
+        meaning="面板类型", examples=("IPS", "VA", "TN", "OLED"),
+    ),
     "response_time_ms": FieldDefinition(
+        display_label="响应时间", display_unit="ms",
         kind="number", units={"": 1, "ms": 1, "毫秒": 1}, meaning="记录的响应时间"
     ),
     "channels": FieldDefinition(
+        display_label="声道",
         meaning="声道配置，文本匹配", examples=("2.0", "2.1", "3.1", "5.1")
     ),
-    "power_w": FieldDefinition(kind="number", units={"": 1, "w": 1, "瓦": 1}, meaning="功率"),
-    "frame_rate": FieldDefinition(kind="number", units={"": 1, "fps": 1, "帧": 1}, meaning="帧率"),
+    "power_w": FieldDefinition(
+        display_label="功率", display_unit="W",
+        kind="number", units={"": 1, "w": 1, "瓦": 1}, meaning="功率",
+    ),
+    "frame_rate": FieldDefinition(
+        display_label="帧率", display_unit="fps",
+        kind="number", units={"": 1, "fps": 1, "帧": 1}, meaning="帧率",
+    ),
     "field_of_view": FieldDefinition(
+        display_label="视场角", display_unit="°",
         kind="number", units={"": 1, "°": 1, "度": 1}, meaning="视场角"
     ),
     "brand": FieldDefinition(

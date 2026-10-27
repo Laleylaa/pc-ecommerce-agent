@@ -90,9 +90,9 @@ def reviewed(batch, status="pass"):
 
 def test_catalog_has_unique_cases_and_per_turn_annotations():
     cases = load_cases()
-    assert len(cases) == 50
-    assert sum(len(c["turns"]) for c in cases) == 61
-    assert len({c["id"] for c in cases}) == 50
+    assert len(cases) == 51
+    assert sum(len(c["turns"]) for c in cases) == 62
+    assert len({c["id"] for c in cases}) == 51
     assert {c["suite"] for c in cases} == {"business", "boundary"}
 
 

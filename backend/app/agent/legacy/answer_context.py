@@ -15,6 +15,7 @@ from app.agent.legacy.outcomes import is_active_ledger_entry
 from app.agent.legacy.projections import without_pagination_controls
 from app.agent.legacy.routing import RequestRoutePlan, tool_planning_subqueries, user_facing_tasks
 from app.agent.tool_outcomes import CLARIFICATION_REASONS
+from app.tools.catalog.spec_display import answer_spec_display
 
 TaskSemanticOutcome = Literal[
     "answered_with_facts",
@@ -144,6 +145,7 @@ def build_answer_context(state: Mapping[str, Any]) -> dict[str, Any]:
     ]
     return {
         "original_message": state.get("message", ""),
+        "spec_display": answer_spec_display([tasks, supporting]),
         "execution_plan": state.get("execution_plan", {}),
         "supporting_tasks": supporting,
         "supporting_source_tool_call_ids": supporting_source_ids,

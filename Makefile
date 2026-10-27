@@ -141,7 +141,14 @@ integration-test:
 model-eval:
 	PYTHONPATH=backend:.:tests backend/.venv/bin/python -m evals.agent.compare_runtimes $(ARGS)
 
-frontend-build:
+.PHONY: spec-display spec-display-check
+spec-display:
+	cd backend && .venv/bin/python -m scripts.export_spec_display
+
+spec-display-check:
+	cd backend && .venv/bin/python -m scripts.export_spec_display --check
+
+frontend-build: spec-display-check
 	cd frontend && npm run build
 
 check:

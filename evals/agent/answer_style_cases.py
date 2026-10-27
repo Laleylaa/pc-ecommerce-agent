@@ -141,7 +141,7 @@ def failed_known_pair_handoff():
             result=ToolExecutionResult(
                 tool_name="catalog_search", ok=False,
                 error=ToolError(
-                    code="planning_output_invalid", message="查询计划未通过校验", retryable=False,
+                    code="planning_failed", message="查询计划未通过校验", next_action="stop",
                 ),
             ),
             recorded_at=now,
@@ -159,9 +159,70 @@ def failed_known_pair_handoff():
     return facts
 
 
+def catalog_granularity_cases():
+    """Distinct model/subset/sample prices expose incorrect cross-level field selection."""
+    products = [{
+        "spu_id": 71, "sku_id": 7101, "representative_sku_id": 7101,
+        "entity_scope": "spu", "title": "测研 云杉 K7 机械键盘",
+        "spu_title": "测研 云杉 K7 机械键盘", "price": "219", "stock": 7,
+        "series_min_price": "219", "series_max_price": "319", "series_total_stock": 23,
+        "series_sku_count": 2, "series_common_specs": {"wireless": "是"},
+        "series_option_specs": {"connection_type": ["蓝牙", "2.4G"]},
+        "model_min_price": "169", "model_max_price": "599", "model_sku_count": 4,
+        "series_variants": [{"sku_id": 7101, "title": "测研 云杉 K7 白色标准版",
+                             "price": "219", "stock": 7,
+                             "specs": {"color": "白色", "connection_type": "蓝牙"}}],
+        "variant_details_complete": False, "match_kind": "exact",
+    }, {
+        "spu_id": 72, "sku_id": 7201, "representative_sku_id": 7201,
+        "entity_scope": "spu", "title": "测研 湖光 K8 机械键盘",
+        "spu_title": "测研 湖光 K8 机械键盘", "price": "289", "stock": 11,
+        "series_min_price": "289", "series_max_price": "459", "series_total_stock": 31,
+        "series_sku_count": 2, "series_common_specs": {"wireless": "是"},
+        "model_min_price": "199", "model_max_price": "699", "model_sku_count": 5,
+        "series_variants": [{"sku_id": 7201, "title": "测研 湖光 K8 白色标准版",
+                             "price": "289", "stock": 11,
+                             "specs": {"color": "白色", "connection_type": "蓝牙"}}],
+        "variant_details_complete": False, "match_kind": "exact",
+    }]
+    output = {
+        "status": "success", "result_type": "products", "result_purpose": "recommendation",
+        "selection_scope": "spu", "ranking_strategy": "relevance",
+        "match_kind": "exact", "returned_count": 2, "total_match_count": 2,
+        "is_exhaustive": True, "products": products,
+    }
+    sku = {
+        **products[0], "entity_scope": "sku", "title": "测研 云杉 K7 黑色增强版",
+        "sku_id": 7102, "representative_sku_id": None, "price": "319", "stock": 16,
+        "specs": {"color": "黑色", "connection_type": "2.4G"}, "series_variants": [],
+    }
+    return [
+        {"id": "spu-recommendation", "paired": False,
+         "facts": handoff("推荐两款500元以内的无线机械键盘", outputs=[("catalog_search", output)]),
+         "review": ["主推荐为云杉K7和湖光K8型号，不默认选白色标准版或蓝牙版本",
+                    "报价分别为本次候选版本219—319和289—459元，与型号卡片一致",
+                    "不使用全型号169—599/199—699或单版本价替代候选区间",
+                    "未问库存不报7/11/23/31件，不把部分版本属性说成全部"]},
+        {"id": "sku-recommendation", "paired": False,
+         "facts": handoff("云杉K7里推荐黑色2.4G版本，报它的价格和库存", outputs=[
+             ("catalog_search", {**output, "selection_scope": "sku", "returned_count": 1,
+                                 "total_match_count": 1, "products": [sku]}),
+         ]),
+         "review": ["黑色增强版319元、库存16件、2.4G准确",
+                    "不改成型号区间219—319、型号起价169或候选库存23"]},
+        {"id": "spu-candidate-stock", "paired": False,
+         "facts": handoff("这两个型号符合条件的候选版本分别有多少库存？不用展开具体版本", outputs=[
+             ("catalog_lookup", {**output, "result_purpose": "lookup"}),
+         ]),
+         "review": ["云杉K7候选合计23件，湖光K8候选合计31件，限定本次候选范围",
+                    "不使用代表版本7/11件，不展开版本或称型号全部库存"]},
+    ]
+
+
 def style_cases():
     # Fixed before model runs. Rubrics describe user-visible outcomes, not prompt wording.
     return [
+        *catalog_granularity_cases(),
         {
             "id": "identity", "paired": True,
             "facts": handoff("你好，你是谁", disposition="direct_response"),

@@ -8,8 +8,8 @@ type LoginPageProps = {
 };
 
 export function LoginPage({ loading, error, onLogin }: LoginPageProps) {
-  const [loginIdentifier, setLoginIdentifier] = useState("demo@example.com");
-  const [password, setPassword] = useState("demo-password");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [password, setPassword] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

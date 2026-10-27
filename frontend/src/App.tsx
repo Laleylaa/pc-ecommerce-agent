@@ -1,5 +1,4 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import {
   ApiError,
   clearAuthSession,
@@ -15,12 +14,11 @@ import {
   restoreSession,
   sendChat
 } from "./api";
-import { executionDetailsFromMetadata } from "./utils/execution-details";
 import { ChatPanel } from "./components/ChatPanel";
-import { ContextPanel } from "./components/ContextPanel";
+import { DetailDrawer } from "./components/DetailDrawer";
+import { ProductResultsDrawer } from "./components/ProductResultsDrawer";
+import { PreferencesPanel, HandoffPanel } from "./components/ServicePanel";
 import { LoginPage } from "./components/LoginPage";
-import { MobileTabBar } from "./components/MobileTabBar";
-import type { MobileTab } from "./components/MobileTabBar";
 import { Sidebar } from "./components/Sidebar";
 import type {
   AuthSession,
@@ -29,7 +27,6 @@ import type {
   ChatMessage,
   ConversationDetail,
   ConversationSummary,
-  ConversationTurn,
   EvidenceItem,
   HandoffRequest,
   HandoffRequestType,
@@ -42,7 +39,6 @@ import type {
   PendingRequest,
   ProductCard,
   RequestError,
-  ResponseStatus,
   SuggestedAction
 } from "./types";
 
@@ -80,20 +76,14 @@ export default function App() {
   const [conversationId, setConversationId] = useState<number | undefined>();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [responseStatus, setResponseStatus] = useState<ResponseStatus>("ready");
   const [messages, setMessages] = useState<ChatMessage[]>([
     initialAssistantMessage()
   ]);
-  const [products, setProducts] = useState<ProductCard[]>([]);
   const [order, setOrder] = useState<OrderCard | null>(null);
-  const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [orderQuery, setOrderQuery] = useState<OrderQueryMeta | null>(null);
   const [boundary, setBoundary] = useState<BoundaryClassification | null>(null);
-  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>([]);
-  const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [handoffNotice, setHandoffNotice] = useState<HandoffNotice | null>(null);
-  const [ticketReason, setTicketReason] = useState("商品不符合预期");
+  const [ticketReason, setTicketReason] = useState("");
   const [ticketType, setTicketType] = useState<HandoffRequestType>("return");
   const [handoffSubmitting, setHandoffSubmitting] = useState(false);
   const [handoffQueryId, setHandoffQueryId] = useState("");
@@ -102,15 +92,35 @@ export default function App() {
   const [handoffQueryResult, setHandoffQueryResult] = useState<HandoffRequest | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
   const [failedRequest, setFailedRequest] = useState<PendingRequest | null>(null);
-  const [highlightedProductId, setHighlightedProductId] = useState<number | null>(null);
-  const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
-  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>("chat");
+  const [productResults, setProductResults] = useState<ProductCard[] | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductCard | null>(null);
+  const [utilityPanel, setUtilityPanel] = useState<"preferences" | "handoff" | null>(null);
   const isMobileContext = useMediaQuery("(max-width: 820px)");
-
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { return !window.matchMedia("(max-width: 820px)").matches && localStorage.getItem("pc-sidebar-open") !== "false"; }
+    catch { return true; }
+  });
+  function toggleSidebar() {
+    setSidebarOpen(current => {
+      try { localStorage.setItem("pc-sidebar-open", String(!current)); } catch { /* storage may be disabled */ }
+      return !current;
+    });
+  }
+  useEffect(() => { if (isMobileContext) setSidebarOpen(false); }, [isMobileContext]);
   const handleProductClick = useCallback((product: ProductCard) => {
-    setHighlightedProductId(product.sku_id);
-    setTimeout(() => setHighlightedProductId(null), 2000);
+    setUtilityPanel(null);
+    setProductResults(null);
+    setSelectedProduct(product);
   }, []);
+  function prepareQuestion(text: string) {
+    setInput(text);
+    setSelectedProduct(null); setProductResults(null);
+  }
+  function openHandoff() {
+    setSelectedProduct(null); setProductResults(null);
+    if (!handoffNotice) setHandoffNotice({ requested: false, source: "人工诉求", reason: "需要人工确认", orderId: order?.id, updatedAt: new Date().toISOString() });
+    setUtilityPanel("handoff");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -187,20 +197,16 @@ export default function App() {
   }
 
   function resetActiveConversation() {
+    setSelectedProduct(null); setProductResults(null);
+    setUtilityPanel(null);
     conversationDetailRequestVersionRef.current += 1;
     setConversationId(undefined);
     setInput("");
     setLoading(false);
-    setResponseStatus("ready");
     setMessages([initialAssistantMessage()]);
-    setProducts([]);
     setOrder(null);
-    setOrders([]);
-    setOrderQuery(null);
     setBoundary(null);
-    setEvidence([]);
     setSuggestedActions([]);
-    setTurns([]);
     setHandoffNotice(null);
     setHandoffSubmitting(false);
     setHandoffQueryId("");
@@ -209,6 +215,8 @@ export default function App() {
     setHandoffQueryResult(null);
     setError(null);
     setFailedRequest(null);
+    setTicketReason("");
+    setTicketType("return");
   }
 
   async function refreshConversations() {
@@ -297,6 +305,7 @@ export default function App() {
   function handleNewConversation() {
     if (loading) return;
     resetActiveConversation();
+    if (isMobileContext) setSidebarOpen(false);
   }
 
   async function handleDeleteConversation(targetId: number) {
@@ -333,6 +342,9 @@ export default function App() {
         requestVersion !== conversationDetailRequestVersionRef.current
       ) return;
       applyConversationDetail(detail);
+      setSelectedProduct(null); setProductResults(null);
+      setUtilityPanel(null);
+      if (isMobileContext) setSidebarOpen(false);
     } catch (err) {
       if (
         workspaceVersion !== workspaceVersionRef.current ||
@@ -347,7 +359,6 @@ export default function App() {
         ...requestError,
         message: "会话加载失败，请稍后重试。"
       });
-      setResponseStatus("error");
     } finally {
       if (
         workspaceVersion === workspaceVersionRef.current &&
@@ -374,7 +385,6 @@ export default function App() {
     setError(null);
     setFailedRequest(null);
     setLoading(true);
-    setResponseStatus("loading");
     setSuggestedActions([]);
 
     if (shouldAppendUser) {
@@ -414,7 +424,7 @@ export default function App() {
         requestConversationId,
         abortController.signal
       );
-      applyFinalResponse(response, assistantMessageId, message);
+      applyFinalResponse(response, assistantMessageId);
       if (response.memory_changes?.length) {
         void refreshMemories();
       }
@@ -426,7 +436,6 @@ export default function App() {
         return;
       }
       if (requestError.status === 499) {
-        setResponseStatus("cancelled");
         setSuggestedActions([]);
         updateMessage(assistantMessageId, (message) => ({
           ...message,
@@ -437,7 +446,6 @@ export default function App() {
       }
       setError(requestError);
       setFailedRequest(request);
-      setResponseStatus("error");
       setSuggestedActions([]);
       markMessageStatus(userMessageId, "failed");
       updateMessage(assistantMessageId, (message) => ({
@@ -456,8 +464,7 @@ export default function App() {
 
   function applyFinalResponse(
     response: ChatResponse,
-    assistantMessageId: string,
-    userMessage: string
+    assistantMessageId: string
   ) {
     const receivedAt = new Date().toISOString();
     const currentTurnOrderId = response.order?.id;
@@ -469,20 +476,11 @@ export default function App() {
       );
     setConversationId(response.conversation_id);
     setBoundary(response.boundary);
-    setEvidence(isBlockedBoundary(response.boundary) ? [] : response.evidence);
-    setProducts(isBlockedBoundary(response.boundary) ? [] : response.products);
     setOrder((current) => {
       if (isBlockedBoundary(response.boundary)) return null;
       if (hasOrderResults) return response.order ?? null;
       return response.order ?? current;
     });
-    if (isBlockedBoundary(response.boundary)) {
-      setOrders([]);
-      setOrderQuery(null);
-    } else if (hasOrderResults) {
-      setOrders(response.orders);
-      setOrderQuery(response.order_query ?? null);
-    }
     setSuggestedActions(response.suggested_actions);
     updateMessage(assistantMessageId, (message) => ({
       ...message,
@@ -496,23 +494,12 @@ export default function App() {
       productCount: response.products.length,
       orderId: currentTurnOrderId,
       suggestedActions: response.suggested_actions,
-      products: isBlockedBoundary(response.boundary) ? [] : response.products
+      products: isBlockedBoundary(response.boundary) ? [] : response.products,
+      order: isBlockedBoundary(response.boundary) ? null : response.order,
+      orders: isBlockedBoundary(response.boundary) ? [] : response.orders,
+      orderQuery: isBlockedBoundary(response.boundary) ? null : response.order_query,
+      evidence: isBlockedBoundary(response.boundary) ? [] : response.evidence
     }));
-    setTurns((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        userMessage,
-        executionDetails: response.execution_details,
-        assistantAnswer: response.answer,
-        boundary: response.boundary,
-        evidence: response.evidence,
-        productCount: response.products.length,
-        orderCount: returnedOrderCount(response.order, response.orders),
-        suggestedActions: response.suggested_actions,
-        createdAt: receivedAt
-      }
-    ]);
 
     if (response.boundary.classification === "human_handoff_required") {
       setHandoffNotice({
@@ -525,7 +512,6 @@ export default function App() {
     } else {
       setHandoffNotice(null);
     }
-    setResponseStatus(statusForBoundary(response.boundary));
   }
 
   function updateMessage(messageId: string, updater: (message: ChatMessage) => ChatMessage) {
@@ -574,7 +560,6 @@ export default function App() {
         orderId,
         updatedAt: new Date().toISOString()
       });
-      setResponseStatus("handoff");
       setSuggestedActions([]);
     }
   }
@@ -587,7 +572,6 @@ export default function App() {
         retryable: false,
         request: { message: "create handoff request" }
       });
-      setResponseStatus("error");
       return;
     }
     if (!reason) return;
@@ -617,7 +601,6 @@ export default function App() {
       });
       setHandoffQueryId(String(response.request_id));
       setHandoffQueryResult(null);
-      setResponseStatus("handoff");
       setSuggestedActions([]);
     } catch (err) {
       const requestError = toRequestError(err, { message: "create handoff request" });
@@ -626,14 +609,9 @@ export default function App() {
         return;
       }
       setError(requestError);
-      setResponseStatus("error");
     } finally {
       setHandoffSubmitting(false);
     }
-  }
-
-  function handleAcknowledgeHandoff() {
-    void handleRequestHandoff();
   }
 
   async function handleQueryHandoffRequest() {
@@ -658,7 +636,6 @@ export default function App() {
         message: current?.message,
         updatedAt: result.updated_at
       }));
-      setResponseStatus("handoff");
     } catch (err) {
       const requestError = toRequestError(err, { message: "query handoff request" });
       if (requestError.status === 401 || requestError.status === 403) {
@@ -678,27 +655,15 @@ export default function App() {
       .find((message) => message.role === "assistant" && message.metadata);
     const metadata = lastAssistant?.metadata ?? {};
     const restoredBoundary = boundaryFromMetadata(metadata);
-    const restoredEvidence = listFromMetadata<EvidenceItem>(metadata.evidence);
-    const restoredProducts = listFromMetadata<ProductCard>(metadata.products);
     const restoredOrder = orderFromMetadata(metadata.order);
-    const restoredOrders = listFromMetadata<OrderSummary>(metadata.orders);
-    const restoredOrderQuery = orderQueryFromMetadata(metadata.order_query);
 
     setConversationId(detail.id);
     setInput("");
     setMessages(restoredMessages.length ? restoredMessages : [initialAssistantMessage()]);
     setBoundary(restoredBoundary);
-    setEvidence(restoredBoundary && isBlockedBoundary(restoredBoundary) ? [] : restoredEvidence);
-    setProducts(restoredBoundary && isBlockedBoundary(restoredBoundary) ? [] : restoredProducts);
     setOrder(restoredBoundary && isBlockedBoundary(restoredBoundary) ? null : restoredOrder);
-    setOrders(restoredBoundary && isBlockedBoundary(restoredBoundary) ? [] : restoredOrders);
-    setOrderQuery(
-      restoredBoundary && isBlockedBoundary(restoredBoundary) ? null : restoredOrderQuery
-    );
     setSuggestedActions([]);
-    setTurns(turnsFromHistory(detail));
     setHandoffNotice(null);
-    setResponseStatus(restoredBoundary ? statusForBoundary(restoredBoundary) : "ready");
   }
 
   if (authStatus === "restoring" || !authSession) {
@@ -721,94 +686,56 @@ export default function App() {
   };
 
   return (
-    <div className={`shell ${contextPanelCollapsed ? "shell-collapsed" : ""}`}>
-      <Sidebar
+    <div className={`shell ${sidebarOpen ? "sidebar-expanded" : "sidebar-collapsed"}`}>
+      {isMobileContext && sidebarOpen && <button className="sidebar-backdrop" aria-label="关闭历史咨询" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && <Sidebar
         operator={operatorProfile}
         conversations={conversations}
         activeConversationId={conversationId}
         conversationsLoading={conversationsLoading}
-        disabled={loading}
+        disabled={loading || handoffSubmitting}
+        onClose={toggleSidebar}
+        onPreferences={() => { setSelectedProduct(null); setProductResults(null); setUtilityPanel("preferences"); }}
         onLogout={() => void handleLogout()}
         onNewConversation={handleNewConversation}
         onSelectConversation={(id) => void handleSelectConversation(id)}
         onDeleteConversation={handleDeleteConversation}
-      />
-
-      <div className="chat-area">
-        <ChatPanel
-          conversationId={conversationId}
-          messages={messages}
-          input={input}
-          loading={loading}
-          responseStatus={responseStatus}
-          boundary={boundary}
-          suggestedActions={suggestedActions}
-          error={error}
-          onInputChange={setInput}
-          onSubmit={handleSubmit}
-          onCancel={handleCancelRequest}
-          onRetry={handleRetry}
-          onSuggestedAction={handleSuggestedAction}
-          onProductClick={handleProductClick}
-        />
-        <MobileTabBar
-          activeTab={activeMobileTab}
-          onTabChange={setActiveMobileTab}
-          productCount={products.length}
-          evidenceCount={evidence.length}
-        />
-      </div>
-
-      <ContextPanel
-        boundary={boundary}
-        evidence={evidence}
-        products={products}
-        order={order}
-        orders={orders}
-        orderQuery={orderQuery}
-        turns={turns}
-        memories={memories}
-        memoriesLoading={memoriesLoading}
-        memoryError={memoryError}
-        forgettingMemoryIds={forgettingMemoryIds}
-        handoffNotice={handoffNotice}
-        ticketType={ticketType}
-        ticketReason={ticketReason}
+      />}
+      <ChatPanel
+        key={conversationId ?? "new"}
+        title={conversations.find(item => item.id === conversationId)?.title}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        messages={messages}
+        input={input}
         loading={loading || handoffSubmitting}
-        handoffQueryId={handoffQueryId}
-        handoffQueryLoading={handoffQueryLoading}
-        handoffQueryError={handoffQueryError}
-        handoffQueryResult={handoffQueryResult}
-        skuCount={products.length}
-        orderCount={orderQuery?.total_match_count ?? (order ? 1 : orders.length)}
-        evidenceCount={evidence.length}
-        highlightedProductId={highlightedProductId}
-        mobileTab={isMobileContext ? activeMobileTab : undefined}
-        onTicketTypeChange={(value) => setTicketType(value as HandoffRequestType)}
-        onTicketReasonChange={setTicketReason}
-        onRequestHandoff={handleRequestHandoff}
-        onAcknowledgeHandoff={handleAcknowledgeHandoff}
-        onHandoffQueryIdChange={setHandoffQueryId}
-        onQueryHandoffRequest={handleQueryHandoffRequest}
-        onForgetMemory={(memoryId) => void handleForgetMemory(memoryId)}
+        suggestedActions={suggestedActions}
+        error={error}
+        onInputChange={setInput}
+        onSubmit={handleSubmit}
+        onCancel={handleCancelRequest}
+        onRetry={handleRetry}
+        onSuggestedAction={action => { handleSuggestedAction(action); if (typeof action.payload.message !== "string") { setSelectedProduct(null); setProductResults(null); setUtilityPanel("handoff"); } }}
+        onProductClick={handleProductClick}
+        onViewProducts={products => { setUtilityPanel(null); setSelectedProduct(null); setProductResults(products); }}
+        onAsk={prepareQuestion}
+        onHandoff={openHandoff}
       />
-
-      <button
-        type="button"
-        className="panel-toggle"
-        onClick={() => setContextPanelCollapsed((c) => !c)}
-        title={contextPanelCollapsed ? "展开详情" : "收起详情"}
-      >
-        {contextPanelCollapsed ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}
-      </button>
+      {(selectedProduct || productResults) && <ProductResultsDrawer
+        products={productResults ?? [selectedProduct!]} initialProduct={selectedProduct}
+        onClose={() => { setSelectedProduct(null); setProductResults(null); }} onAsk={prepareQuestion} />}
+      {utilityPanel && <DetailDrawer title={utilityPanel === "preferences" ? "偏好管理" : "人工诉求"} onClose={() => { if (!handoffSubmitting) setUtilityPanel(null); }}>
+        {utilityPanel === "preferences" ? <PreferencesPanel memories={memories} loading={memoriesLoading}
+          error={memoryError} forgetting={forgettingMemoryIds} onForget={id => void handleForgetMemory(id)} />
+          : <><HandoffPanel notice={handoffNotice} type={ticketType} reason={ticketReason}
+            loading={loading || handoffSubmitting} queryId={handoffQueryId} queryLoading={handoffQueryLoading}
+            queryError={handoffQueryError} queryResult={handoffQueryResult}
+            onType={setTicketType} onReason={setTicketReason} onSubmit={() => void handleRequestHandoff()}
+            onQueryId={setHandoffQueryId} onQuery={() => void handleQueryHandoffRequest()} />
+            {error && <p role="alert" className="input-limit">{error.message}</p>}</>}
+      </DetailDrawer>}
     </div>
   );
-}
-
-function statusForBoundary(boundary: BoundaryClassification): ResponseStatus {
-  if (boundary.classification === "human_handoff_required") return "handoff";
-  if (isBlockedBoundary(boundary)) return "blocked";
-  return "success";
 }
 
 function isBlockedBoundary(boundary: BoundaryClassification): boolean {
@@ -845,36 +772,12 @@ function messageFromHistory(message: ConversationDetail["messages"][number]): Ch
     evidenceCount: evidence.length || undefined,
     productCount: products.length || undefined,
     orderId: order?.id,
-    products: products.length > 0 ? products : undefined
+    products: boundary && isBlockedBoundary(boundary) ? [] : products,
+    order: boundary && isBlockedBoundary(boundary) ? null : order,
+    orders: boundary && isBlockedBoundary(boundary) ? [] : listFromMetadata<OrderSummary>(metadata.orders),
+    orderQuery: boundary && isBlockedBoundary(boundary) ? null : orderQueryFromMetadata(metadata.order_query),
+    evidence: boundary && isBlockedBoundary(boundary) ? [] : evidence
   };
-}
-
-function turnsFromHistory(detail: ConversationDetail): ConversationTurn[] {
-  const turns: ConversationTurn[] = [];
-  for (let index = 0; index < detail.messages.length; index += 1) {
-    const user = detail.messages[index];
-    const assistant = detail.messages[index + 1];
-    if (user?.role !== "user" || assistant?.role !== "assistant") continue;
-    const metadata = assistant.metadata ?? {};
-    const boundary = boundaryFromMetadata(metadata);
-    if (!boundary) continue;
-    const evidence = listFromMetadata<EvidenceItem>(metadata.evidence);
-    const products = listFromMetadata<ProductCard>(metadata.products);
-    const order = orderFromMetadata(metadata.order);
-    turns.push({
-      id: `${user.id}-${assistant.id}`,
-      userMessage: user.content,
-      executionDetails: executionDetailsFromMetadata(metadata.execution_details),
-      assistantAnswer: assistant.content,
-      boundary,
-      evidence,
-      productCount: products.length,
-      orderCount: returnedOrderCount(order, listFromMetadata<OrderSummary>(metadata.orders)),
-      suggestedActions: [],
-      createdAt: assistant.created_at
-    });
-  }
-  return turns;
 }
 
 function boundaryFromMetadata(metadata: Record<string, unknown>): BoundaryClassification | null {
@@ -974,14 +877,4 @@ function numberFromPayload(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function returnedOrderCount(
-  order: OrderCard | null | undefined,
-  orders: OrderSummary[]
-): number {
-  // Count only records returned in this turn, deduplicating a selected detail.
-  const ids = new Set(orders.map((item) => item.id));
-  if (order) ids.add(order.id);
-  return ids.size;
 }

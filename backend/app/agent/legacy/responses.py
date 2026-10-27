@@ -11,33 +11,10 @@ from app.agent.legacy.routing import RequestRoutePlan, RoutedSubquery, blocked_s
 from app.agent.legacy.state import AgentState
 from app.agent.result_projection import _handoff_payload
 from app.agent.tool_outcomes import normalize_tool_result
+from app.tools.catalog.spec_display import display_registry, format_spec_value, spec_label
 
-CUSTOMER_SPEC_LABELS = {
-    "backlit": "背光",
-    "channels": "声道",
-    "color": "颜色",
-    "connection_type": "连接方式",
-    "enclosure_type": "耳罩类型",
-    "field_of_view": "视野范围",
-    "frame_rate": "帧率",
-    "frequency_response": "频响范围",
-    "hand_orientation": "持握方向",
-    "max_dpi": "最高 DPI",
-    "microphone": "麦克风",
-    "panel_type": "面板类型",
-    "power_w": "功率",
-    "refresh_rate": "刷新率",
-    "resolution": "分辨率",
-    "response_time_ms": "响应时间",
-    "size_inch": "尺寸",
-    "style": "款式",
-    "switches": "轴体",
-    "tenkeyless": "键盘布局",
-    "tracking_method": "传感方式",
-    "type": "类型",
-    "weight_g": "重量",
-    "wireless": "无线连接",
-}
+# Compatibility name for existing fallback consumers; labels have one source.
+CUSTOMER_SPEC_LABELS = {key: item["label"] for key, item in display_registry().items()}
 
 
 def fallback_goal_response(state: AgentState) -> dict[str, Any]:
@@ -193,15 +170,16 @@ def _fallback_answer(state: AgentState) -> str:
             is_series = product.entity_scope == "spu" or product.ranking_scope == "spu"
             source_specs = product.series_common_specs if is_series else product.specs
             customer_specs = [
-                (CUSTOMER_SPEC_LABELS[key.casefold()], value)
+                (spec_label(key, product.category), format_spec_value(key, value))
                 for key, value in source_specs.items()
                 if key.casefold() in CUSTOMER_SPEC_LABELS
             ][:4]
             if is_series:
                 for key, values in product.series_option_specs.items():
-                    label = CUSTOMER_SPEC_LABELS.get(key.casefold())
+                    label = (spec_label(key, product.category)
+                             if key.casefold() in CUSTOMER_SPEC_LABELS else None)
                     if label and values and len(customer_specs) < 4:
-                        customer_specs.append((f"可选{label}", "/".join(values)))
+                        customer_specs.append((f"可选{label}", format_spec_value(key, values)))
             specs = "，".join(f"{label}: {value}" for label, value in customer_specs)
             suffix = f"，{specs}" if specs else ""
             if asks_sales:

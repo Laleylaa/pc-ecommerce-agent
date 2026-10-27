@@ -17,7 +17,13 @@ class CatalogScopePlan(BaseModel):
         ),
     )
     category: QueryText | None
-    search_text: QueryText | None
+    identity_text: QueryText | None = Field(
+        description=(
+            "用户指定的单个商品名称（含品牌、型号、完整版本身份），供程序定位对象。"
+            "普通发现查询的品牌偏好、标题类型词和规格要求留在原始query，由详细规划处理；"
+            "没有指定单个对象时为null。"
+        ),
+    )
     target: ProductReference | None
     needs_specifications: bool = Field(strict=True)
     reason: str = ""

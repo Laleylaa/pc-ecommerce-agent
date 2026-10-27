@@ -13,6 +13,7 @@ from app.agent.result_projection import _handoff_payload
 from app.core.llm_calls import retryable_transport_error
 from app.core.loop_budget import LoopBudget, model_stage
 from app.core.loop_tracing import fields, needs_answer_materials, rejection
+from app.tools.catalog.spec_display import answer_spec_display
 from app.tools.structured_planning import parse_object
 
 
@@ -29,6 +30,7 @@ class AnswerInput(StrictModel):
         "该列表为空时没有可推荐的操作入口。"
     )
     suggested_actions: list[dict] = Field(default_factory=list)
+    spec_display: dict = Field(default_factory=dict)
 
 
 class AnswerDraft(StrictModel):
@@ -60,11 +62,13 @@ def handoff(session: QuerySession) -> AnswerInput:
                 "stop_reason": session.stop_reason,
             }
         ]
+    evidence = [project_record(record, destination="answer")
+                for record in session.adapter.evidence.active_records()]
     return AnswerInput(
         message=session.prepared.message,
         goals=goals,
-        evidence=[project_record(record, destination="answer")
-                  for record in session.adapter.evidence.active_records()],
+        evidence=evidence,
+        spec_display=answer_spec_display(evidence),
         history=[item.model_dump(mode="json") for item in session.prepared.history]
         if any(goal["disposition"] == "session_grounded_response" for goal in goals)
         else [],
@@ -121,7 +125,21 @@ def fallback_answer(facts: AnswerInput) -> AnswerDraft:
                 lines.append("查询取得了部分材料，但内容超过本次回答窗口，不能据此作完整结论。")
             elif output.get("products"):
                 for product in output["products"][:3]:
-                    lines.append(f"{product['title'][:120]}，所示版本价格 {product['price']} 元。")
+                    scope = product.get("entity_scope") or output.get("selection_scope")
+                    if scope == "spu":
+                        title = (product.get("spu_title") or product["title"])[:120]
+                        minimum, maximum = (
+                            product.get("series_min_price"), product.get("series_max_price"),
+                        )
+                        if minimum is None or maximum is None:
+                            lines.append(f"{title}，本次候选版本的价格范围资料不完整。")
+                        else:
+                            price = str(minimum) if minimum == maximum else f"{minimum}—{maximum}"
+                            lines.append(f"{title}，本次候选版本价格 {price} 元。")
+                    else:
+                        lines.append(
+                            f"{product['title'][:120]}，所示版本价格 {product['price']} 元。"
+                        )
                 if len(output["products"]) > 3:
                     lines.append("降级回答仅列出前三个返回候选，请查看卡片中的其余结果。")
                 if record["completion_blockers"]:
@@ -148,6 +166,8 @@ def fallback_answer(facts: AnswerInput) -> AnswerDraft:
 
 
 async def answer(facts: AnswerInput, model, budget: LoopBudget) -> tuple[AnswerDraft, str]:
+    # Rebuild for direct answer/eval callers too; never trust supplied display metadata.
+    facts = facts.model_copy(update={"spec_display": answer_spec_display(facts.evidence)})
     budget.begin_answer()
     messages = [SystemMessage(content=ANSWER_PROMPT), HumanMessage(content=facts.model_dump_json())]
     repairs = transports = 0

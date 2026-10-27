@@ -1,114 +1,67 @@
-import { ProductCard } from "../types";
-import { getCategoryIcon, getCategoryThumbClass } from "../utils/category-icon";
+import { useState } from "react";
+import { ArrowUpRight, ArrowRight } from "lucide-react";
+import type { ProductCard } from "../types";
+import { getCategoryIcon } from "../utils/category-icon";
+import { formatSpecs } from "../utils/spec-display";
 
-type ProductInlineCardProps = {
-  product: ProductCard;
-  onClick?: () => void;
-};
+export function productPresentation(product: ProductCard) {
+  const series = product.entity_scope === "spu" || product.ranking_scope === "spu";
+  const price = series && product.series_min_price != null
+    ? product.series_max_price && product.series_max_price !== product.series_min_price
+      ? `¥${product.series_min_price}–${product.series_max_price}` : `¥${product.series_min_price}`
+    : `¥${product.price}`;
+  return {
+    series,
+    title: series ? product.spu_title || product.title : product.title,
+    price,
+    specs: series ? product.series_common_specs ?? {} : product.specs,
+    priceScope: series ? product.match_kind ? "本次候选版本价格" : "型号价格范围" : "当前版本价格"
+  };
+}
 
-export function ProductInlineCard({ product, onClick }: ProductInlineCardProps) {
-  const IconComponent = getCategoryIcon(product.category);
-  const thumbClass = getCategoryThumbClass(product.category);
-  const isSeriesProduct = product.entity_scope === "spu" || product.ranking_scope === "spu";
-  const displayTitle = isSeriesProduct && product.spu_title ? product.spu_title : product.title;
-  const specLine = isSeriesProduct
-    ? product.series_sku_count
-      ? product.match_kind
-        ? `本次候选含 ${product.series_sku_count} 个版本`
-        : `共 ${product.series_sku_count} 个在售版本`
-      : "商品系列"
-    : Object.entries(product.specs)
-        .slice(0, 3)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(" · ");
-  const priceLabel =
-    isSeriesProduct && product.series_min_price
-      ? product.series_max_price &&
-        product.series_max_price !== product.series_min_price
-        ? `¥${product.series_min_price}–${product.series_max_price}`
-        : `¥${product.series_min_price}`
-      : `¥${product.price}`;
-  const stockLabel =
-    isSeriesProduct && product.series_total_stock !== null &&
-    product.series_total_stock !== undefined
-      ? `${product.match_kind ? "候选版本库存" : "系列库存"} ${product.series_total_stock}`
-      : product.stock > 0
-        ? `库存 ${product.stock}`
-        : "缺货";
+export function ProductImage({ product }: { product: ProductCard }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const Icon = getCategoryIcon(product.category);
+  return product.image_url && failedUrl !== product.image_url
+    ? <img src={product.image_url} alt={productPresentation(product).title} loading="lazy"
+        onError={() => setFailedUrl(product.image_url ?? null)} />
+    : <div className="product-placeholder"><Icon size={52} strokeWidth={1.15} /><span>{product.category} · 暂无商品图片</span></div>;
+}
 
-  function handleKeyDown(event: React.KeyboardEvent) {
-    if (onClick && (event.key === "Enter" || event.key === " ")) {
-      event.preventDefault();
-      onClick();
-    }
-  }
-
+export function ProductInlineCard({ product, onClick }: { product: ProductCard; onClick?: () => void }) {
+  const view = productPresentation(product);
   return (
-    <article
-      className="product-inline-card"
-      onClick={onClick}
-      onKeyDown={onClick ? handleKeyDown : undefined}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-    >
-      <div className={`product-inline-thumb ${thumbClass}`}>
-        {product.image_url ? (
-          <img src={product.image_url} alt={displayTitle} loading="lazy" />
-        ) : (
-          <IconComponent size={24} />
-        )}
-      </div>
+    <article className="product-inline-card">
+      <div className="product-inline-thumb"><ProductImage product={product} /></div>
       <div className="product-inline-info">
-        <h4>{displayTitle}</h4>
-        {product.match_kind === "alternative" && <small>替代候选，存在条件差异</small>}
-        {product.match_kind === "object_facts" && <small>对象资料，未确认满足全部要求</small>}
-        <small>{product.brand} · {product.category}</small>
-        {specLine && <small className="specs">{specLine}</small>}
+        <span className="eyebrow">{product.brand} · {product.category}</span>
+        <h4 title={view.title}>{view.title}</h4>
+        {product.match_kind === "alternative" && <span className="difference-label">相近候选 · 条件有差异</span>}
+        {product.match_kind === "object_facts" && <small>商品资料 · 未确认满足全部要求</small>}
+        <div className="spec-chips">{formatSpecs(view.specs, product.category).slice(0, 2).map(({ key, label, value }) =>
+          <span key={key}>{label}：{value}</span>)}</div>
       </div>
-      <div className="product-inline-price">
-        <strong>{priceLabel}</strong>
-        <span>{stockLabel}</span>
+      <div className="product-inline-price"><div><small>{view.priceScope}</small><strong>{view.price}</strong></div>
+        <button type="button" className="text-button" onClick={onClick} disabled={!onClick}>
+          {view.series ? "查看版本" : "查看详情"}<ArrowUpRight size={15} />
+        </button>
       </div>
     </article>
   );
 }
 
-type ProductCardRowProps = {
-  products: ProductCard[];
-  onProductClick?: (product: ProductCard) => void;
-};
-
-const MAX_INLINE_PRODUCTS = 3;
-
-export function ProductCardRow({ products, onProductClick }: ProductCardRowProps) {
-  if (products.length === 0) return null;
-
-  const visibleProducts = products.slice(0, MAX_INLINE_PRODUCTS);
-  const remainingCount = products.length - visibleProducts.length;
-  const candidateUnit = products.every(
-    (product) => product.entity_scope === "spu" || product.ranking_scope === "spu",
-  )
-    ? "个系列"
-    : "个候选";
-
-  return (
-    <div className="product-card-row" aria-label={`推荐商品摘要，共 ${products.length} 个商品`}>
-      <div className="product-card-row-head">
-        <strong>推荐商品</strong>
-        <span>{products.length} {candidateUnit}</span>
-      </div>
-      <div className="product-inline-list">
-        {visibleProducts.map((product) => (
-          <ProductInlineCard
-            key={product.sku_id}
-            product={product}
-            onClick={onProductClick ? () => onProductClick(product) : undefined}
-          />
-        ))}
-      </div>
-      {remainingCount > 0 && (
-        <div className="product-inline-more">另有 {remainingCount} 个候选</div>
-      )}
-    </div>
-  );
+export function ProductCardRow({ products, onProductClick, onViewAll }: {
+  products: ProductCard[]; onProductClick?: (product: ProductCard) => void;
+  onViewAll?: (products: ProductCard[]) => void;
+}) {
+  if (!products.length) return null;
+  const visible = products.slice(0, 2);
+  return <section className="product-card-row" aria-label="本次查询商品">
+    <div className="result-heading"><strong>本次返回 {products.length} 个候选</strong>
+      {products.length > 2 && <button type="button" className="text-button" onClick={() => onViewAll?.(products)} disabled={!onViewAll}>
+        查看全部 {products.length} 款<ArrowRight size={14} /></button>}</div>
+    <div className="product-inline-list">{visible.map((product, index) =>
+      <ProductInlineCard key={`${product.spu_id}-${product.sku_id}-${index}`} product={product}
+        onClick={onProductClick ? () => onProductClick(product) : undefined} />)}</div>
+  </section>;
 }

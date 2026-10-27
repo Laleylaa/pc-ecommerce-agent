@@ -320,7 +320,7 @@ async def test_catalog_plan_review_and_program_decisions_match_execution(
             calls(*register(goal(query))['calls'], ('catalog_search', {'query': query})),
             {'content': json.dumps({
                 'scope_kind': 'category', 'category': plan['category'],
-                'search_text': None, 'target': None, 'needs_specifications': False,
+                'identity_text': None, 'target': None, 'needs_specifications': False,
             })},
             {'content': json.dumps(plan)},
             {'content': json.dumps({'verdict': 'invalid'})},

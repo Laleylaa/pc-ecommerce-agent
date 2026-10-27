@@ -72,7 +72,7 @@ async def test_catalog_repair_preserves_raw_output_category_and_original_input(r
                         ]})
     model = SequenceModel([SimpleNamespace(content=json.dumps({
         "scope_kind": "category", "category": valid["category"],
-        "search_text": None, "target": None, "needs_specifications": True,
+        "identity_text": None, "target": None, "needs_specifications": True,
     })), SimpleNamespace(content=raw),
                            SimpleNamespace(content=json.dumps(valid, ensure_ascii=False)),
                            SimpleNamespace(content=json.dumps({

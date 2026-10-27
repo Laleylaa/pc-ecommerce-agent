@@ -113,7 +113,7 @@ class CatalogFacetPlanner:
                 "query": request.query, "limit": request.limit, "planner": "llm",
                 "unsupported_code": "request_not_supported",
                 "category": prepared.plan.category,
-                "name": prepared.plan.search_text,
+                "name": prepared.plan.identity_text,
                 "target": prepared.plan.target.model_dump() if prepared.plan.target else None,
             },
         )

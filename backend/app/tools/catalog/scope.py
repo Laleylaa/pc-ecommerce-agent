@@ -43,7 +43,15 @@ class PreparedCatalogScope:
         return build_spec_context(categories=categories, include_common_rules=False)
 
     def search_binding(self) -> dict:
-        return self.plan.model_dump(mode="json", include={"category", "search_text", "target"})
+        binding = self.plan.model_dump(mode="json", include={"category", "target"})
+        # Object identity is fixed before detailed planning. Discovery text belongs
+        # to the detailed plan; an absent identity must not erase its title terms.
+        if (
+            self.plan.identity_text is not None or self.plan.target is not None
+            or self.plan.scope_kind in {"object", "spu", "sku"}
+        ):
+            binding["search_text"] = self.plan.identity_text
+        return binding
 
 
 async def prepare_catalog_scope(
@@ -79,12 +87,13 @@ async def prepare_catalog_scope(
         # Scope shape determines identity preparation, never the tool's business purpose.
         object_scope = draft.scope_kind in {"object", "spu", "sku"} or draft.target is not None
         scope_ids = scope.sku_ids or scope.spu_ids
-        has_object = draft.target or draft.search_text or len(scope_ids) == 1
+        has_object = draft.target or draft.identity_text or len(scope_ids) == 1
         if operation in {"lookup", "search"} and object_scope and has_object:
             # Reuse strict single-object identity resolution, without invoking lookup.
-            plan = SearchPlan(operation="lookup", **{
-                key: getattr(draft, key) for key in ("category", "search_text", "target")
-            })
+            plan = SearchPlan(
+                operation="lookup", category=draft.category,
+                search_text=draft.identity_text, target=draft.target,
+            )
             if not plan.target and not plan.search_text:
                 ids = scope.sku_ids or scope.spu_ids
                 plan.target = ProductReference(kind="sku" if scope.sku_ids else "spu", id=ids[0])

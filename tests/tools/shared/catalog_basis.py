@@ -44,7 +44,9 @@ def derive(scenario, rows):
         if len(ranked) <= 10:
             raise ValueError("budget_case_requires_more_than_ten_models")
         return {"ranked_spu_ids": ranked, "total_spu": len(ranked), "total_sku": len(active),
-                "prices": {str(i): str(min(Decimal(r["price"]) for r in grouped[i])) for i in ranked}}
+                "prices": {
+                    str(i): str(min(Decimal(r["price"]) for r in grouped[i])) for i in ranked
+                }}
     if scenario.startswith("acceptance_"):
         active = [r for r in rows if r["sku_status"] == r["spu_status"] == 1]
         model = [r for r in active if r["spu_title"] == "Keychron 星轴 K01 机械键盘"]
