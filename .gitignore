@@ -87,12 +87,15 @@ local-backups/
 *.aof
 
 # 个人笔记、临时整理材料与本地工具约定
-# docs/ 仅放行共享问题台账；模块与迭代文档继续保留在本地。
-# 逐级放行父目录，不扩大到其他 docs 或评测产物。
-/docs/*
-!/docs/development/
-/docs/development/*
-!/docs/development/issues.md
+# 开发过程资料只留本地；已提交历史保留，公共说明仅描述用法与契约。
+/docs/
+/backend/evals/goal_planning/*.md
+!/backend/evals/goal_planning/README.md
+/backend/tests/**/results/*
+!/backend/tests/**/results/.gitkeep
+/backend/tests/**/reports/
+/backend/evals/**/results/
+/backend/evals/**/reports/
 /private/
 /tmp/
 /temp/
@@ -129,7 +132,7 @@ Desktop.ini
 /traces/
 /phoenix-data/
 
-# 旧 LangGraph 评测的运行输出；保留回归输入与手写说明
+# 旧 LangGraph 评测的运行输出；保留回归输入与公共使用说明
 /backend/evals/goal_planning/*.json
 !/backend/evals/goal_planning/cases.json
 /backend/evals/test_maintenance/*.json
