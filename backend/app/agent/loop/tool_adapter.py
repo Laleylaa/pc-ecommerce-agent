@@ -1,4 +1,4 @@
-"""P1 domain-tool admission/execution. Does not run or replace the chat runtime."""
+"""Domain-tool admission, trusted argument binding and bounded execution."""
 
 import asyncio
 from collections.abc import Callable, Iterator
@@ -14,7 +14,6 @@ from pydantic import ValidationError
 
 from app.agent.loop.evidence import EvidenceRecord, EvidenceStore, ToolInvocation
 from app.core.loop_budget import LoopLimit
-from app.core.loop_tracing import fields, payload
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext, execute_bound_tool
 from app.tools.errors import error_payload
 from app.tools.schemas import ToolError, ToolExecutionResult
@@ -36,9 +35,9 @@ class QueryOperation:
     arguments: dict[str, Any]
 
 
-# P2 supplies the registered-goal/prerequisite check, called again before each attempt.
+# Recheck the query session's goal/prerequisite guard before each attempt.
 GoalAdmission = Callable[[str], None]
-# P2 supplies admission and an absolute deadline in the running event loop's clock.
+# The query session supplies admission and an absolute deadline in the running event loop's clock.
 AttemptAdmission = Callable[[QueryOperation], float | None]
 
 
@@ -46,7 +45,7 @@ class QueryToolAdapter:
     """Request-owned, serial adapter over the existing domain executor.
 
     prepare() and SDK binding are trusted runtime APIs, never model tools. The
-    mandatory goal guard must reject unknown, blocked or non-query goals; P1 does
+    mandatory goal guard must reject unknown, blocked or non-query goals; The adapter does
     not infer goals or evaluate natural-language conditions. No implicit retries.
     """
 
@@ -118,9 +117,7 @@ class QueryToolAdapter:
         async with self._lock:
             operation = self.operation(operation_id)
             self._admit_goal(operation.goal_id)
-            payload("input", operation.arguments)
             attempts = self._attempts[operation_id]
-            fields(operation_id=operation_id, goal_id=operation.goal_id, attempt=len(attempts) + 1)
             if attempts:
                 last = attempts[-1].result
                 if (len(attempts) >= 2 or last.ok or not last.error
@@ -152,7 +149,6 @@ class QueryToolAdapter:
             except LoopLimit as exc:
                 limit_error = exc
                 result = _failure(operation.tool_name, "model_budget_exhausted")
-                fields(limit_reason=str(exc))
             record = self.evidence.record(
                 ToolInvocation(
                     invocation_id=f"attempt_{uuid4().hex}",
@@ -164,9 +160,6 @@ class QueryToolAdapter:
                 ),
                 result, datetime.now(UTC),
             )
-            payload("output", result.model_dump(mode="json"))
-            fields(invocation_id=record.invocation.invocation_id, evidence_id=record.evidence_id,
-                   outcome=record.invocation.status)
             attempts.append(record.model_copy(deep=True))
             if cancelled:
                 raise asyncio.CancelledError

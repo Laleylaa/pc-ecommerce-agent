@@ -36,40 +36,29 @@ build/
 dist/
 .cache/
 
-# 测试覆盖率、浏览器测试报告与运行日志
-.coverage
-.coverage.*
-coverage/
-htmlcov/
-coverage.xml
-junit.xml
-playwright-report/
-test-results/
+# 本地资料、开发工具和运行结果不进入使用版
+/docs/
+/tests/
+/evals/
+/artifacts/
+/frontend/dev/
+AGENTS.md
+AGENTS.local.md
+CLAUDE.local.md
+Makefile.development
+pytest.ini
+/private/
+/tmp/
+/temp/
 logs/
 *.log
 *.log.*
+coverage/
+playwright-report/
+test-results/
 
-# 本地业务数据、评测输出与容器数据目录
+# 仅分发可复现的演示输入，不上传数据库与导出数据
 /data/
-# 退役产物路径也保留忽略保护，防止旧命令生成文件被误提交
-/evals/results/
-/backend/evals/results/
-# 商品搜索本地评测：输入、报告、接口示例统一保留在本机
-/evals/tools/catalog_search/
-chroma/
-postgres-data/
-redis-data/
-*.sqlite
-*.sqlite3
-*.sqlite-journal
-*.sqlite-wal
-*.sqlite-shm
-*.sqlite3-journal
-*.sqlite3-wal
-*.sqlite3-shm
-
-# backend/data 仅提交运行必需的知识文档与向量索引。
-# 新增正式运行数据时，审查内容后在这里逐项放行。
 /backend/data/*
 !/backend/data/knowledge_documents.json
 !/backend/data/knowledge_vector_index.json
@@ -77,38 +66,34 @@ redis-data/
 /backend/data/demo/*
 !/backend/data/demo/manifest.json
 !/backend/data/demo/README.md
-
-# 数据库备份与本地导出；普通 .sql 源码不一概忽略
+postgres-data/
+chroma/
+redis-data/
+phoenix-data/
 backups/
 local-backups/
 /pc-ecommerce-agent-local-backups/
+/pc-ecommerce-agent-history-*.zip
 *.dump
 *.dump.*
 *.sql.gz
 *.sql.bz2
 *.sql.xz
 *.sql.zst
+*.sqlite*
 *.rdb
 *.aof
 
-# 个人笔记、临时整理材料与本地工具约定
-# 开发资料全部本地保留，包括 issues；公共运行说明放根 README 和模块使用说明。
-# 已跟踪文件还需取消跟踪，忽略规则不清除远端历史。
-/docs/
-/tests/tools/catalog/TEST_PLAN.md
-# 新评测批次也默认留本地；固定用例、预期、复跑脚本不忽略。
-/tests/**/results/*
-!/tests/**/results/.gitkeep
-/tests/**/reports/
-/evals/**/results/
-/evals/**/reports/
-/private/
-/tmp/
-/temp/
-AGENTS.local.md
-CLAUDE.local.md
+# 凭据副本、浏览器导出与观测数据
+.env-*
+.netrc
+.pypirc
+/.aws/
+*.har
+/exports/
+/traces/
 
-# 编辑器与操作系统杂项
+# 编辑器与操作系统
 .idea/
 .vscode/
 .DS_Store
@@ -118,39 +103,3 @@ Desktop.ini
 *.swp
 *.swo
 *~
-
-# 保留版本控制：uv.lock、package-lock.json、.python-version、.nvmrc、
-# Alembic migrations 与其他已纳入版本管理的评测用例；商品搜索本地评测目录除外。
-# .gitignore 不会移除已被 Git 跟踪的文件，也不会检查文件内容中的秘密。
-
-# Layout migration: local snapshots, generated evaluations and trace exports
-/artifacts/
-
-# 商品工具测试运行产物；保留目录占位文件
-/tests/tools/catalog/results/*
-!/tests/tools/catalog/results/.gitkeep
-
-# Agent loop 工具选择模块的本地批次证据与报告
-/tests/agent_loop/business/tool_selection/results/*
-!/tests/agent_loop/business/tool_selection/results/.gitkeep
-
-# 待手动移到项目外的本地历史档案包
-/pc-ecommerce-agent-history-*.zip
-
-# 本地历史测试档案，不随测试源码提交
-/tests/archives/*.zip
-
-# 本地凭据副本、浏览器网络导出与观测数据（可能含身份及会话信息）
-.env-*
-.netrc
-.pypirc
-/.aws/
-*.har
-/exports/
-/traces/
-/phoenix-data/
-
-# 旧 LangGraph 评测的运行输出；保留回归输入与手写说明
-/backend/evals/goal_planning/*.json
-!/backend/evals/goal_planning/cases.json
-/backend/evals/test_maintenance/*.json

@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.llm_feedback import OutputErrorType, OutputValidationError, validation_feedback
-from app.core.tracing import trace_event
 from app.models import Brand, Category, Sku, Spu
 from app.repositories.catalog import (
     CATEGORY_ALIASES,
@@ -515,10 +514,6 @@ class LLMCatalogQueryPlanner(CatalogFacetPlanner):
                     return plan_data
             assert last_error is not None
             feedback = _retry_feedback(plan_data, last_error, raw_output)
-            await trace_event(
-                "catalog_plan_validation_error", attempt=_attempt + 1,
-                feedback=feedback, will_repair=_attempt == 0,
-            )
             if _attempt == 0:
                 retry_payload = {
                     **payload,

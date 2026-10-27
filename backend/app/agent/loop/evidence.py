@@ -84,7 +84,7 @@ class EvidenceRecord(BaseModel):
         return tuple(dict.fromkeys(blockers))
 
     def observation(self) -> dict[str, Any]:
-        """Lossless P1 observation; bounded query projection is a P2 consumer concern."""
+        """Lossless observation; the query consumer applies bounded projection."""
         return {
             **self.model_dump(mode="json"),
             "completion_blockers": list(self.completion_blockers),

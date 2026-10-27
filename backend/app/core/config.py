@@ -1,7 +1,6 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 from urllib.parse import quote, urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -21,26 +20,9 @@ class Settings(BaseSettings):
     postgres_user: str = "pc_agent"
     postgres_password: SecretStr = SecretStr("pc_agent")
     database_url: str = ""
-    redis_enabled: bool = False
-    redis_container: str = ""
-    redis_volume: str = ""
-    redis_image: str = "redis:7-alpine"
-    redis_port: int = Field(default=6379, ge=1, le=65535)
-    redis_url: str = ""
-    chroma_enabled: bool = False
-    chroma_container: str = ""
-    chroma_volume: str = ""
-    chroma_image: str = (
-        "docker.io/chromadb/chroma@sha256:"
-        "bd21353aee6ccdf4a57bd91e6001626826700f3838e1f230d4aae75bfd4889a1"
-    )
-    chroma_host: str = "localhost"
-    chroma_port: int = Field(default=8001, ge=1, le=65535)
     backend_host: str = "127.0.0.1"
     backend_port: int = Field(default=8000, ge=1, le=65535)
     frontend_port: int = Field(default=5173, ge=1, le=65535)
-    knowledge_collection: str = "pc_agent_knowledge"
-    knowledge_score_threshold: float = 0.16
     deepseek_search_api_key: SecretStr = SecretStr("")
 
     llm_provider: str = "deepseek"
@@ -48,14 +30,7 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_base_url: str = ""
     catalog_llm_planner_enabled: bool = True
-    agent_runtime: Literal["legacy", "strands"] = "strands"
     agent_context_budget_tokens: int = 6000
-    loop_trace_enabled: bool = False
-    agent_trace_mode: Literal["off", "local", "langsmith"] = "off"
-    agent_trace_dir: Path = Path(__file__).resolve().parents[3] / "artifacts/traces"
-    langsmith_api_key: SecretStr = SecretStr("")
-    langsmith_project: str = "pc-ecommerce-agent"
-    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     auth_token_secret: str = "local-dev-auth-token-secret-change-me"
     auth_access_token_minutes: int = 30
@@ -81,15 +56,13 @@ class Settings(BaseSettings):
                 f"{quote(self.postgres_password.get_secret_value(), safe='')}@"
                 f"{host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}"
             )
-        if not self.redis_url.strip():
-            self.redis_url = f"redis://localhost:{self.redis_port}/0"
         if not self.backend_cors_origins:
             self.backend_cors_origins = [
                 f"http://localhost:{self.frontend_port}", f"http://127.0.0.1:{self.frontend_port}",
             ]
         if not self.podman_network:
             self.podman_network = f"{self.podman_project_name}-net"
-        for service in ("postgres", "redis", "chroma"):
+        for service in ("postgres",):
             for suffix, default in (("container", ""), ("volume", "-data")):
                 field = f"{service}_{suffix}"
                 if not getattr(self, field):

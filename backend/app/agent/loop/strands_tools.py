@@ -13,7 +13,6 @@ from app.agent.loop.evidence import EvidenceRecord
 from app.agent.loop.query_schema import GoalToolCall
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopLimit
-from app.core.loop_tracing import fields, payload, rejection, step
 from app.tools.contracts import BoundTool, ToolCatalog
 
 
@@ -30,7 +29,7 @@ class BusinessAgentTool(PythonAgentTool):
 
 
 class RegisteredBusinessTools(ToolCatalog):
-    """Read-only legacy-shaped view over the actual Agent registry, no handler index."""
+    """Read-only contract view over the actual Agent registry, no handler index."""
 
     def __init__(self, registry: ToolRegistry) -> None:
         self.registry = registry
@@ -45,7 +44,7 @@ class RegisteredBusinessTools(ToolCatalog):
 
 
 class StrandsToolBindings:
-    """P2 must prepare/bind the admitted batch before letting the SDK execute it.
+    """The query session must prepare/bind the admitted batch before letting the SDK execute it.
 
     No goal_id, identity, condition flag or evidence-writing parameter is added to
     public domain schemas. Unbound or modified calls fail closed. A binding is
@@ -117,15 +116,8 @@ class StrandsToolBindings:
         return call.model_copy(update={"arguments": arguments})
 
     async def _execute(self, tool: ToolUse, **_: Any) -> ToolResult:
-        with step(f"工具 · {tool['name']}", "TOOL") as span:
-            payload("input", tool["input"])
-            fields(tool_use_id=tool["toolUseId"], **{"tool.name": tool["name"]})
-            result = await self._execute_bound(tool)
-            if result["status"] == "error" and span is not None:
-                from opentelemetry.trace import StatusCode
-
-                span.set_status(StatusCode.ERROR, "tool failed or rejected")
-            return result
+        result = await self._execute_bound(tool)
+        return result
 
     async def _execute_bound(self, tool: ToolUse) -> ToolResult:
         tool_use_id = tool["toolUseId"]
@@ -150,8 +142,6 @@ class StrandsToolBindings:
                 "content": [{"json": self._observation(record)}],
             }
         except (AdmissionError, LoopLimit) as exc:
-            rejection(tool, str(exc), {"rejection": str(exc)})
-            payload("output", {"rejection": str(exc)})
             if isinstance(exc, LoopLimit):
                 # SDK executors turn ordinary exceptions into tool errors and continue.
                 # Preserve budget termination for the session's AfterTools hook.

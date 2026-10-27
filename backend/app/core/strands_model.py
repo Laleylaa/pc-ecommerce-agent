@@ -1,4 +1,4 @@
-"""Request-owned transport shared by probes and the separate Agent loop runtime."""
+"""Request-owned transport for the Agent Loop and its tool planners."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 import httpx
 from openai import AsyncOpenAI
-from strands.models.openai import OpenAIModel
 
 from app.core.config import Settings
 from app.core.llm import resolve_llm_base_url
@@ -24,7 +23,7 @@ class TransportUsage:
         self.usage.append(None)
 
     async def on_response(self, response: httpx.Response) -> None:
-        # P0 deliberately uses non-streaming, matching the existing provider configuration.
+        # Read the non-streaming response before collecting reported token usage.
         await response.aread()
         if response.is_success:
             try:
@@ -68,18 +67,3 @@ async def openai_client(
             max_retries=0, timeout=30, http_client=http_client,
         ) as client:
             yield client
-
-
-@asynccontextmanager
-async def strands_model(
-    settings: Settings, usage: TransportUsage, *,
-    transport: httpx.AsyncBaseTransport | None = None,
-) -> AsyncIterator[OpenAIModel]:
-    async with openai_client(settings, usage, transport=transport) as client:
-        yield OpenAIModel(
-            client=client, model_id=settings.llm_model, stream=False,
-            params={"temperature": 0, **(
-                {"extra_body": {"thinking": {"type": "disabled"}}}
-                if settings.llm_provider == "deepseek" else {}
-            )},
-        )

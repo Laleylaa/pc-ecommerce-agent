@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
-from app.core.config import Settings
 from pydantic import ValidationError
+
+from app.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
 PLACEHOLDER_SECRETS = {
@@ -24,7 +25,7 @@ def main() -> None:
     if settings.auth_token_secret in PLACEHOLDER_SECRETS:
         raise SystemExit("Set a private random AUTH_TOKEN_SECRET in .env first.")
     if not settings.llm_api_key:
-        print("NOTE: LLM_API_KEY is empty; only limited fallback behavior is available.")
+        raise SystemExit("Set LLM_API_KEY in .env before starting the Agent Loop.")
     print("Configuration structure: OK (credentials and connectivity not tested).")
 
 

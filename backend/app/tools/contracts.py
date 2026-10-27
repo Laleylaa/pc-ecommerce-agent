@@ -14,8 +14,6 @@ from app.core.llm import build_chat_model
 from app.core.llm_calls import ModelCallError
 from app.core.llm_feedback import OutputValidationError, validation_feedback
 from app.core.loop_budget import LoopLimit
-from app.core.loop_tracing import metadata, payload, program_event, tracing_active, validation_step
-from app.core.tracing import trace_event
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
@@ -479,15 +477,6 @@ async def execute_bound_tool(
                      "exception_type": type(exc).__name__},
         )
         delivered_cost = output_cost(result.model_dump(mode="json"))
-    program_event(
-        "工具交付预算检查",
-        outcome=("accepted" if delivered_cost <= bound_tool.contract.output_token_budget
-                 else "rejected"),
-        tool_name=bound_tool.contract.llm_name,
-        token_limit=bound_tool.contract.output_token_budget,
-        counting_method="utf8_byte_upper_bound", serialized_cost=delivered_cost,
-        result_ok=result.ok, error_code=result.error.code if result.error else None,
-    )
     if delivered_cost <= bound_tool.contract.output_token_budget:
         return result
     return _error_result(bound_tool.contract.llm_name, "output_budget_exceeded")
@@ -499,15 +488,9 @@ async def _execute_bound_tool(
     runtime_context: dict[str, Any],
 ) -> ToolExecutionResult:
     contract = bound_tool.contract
-    await trace_event(
-        "tool_contract_input", tool_name=contract.llm_name, arguments=arguments,
-        runtime_context=runtime_context,
-    )
     try:
         public_input = contract.public_input_model.model_validate(arguments)
     except (ValidationError, OutputValidationError) as exc:
-        await trace_event("tool_contract_rejected", tool_name=contract.llm_name,
-                          reason=validation_feedback(exc))
         return _error_result(
             contract.llm_name, "invalid_input", details=validation_feedback(exc),
             public_details=_argument_details(exc, contract.public_input_model),
@@ -523,20 +506,10 @@ async def _execute_bound_tool(
         for field_name in contract.runtime_fields:
             internal_input[field_name] = getattr(runtime, field_name)
         validated_internal = contract.internal_input_model.model_validate(internal_input)
-    except (ValidationError, OutputValidationError, AttributeError) as exc:
-        await trace_event("tool_runtime_rejected", tool_name=contract.llm_name,
-                          error_type=type(exc).__name__)
+    except (ValidationError, OutputValidationError, AttributeError):
         return _error_result(contract.llm_name, "runtime_contract_error")
 
     async def run_tool() -> BaseModel:
-        await trace_event(
-            "tool_handler_start", tool_name=contract.llm_name, internal_input=validated_internal,
-            input_sources={
-                field: "runtime" if field in contract.runtime_fields else
-                "public_argument" if field in public_input.model_fields_set else "default"
-                for field in type(validated_internal).model_fields
-            },
-        )
         return await bound_tool.handler(validated_internal)
 
     try:
@@ -545,67 +518,37 @@ async def _execute_bound_tool(
         else:
             output = await asyncio.wait_for(run_tool(), timeout=contract.timeout_seconds)
     except asyncio.CancelledError:
-        await trace_event("tool_handler_cancelled", tool_name=contract.llm_name)
         raise
-    except LoopLimit as exc:
-        await trace_event("tool_handler_limited", tool_name=contract.llm_name, reason=str(exc))
+    except LoopLimit:
         raise
     except TimeoutError:
         if contract.llm_name == "knowledge_search":
-            await trace_event(
-                "tool_handler_error", tool_name=contract.llm_name, code="web_search_timeout",
-            )
             return _error_result(
                 contract.llm_name, "web_search_timeout",
                 "Web search timed out; no automatic retry was made.",
             )
-        await trace_event("tool_handler_error", tool_name=contract.llm_name, code="timeout")
         return _error_result(contract.llm_name, "timeout")
     except (RetrievalBusyError, WebSearchError) as exc:
-        await trace_event("tool_handler_error", tool_name=contract.llm_name, code=exc.code)
         return _error_result(contract.llm_name, exc.code, str(exc))
     except ModelCallError as exc:
-        await trace_event("tool_handler_error", tool_name=contract.llm_name, code=exc.code)
         return _error_result(contract.llm_name, exc.code, str(exc), details=exc.details)
     except (SQLAlchemyError, OSError) as exc:
-        await trace_event(
-            "tool_handler_error", tool_name=contract.llm_name, code="dependency_unavailable",
-        )
         return _error_result(
             contract.llm_name, "dependency_unavailable",
             details={"exception_type": type(exc).__name__},
         )
     except Exception as exc:
-        await trace_event("tool_handler_error", tool_name=contract.llm_name, code="execution_error")
         return _error_result(
             contract.llm_name, "execution_error",
             details={"failure_type": "handler_error", "exception_type": type(exc).__name__},
         )
 
-    await trace_event("tool_handler_output", tool_name=contract.llm_name, output=output)
     try:
-        with validation_step(
-            "工具原始结果校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
-            check_scope="领域执行产生的原始结果；尚未应用输出预算，不代表最终交付",
-        ):
-            if tracing_active():
-                try:
-                    captured = (
-                        output.model_dump(mode="json") if isinstance(output, BaseModel) else output
-                    )
-                    payload("input", captured)
-                except Exception as exc:
-                    # Observability must not change validation or hide its original failure.
-                    payload("input", {
-                        "capture_status": "unavailable",
-                        "error_type": type(exc).__name__,
-                        "notice": "待校验结果无法序列化；原校验继续执行",
-                    })
-            if not isinstance(output, BaseModel):
-                raise TypeError("tool handler must return a structured output model")
-            validated_output = contract.output_model.model_validate(
-                output.model_dump(mode="python"),
-            )
+        if not isinstance(output, BaseModel):
+            raise TypeError("tool handler must return a structured output model")
+        validated_output = contract.output_model.model_validate(
+            output.model_dump(mode="python"),
+        )
         planning_failed = (
             contract.llm_name in {"catalog_search", "catalog_lookup"}
             and getattr(validated_output, "reason_code", None) == "invalid_plan"
@@ -615,48 +558,16 @@ async def _execute_bound_tool(
         )
         if planning_failed:
             return _error_result(contract.llm_name, "planning_output_invalid")
-        with validation_step(
-            "工具输出预算处理", tool_name=contract.llm_name,
-            token_limit=contract.output_token_budget, counting_method="utf8_byte_upper_bound",
-            check_scope="按领域缩减展示窗口与来源预览，保留全集统计；无法安全交付则拒绝",
-        ):
-            if tracing_active():
-                raw_cost = output_cost({
-                    "tool_name": contract.llm_name, "ok": True,
-                    "output": validated_output.model_dump(mode="json"), "error": None,
-                })
-                payload("input", {"serialized_cost": raw_cost,
-                                  "token_limit": contract.output_token_budget,
-                                  "counting_method": "utf8_byte_upper_bound"})
-                metadata(before_cost=raw_cost)
-            validated_output = prepare_tool_output(
-                contract.llm_name, validated_output, contract.output_token_budget,
-            )
-            if tracing_active():
-                budget = validated_output.output_budget.model_dump(mode="json")
-                after_cost = output_cost({
-                    "tool_name": contract.llm_name, "ok": True,
-                    "output": validated_output.model_dump(mode="json"), "error": None,
-                })
-                metadata(after_cost=after_cost, **budget)
-                program_event("输出窗口确定", outcome="limited" if budget["truncated"] else "kept",
-                              serialized_cost=after_cost, **budget)
-        with validation_step(
-            "工具输出校验", tool_name=contract.llm_name, schema=contract.output_model.__name__,
-            check_scope="预算处理后实际交付的输出结构与事实一致性；不判定用户目标完成",
-        ):
-            if tracing_active():
-                payload("input", validated_output.model_dump(mode="json"))
-            validated_output = contract.output_model.model_validate(
-                validated_output.model_dump(mode="python"),
-            )
-            serialized_output = validated_output.model_dump(mode="json")
+        validated_output = prepare_tool_output(
+            contract.llm_name, validated_output, contract.output_token_budget,
+        )
+        validated_output = contract.output_model.model_validate(
+            validated_output.model_dump(mode="python"),
+        )
+        serialized_output = validated_output.model_dump(mode="json")
     except OutputBudgetExceeded:
         return _error_result(contract.llm_name, "output_budget_exceeded")
     except (ValidationError, TypeError, PydanticSerializationError) as exc:
-        await trace_event(
-            "tool_output_rejected", tool_name=contract.llm_name, error_type=type(exc).__name__,
-        )
         return _error_result(
             contract.llm_name, "execution_error",
             details={"failure_type": "output_contract_error", "exception_type": type(exc).__name__},
@@ -832,9 +743,6 @@ def _error_result(
     if (code == "planning_call_timeout"
             and (details or {}).get("timeout_source") != "local_deadline"):
         policy_code = "planning_dependency_timeout"
-    program_event("工具失败归类", outcome="failed", tool_name=name,
-                  internal_code=code, internal_message=message, internal_details=details or {},
-                  public_error=error_payload(policy_code))
     return ToolExecutionResult(
         tool_name=name, ok=False,
         error=ToolError(**error_payload(policy_code), details=public_details),

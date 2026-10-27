@@ -6,10 +6,10 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.models import Base
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import Base
 from scripts.demo.accounts import create_accounts
 from scripts.demo.catalog import build_compact_catalog, summarize_catalog
 from scripts.demo.catalog_store import upsert_product

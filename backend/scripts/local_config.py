@@ -2,14 +2,13 @@
 
 import sys
 
-from app.core.config import Settings
 from pydantic import ValidationError
+
+from app.core.config import Settings
 
 PODMAN_FIELDS = (
     "podman_network", "postgres_container", "postgres_volume", "postgres_image",
     "postgres_port", "postgres_db", "postgres_user", "postgres_password",
-    "redis_enabled", "redis_container", "redis_volume", "redis_image", "redis_port",
-    "chroma_enabled", "chroma_container", "chroma_volume", "chroma_image", "chroma_port",
 )
 
 

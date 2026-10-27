@@ -1,6 +1,5 @@
 """Map executed search facts to the public result; no candidate selection or I/O."""
 
-from app.core.loop_tracing import program_event
 from app.repositories.catalog_search import CatalogRecord
 from app.schemas.catalog import ProductVariantCard
 from app.schemas.catalog_search import (
@@ -139,7 +138,7 @@ def build_result(
         ranking_strategy=execution.ranking_strategy,
         diagnostics=diagnostics,
     )
-    trace_result(result)
+
     return result
 
 
@@ -192,22 +191,6 @@ def lookup_summary(plan: SearchPlan, execution: SearchExecution) -> CatalogLooku
         price_level_count=len(set(prices)), fields=facts,
         representative_versions=[],
     )
-
-
-def trace_result(result: CatalogSearchResult) -> None:
-    program_event("商品查询返回", outcome=result.status, result_type=result.result_type,
-                  reason=result.reason_code, match_kind=result.match_kind,
-                  requested_count=result.requested_count, limit=result.limit,
-                  limit_capped=result.limit_capped, returned_count=result.returned_count,
-                  suggestion_count=len(result.identity_suggestions),
-                  returned_ids=[{"spu_id": p.spu_id, "sku_id": p.sku_id}
-                                for p in result.products],
-                  is_exhaustive=result.is_exhaustive,
-                  fact_target=result.facts.target.model_dump() if result.facts else None,
-                  aggregated_sku_count=result.facts.sku_count if result.facts else None,
-                  missing_fact_sku_count=result.missing_fact_sku_count,
-                  conflicted_sku_count=result.conflicted_sku_count,
-                  unknown_sku_count=result.unknown_sku_count)
 
 
 def make_card(

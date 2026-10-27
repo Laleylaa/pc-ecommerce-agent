@@ -26,7 +26,6 @@ from app.agent.loop.strands_tools import RegisteredBusinessTools, StrandsToolBin
 from app.agent.loop.tool_adapter import AdmissionError, QueryToolAdapter
 from app.core.loop_budget import LoopBudget, LoopLimit, find_loop_limit
 from app.core.loop_models import QueryModel
-from app.core.loop_tracing import program_event, rejection, tracing_active
 from app.schemas.context import PreparedTurn
 from app.tools.contracts import ToolCatalog, ToolRuntimeContext
 from app.tools.errors import error_payload
@@ -40,11 +39,9 @@ def project_record(
     original_chars = len(json.dumps(observation, ensure_ascii=False))
     if original_chars <= limit:
         projected = {**observation, "projection_truncated": False}
-        _trace_projection(record, observation, projected, original_chars, limit, destination)
         return projected
     # Tool results are bounded by their own contracts. First remove only the
     # duplicated invocation arguments; domain facts must never be whitelisted away.
-    original = record.observation()
     observation["invocation"]["arguments"] = {}
     observation["invocation_arguments_omitted"] = True
     observation["projection_truncated"] = True
@@ -54,29 +51,7 @@ def project_record(
             "error": error_payload("observation_budget_exceeded"),
         }
         observation["completion_blockers"] = ["observation_budget_exceeded"]
-    _trace_projection(record, original, observation, original_chars, limit, destination)
     return observation
-
-
-def _trace_projection(record, original, projected, original_chars, limit, destination):
-    if not tracing_active():
-        return
-    source = original["result"].get("output") or {}
-    target = projected["result"].get("output") or {}
-    delivery_error = (projected["result"].get("error") or {}).get("code")
-    rejected = "observation_budget_exceeded" in projected.get("completion_blockers", [])
-    program_event("材料投影", outcome=("rejected" if rejected else
-                                      "truncated" if projected["projection_truncated"] else "kept"),
-                  destination=destination, evidence_id=record.evidence_id,
-                  invocation_id=record.invocation.invocation_id,
-                  operation_id=record.invocation.operation_id,
-                  original_chars=original_chars,
-                  projected_chars=len(json.dumps(projected, ensure_ascii=False)), limit_chars=limit,
-                  omitted_fields=sorted(source) if rejected else [],
-                  delivery_error=delivery_error,
-                  invocation_arguments_omitted=projected.get("invocation_arguments_omitted", False),
-                  source_product_count=len(source.get("products", [])),
-                  retained_product_count=len(target.get("products", [])))
 
 
 class QuerySession:
@@ -137,7 +112,6 @@ class QuerySession:
     def reject_control(self, name: str, exc: Exception, raw=None) -> dict:
         code = str(exc) if isinstance(exc, AdmissionError) else "invalid_control_input"
         self.control_rejections.append({"tool": name, "code": code})
-        rejection(raw, str(exc), {"rejection": code, **self.control_state()})
         return {
             "status": "error",
             "content": [{"json": {"rejection": code, **self.control_state()}}],
@@ -259,7 +233,6 @@ class QuerySession:
             except (AdmissionError, LoopLimit, ValueError, TypeError) as exc:
                 code = str(exc) if isinstance(exc, (AdmissionError, LoopLimit)) else "invalid_call"
                 self._operations = previous_operations
-                rejection(uses, str(exc.__cause__ or exc), {"cancel": code})
                 self.rejections.append(code)
                 feedback = exc.feedback if isinstance(exc, AdmissionError) else None
                 event.cancel = f"{code}: {feedback}" if feedback else code

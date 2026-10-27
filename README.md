@@ -10,7 +10,7 @@
 筛选商品，再用用户能理解的方式解释选择依据。本项目提供可在本地运行的前后端和 Demo 数据，
 用于体验这一完整流程。
 
-[快速开始](#quick-start) · [演示体验](#demo-data) · [Phoenix 观测](#local-phoenix-trace) · [分支说明](#branches)
+[快速开始](#quick-start) · [演示体验](#demo-data) · [分支说明](#branches)
 
 ## 功能
 
@@ -32,7 +32,6 @@ flowchart LR
     API --> DB[(PostgreSQL)]
     Tools --> DB
     Tools --> Sources[本地政策资料 / 联网检索]
-    Agent -. 可选观测 .-> Phoenix[Phoenix]
 ```
 
 <a id="quick-start"></a>
@@ -44,10 +43,10 @@ AI 对话需自备模型 API Key，模型与搜索调用可能产生费用。
 
 ### 1. 获取代码
 
-当前 Agent Loop 版本在 `develop`：
+默认 `main` 分支提供可运行的 Agent Loop 版本：
 
 ```bash
-git clone --branch develop https://github.com/Laleylaa/pc-ecommerce-agent.git
+git clone https://github.com/Laleylaa/pc-ecommerce-agent.git
 cd pc-ecommerce-agent
 ```
 
@@ -84,7 +83,7 @@ make setup-local
 ```
 
 该命令依次检查环境、安装依赖、启动 PostgreSQL、应用迁移、导入 Demo 数据并准备政策检索模型。
-Redis 和 Chroma 默认无需启动；发现数据库已有数据时，Demo 导入会停止，不覆盖原有记录。
+发现数据库已有数据时，Demo 导入会停止，不覆盖原有记录。
 初始化完成前不要启动后端。
 
 <details>
@@ -134,43 +133,20 @@ make frontend
 账号仅用于本地演示，商品与政策均为合成演示材料。更多账号与数据说明见 [Demo 数据](backend/data/demo/README.md)。
 运行数据保存在本地 Podman 卷中；`make infra-stop` 停止服务并保留数据，之后用 `make infra-up` 再次启动。
 
-<a id="local-phoenix-trace"></a>
-## 可选：Phoenix 观测
-
-```bash
-make trace-up
-```
-
-在 `.env` 设置 `LOOP_TRACE_ENABLED=true`，重启后端并发起一次对话。
-打开 [http://127.0.0.1:6006](http://127.0.0.1:6006)，选择 `pc-ecommerce-agent-local`，
-查看模型与工具调用、异常、耗时和 Token 用量。`make trace-stop` 停止平台并保留数据。
-Trace 可能包含对话内容，应保留在本地。
-
 ## 遇到问题
 
 - **环境或容器不可用**：运行 `make doctor`，确认 Podman 已启动。
 - **配置不正确**：安装依赖后运行 `make config-check`，对照 `.env.example` 检查。
-- **页面能打开但回答失败**：检查后端健康接口、日志和模型密钥；需要调用详情时启用 Phoenix。
+- **页面能打开但回答失败**：检查后端健康接口、日志和模型密钥。
 
 <a id="branches"></a>
 ## 分支说明
 
 | 分支 | 用途 |
 | --- | --- |
-| `develop` | 当前 Agent Loop 开发版本；本页搭建步骤对应此分支 |
-| `main` | 当前仍为旧版本，尚未同步 Agent Loop 发布内容 |
+| `develop` | 完整开发版本，包含测试、评测和调试工具 |
+| `main` | Agent Loop 使用版；本页搭建步骤对应此分支 |
 | `archive/langgraph-workflow` | 保留 LangGraph Workflow 实现，运行方式以该分支 README 为准 |
-
-<a id="development"></a>
-## 开发
-
-```bash
-make dev-install
-make check
-```
-
-检查包含当前离线测试、Ruff 和前端构建。真实模型与数据库评测需显式执行；
-详见 [测试说明](tests/README.md) 和 [维护入口](backend/scripts/README.md)。
 
 <a id="acknowledgements"></a>
 ## 致谢

@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from app.models import AppUser, OrderInfo, OrderItem, OrderLogistics, Sku
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import AppUser, OrderInfo, OrderItem, OrderLogistics, Sku
 
 
 def order_times(anchor: datetime, days_ago: int, status: int) -> dict:

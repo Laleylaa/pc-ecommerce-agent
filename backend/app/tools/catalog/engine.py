@@ -8,7 +8,6 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal
 
-from app.core.loop_tracing import program_event
 from app.repositories.catalog_search import (
     CatalogIdentityRecord,
     CatalogRecord,
@@ -137,13 +136,6 @@ class CatalogSearchEngine:
                     scores[record.product.sku_id] = score
             if selected:
                 match_kind = "alternative"
-        program_event("条件筛选",
-                      outcome="skipped_identity_pending" if suggestions else "completed",
-                      identity_sku_count=len(identity_rows),
-                      exact_sku_count=len(eligible), unknown_sku_count=unknown,
-                      mismatch_sku_count=len(identity_rows) - len(eligible) - unknown,
-                      selected_sku_count=len(selected), match_kind=match_kind,
-                      fallback_attempted=fallback_attempted)
         selection = SearchSelection(
             records=selected, identity_records=identity_rows,
             object_results=object_results, checks=checks,
@@ -210,13 +202,6 @@ class CatalogSearchEngine:
         total = len(groups)
         page = groups[offset : offset + limit]
         next_offset = offset + len(page)
-        program_event("排序与返回窗口", outcome="selected", sort=plan.sort,
-                      preference_priority=has_preferences, alternative_priority=bool(scores),
-                      selection_scope="sku" if sku_scope else "spu", total_count=total,
-                      offset=offset, requested_count=requested_count, limit=limit,
-                      window_applied=plan.operation == "search" or plan.version_view == "list",
-                      limit_capped=requested_count is not None and requested_count > limit,
-                      returned_count=len(page))
         model_ids = list(dict.fromkeys(r.product.spu_id for group in page for r in group))
         model_records = (
             await self.repository.load(None, SearchScope(spu_ids=model_ids)) if page else []

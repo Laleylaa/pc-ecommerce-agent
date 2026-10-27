@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Generic, Literal, TypeVar
 
-from app.core.loop_tracing import program_event
 from app.repositories.catalog_search import CatalogIdentityRecord, CatalogRecord
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
@@ -72,7 +71,6 @@ def resolve_identity(
     request: CatalogSearchRequest, plan: SearchPlan, records: list[Record],
 ) -> IdentitySelection[Record]:
     named_object = plan.operation == "lookup" and bool(plan.search_text)
-    loaded_count = len(records)
     object_results: list[ObjectLookupResult] = []
     suggestions: list[IdentitySuggestion] = []
     text_scores: dict[int, float] = {}
@@ -133,11 +131,6 @@ def resolve_identity(
         matcher = CatalogTextMatcher(records)
         if not matcher.matches_model(plan.search_text, identity_rows[0]):
             entity_scope = "sku"
-    program_event("对象定位", outcome="completed", loaded_sku_count=loaded_count,
-                  entity_scope=entity_scope,
-                  identity_sku_count=len(identity_rows),
-                  confirmed_spu_count=identity_match_count, suggestion_count=len(suggestions),
-                  object_statuses=[item.status for item in object_results])
     if plan.category:
         category_rows = [r for r in identity_rows if r.product.category == plan.category]
         if identity_rows and not category_rows and plan.operation == "lookup":

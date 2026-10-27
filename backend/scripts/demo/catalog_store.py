@@ -1,4 +1,7 @@
-"""Catalog persistence shared by demo and explicit legacy import commands."""
+"""Catalog persistence for synthetic demo initialization."""
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     AttributeKey,
@@ -10,8 +13,6 @@ from app.models import (
     Spu,
 )
 from app.services.dataset_mapper import ImportedProduct, attribute_flags
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def upsert_product(session: AsyncSession, product: ImportedProduct) -> Sku:

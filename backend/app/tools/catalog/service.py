@@ -5,7 +5,6 @@ from typing import Literal
 from pydantic import ValidationError
 
 from app.core.llm_feedback import OutputValidationError, validation_feedback
-from app.core.loop_tracing import program_event, tracing_active
 from app.repositories.catalog_search import CatalogSearchRepository
 from app.schemas.catalog_search import (
     CatalogSearchRequest,
@@ -31,12 +30,6 @@ class CatalogSearchService:
         self.planner = planner or CatalogSearchPlanner(operation=operation)
 
     async def search(self, request: CatalogSearchRequest) -> CatalogSearchResult:
-        if tracing_active():
-            program_event("商品查询上下文", outcome="prepared",
-                          scope=request.scope.model_dump(mode="json"),
-                          scope_source="tool_request", category_hint=request.category_hint,
-                          hint_usage="non_authoritative_compatibility_hint", offset=request.offset,
-                          limit=request.limit)
         prepared = None
         try:
             direct = explicit_lookup(request.query) if self.operation == "lookup" else None
@@ -72,10 +65,6 @@ class CatalogSearchService:
                     {"resolved_scope": prepared.payload()} if prepared else {}
                 )
             )
-        if tracing_active():
-            program_event("执行计划确认", outcome="accepted", planner=planner_name,
-                          route="explicit_reference" if direct else "planner",
-                          plan=plan.model_dump(mode="json"))
         try:
             execution = await self.engine.execute(
                 request, plan, identity=prepared.identity if prepared else None,
@@ -103,8 +92,6 @@ class CatalogSearchService:
         planner: str = "",
         details: dict | None = None,
     ) -> CatalogSearchResult:
-        program_event("商品查询提前结束", outcome="not_executed", reason=reason.value,
-                      message=message, details=details or {}, planner=planner)
         policy = policy_for(reason)
         diagnostic = policy.diagnostic(message)
         diagnostic["details"].update(details or {})

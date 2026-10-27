@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 PYTHON_VERSION := 3.11
-# Command-line overrides remain supported; defaults now come from Settings/.env.
+# Command-line overrides take precedence over Settings/.env.
 ifneq ($(origin BACKEND_HOST),undefined)
 export BACKEND_HOST
 endif
@@ -12,20 +12,16 @@ ifneq ($(origin FRONTEND_PORT),undefined)
 export FRONTEND_PORT
 endif
 
-.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate demo-load demo-info knowledge-sync knowledge-index model-prepare frontend-build spec-display spec-display-check trace-up trace-stop trace-status
+.PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate demo-load demo-info knowledge-index model-prepare frontend-build spec-display spec-display-check
 
 help:
 	@echo "doctor / config-check        Check tools and configuration"
 	@echo "install / setup-local        Install runtime / first-time empty-database setup"
-	@echo "infra-up / infra-stop        PostgreSQL; optional services follow .env"
+	@echo "infra-up / infra-stop        Start/stop PostgreSQL; preserve data"
 	@echo "infra-status / db-status     Inspect services and migration version"
 	@echo "db-init / demo-info          Migrate + load fresh demo / inspect demo inputs"
 	@echo "backend / frontend          Start application (separate terminals)"
 	@echo "model-prepare               Prepare local policy embedding model"
-	@echo "trace-up/trace-stop/trace-status  Optional local Phoenix"
-ifneq ($(wildcard Makefile.development),)
-	@echo "Development commands (develop branch): make help-dev"
-endif
 
 doctor:
 	./scripts/doctor.sh
@@ -85,9 +81,6 @@ demo-load:
 demo-info:
 	cd backend && .venv/bin/python -m scripts.demo.load --summary
 
-knowledge-sync:
-	cd backend && .venv/bin/python -m scripts.sync_knowledge
-
 knowledge-index:
 	cd backend && .venv/bin/python -m scripts.build_knowledge_vector_index
 
@@ -102,15 +95,3 @@ spec-display-check:
 
 frontend-build: spec-display-check
 	cd frontend && npm run build
-
-trace-up:
-	./scripts/podman-trace.sh up
-
-trace-stop:
-	./scripts/podman-trace.sh stop
-
-trace-status:
-	./scripts/podman-trace.sh status
-
-# develop keeps its checks; release materialization omits this file.
--include Makefile.development

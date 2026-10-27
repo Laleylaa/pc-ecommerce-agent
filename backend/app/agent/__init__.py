@@ -1,1 +1,1 @@
-"""Independent loop and legacy runtimes with shared boundary and projection rules."""
+"""Agent Loop runtime and shared business response rules."""

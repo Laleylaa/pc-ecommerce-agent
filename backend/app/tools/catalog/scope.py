@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from app.core.loop_tracing import program_event
 from app.repositories.catalog_search import CatalogIdentityRecord, CatalogSearchRepository
 from app.schemas.catalog_scope import CatalogScopePlan
 from app.schemas.catalog_search import (
@@ -111,8 +110,4 @@ async def prepare_catalog_scope(
             rows = await repository.load_identity(draft.category, scope)
             categories = tuple(sorted({r.product.category for r in rows if r.active}))
     prepared = PreparedCatalogScope(draft, categories, identity)
-    program_event("商品范围准备", outcome="prepared", operation=operation,
-                  binding=draft.model_dump(mode="json"), categories=list(categories),
-                  identity_count=len(identity.records) if identity else None,
-                  identity_scope=identity.entity_scope if identity else None)
     return prepared

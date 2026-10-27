@@ -1,7 +1,8 @@
-from app.models import KnowledgeDocument
-from app.services.knowledge_documents import read_documents
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import KnowledgeDocument
+from app.services.knowledge_documents import read_documents
 
 
 async def load_policies(session: AsyncSession) -> int:
