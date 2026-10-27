@@ -23,6 +23,15 @@
 
 项目源自硕士毕业设计团队项目，目前用于持续开发与本地演示。团队来源见[致谢](#acknowledgements)。
 
+本分支 `archive/langgraph-workflow` 归档原 `develop` 的 LangGraph workflow，业务代码基点为
+`f1cd9ffd0e6774551ad5dbb77116fedb72517253`；后续常规开发在 `develop` 的 Strands agent loop 上进行。
+归档整理仅涉及忽略规则、评测产物取消跟踪和分支说明，不修改业务实现。
+
+历史评测 JSON 输出改为本地资料，回归用例、评测脚本及手写报告继续保留。
+完整原始版本仍可通过上述提交恢复；取消跟踪不会清除 Git 历史中的文件。
+真实环境配置、数据库、Phoenix trace 和本地文档需要单独做私有备份。
+
+
 <a id="features"></a>
 ## 功能亮点
 
