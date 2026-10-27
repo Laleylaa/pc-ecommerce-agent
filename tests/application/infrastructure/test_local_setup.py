@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,25 @@ def infra_stub(tmp_path):
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     shutil.copy2(PROJECT_ROOT / "scripts/podman-infra.sh", scripts / "podman-infra.sh")
+    shutil.copy2(PROJECT_ROOT / "scripts/local-config.sh", scripts / "local-config.sh")
+    # Copy only the pure configuration code. Never load the developer's .env.
+    for relative in ("app/__init__.py", "app/core/__init__.py", "scripts/__init__.py"):
+        target = tmp_path / "backend" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
+    for relative in ("app/core/config.py", "scripts/local_config.py"):
+        shutil.copy2(PROJECT_ROOT / "backend" / relative, tmp_path / "backend" / relative)
+    python = tmp_path / "backend/.venv/bin/python"
+    python.parent.mkdir(parents=True)
+    guarded_path = os.pathsep.join([
+        str(PROJECT_ROOT / "tests/support/bootstrap"), str(tmp_path / "backend"),
+        str(PROJECT_ROOT),
+    ])
+    python.write_text(
+        "#!/bin/sh\nexport PYTHONPATH=" + shlex.quote(guarded_path) + "\nexec "
+        + shlex.quote(sys.executable) + ' "$@"\n'
+    )
+    python.chmod(0o755)
     binaries = tmp_path / "bin"
     binaries.mkdir()
     log = tmp_path / "commands.jsonl"
@@ -41,6 +61,7 @@ if name == "curl":
     (tmp_path / ".env").write_text(
         'PODMAN_PROJECT_NAME="fixture-agent"\nPOSTGRES_PORT=15432\n'
         'REDIS_PORT=16379\nCHROMA_PORT=18001\nPOSTGRES_PASSWORD="literal$(false)"\n'
+        'REDIS_ENABLED=true\nCHROMA_ENABLED=true\n'
     )
     env = {
         key: value
@@ -102,3 +123,74 @@ def test_reset_requires_explicit_confirmation_before_any_podman_call(infra_stub)
     assert result.returncode != 0
     assert "CONFIRM_RESET=1" in result.stderr
     assert calls == []
+
+
+def test_minimal_infrastructure_does_not_start_optional_services(infra_stub):
+    result, calls = infra_stub(REDIS_ENABLED="false", CHROMA_ENABLED="false")
+    assert result.returncode == 0, result.stderr
+    containers = [call for call in calls if call[:2] == ["podman", "run"]]
+    assert len(containers) == 1
+    assert "fixture-agent-postgres" in containers[0]
+    assert not any(call[0] == "curl" for call in calls)
+
+
+def test_invalid_configuration_stops_before_podman(infra_stub):
+    result, calls = infra_stub(POSTGRES_PORT="invalid-port")
+    assert result.returncode != 0
+    assert "postgres_port" in result.stderr
+    assert calls == []
+
+
+def test_public_makefile_can_plan_setup_without_development_files(tmp_path):
+    shutil.copy2(PROJECT_ROOT / "Makefile", tmp_path / "Makefile")
+    result = subprocess.run(
+        ["make", "-n", "setup-local"], cwd=tmp_path, capture_output=True, text=True, check=True,
+    )
+    assert "scripts.demo.load" in result.stdout
+    assert "--extra dev" not in result.stdout
+    assert all(name not in result.stdout for name in (
+        "tests/", "evals/", "seed_user_isolation", "seed_demo", "sync_knowledge",
+    ))
+
+
+def test_make_preserves_dotenv_defaults_and_explicit_port_overrides(tmp_path):
+    shutil.copy2(PROJECT_ROOT / "Makefile", tmp_path / "Makefile")
+    probe = tmp_path / "probe.py"
+    probe.write_text('import os; print(repr(os.environ.get("BACKEND_PORT")))\n')
+    recipe = "\nprobe:\n\t@" + shlex.quote(sys.executable) + " " + shlex.quote(str(probe)) + "\n"
+    with (tmp_path / "Makefile").open("a") as stream:
+        stream.write(recipe)
+    env = {k: v for k, v in os.environ.items()
+           if k not in {"BACKEND_HOST", "BACKEND_PORT", "FRONTEND_PORT", "MAKEFLAGS"}}
+    for args, expected in (([], "None"), (["BACKEND_PORT=18000"], "'18000'")):
+        result = subprocess.run(
+            ["make", "--no-print-directory", "probe", *args],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=True,
+        )
+        assert result.stdout.strip() == expected
+
+
+def test_launcher_uses_root_ports_without_exposing_settings_to_frontend(monkeypatch):
+    from app.core.config import Settings
+
+    from scripts import run_local
+
+    settings = Settings(_env_file=None, frontend_port=15173, backend_port=18000,
+                        llm_api_key="synthetic-secret")
+    monkeypatch.setattr(run_local, "Settings", lambda: settings)
+    monkeypatch.setattr(sys, "argv", ["run_local", "frontend"])
+    calls = []
+
+    def launch(command, **kwargs):
+        calls.append((command, kwargs))
+        return 0
+
+    monkeypatch.setattr(run_local.subprocess, "call", launch)
+    with pytest.raises(SystemExit) as exc:
+        run_local.main()
+    assert exc.value.code == 0
+    command, kwargs = calls[0]
+    assert command == ["npm", "run", "dev"]
+    assert kwargs["env"]["PC_DEV_PROXY_TARGET"] == "http://127.0.0.1:18000"
+    assert kwargs["env"]["PC_FRONTEND_PORT"] == "15173"
+    assert "synthetic-secret" not in kwargs["env"].values()

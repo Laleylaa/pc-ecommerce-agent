@@ -2,18 +2,43 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_env: str = "local"
-    database_url: str = "postgresql+asyncpg://pc_agent:pc_agent@localhost:5432/pc_agent"
-    redis_url: str = "redis://localhost:6379/0"
+    podman_project_name: str = "pc-agent"
+    podman_network: str = ""
+    postgres_container: str = ""
+    postgres_volume: str = ""
+    postgres_image: str = "postgres:16-alpine"
+    postgres_host: str = "localhost"
+    postgres_port: int = Field(default=5432, ge=1, le=65535)
+    postgres_db: str = "pc_agent"
+    postgres_user: str = "pc_agent"
+    postgres_password: SecretStr = SecretStr("pc_agent")
+    database_url: str = ""
+    redis_enabled: bool = False
+    redis_container: str = ""
+    redis_volume: str = ""
+    redis_image: str = "redis:7-alpine"
+    redis_port: int = Field(default=6379, ge=1, le=65535)
+    redis_url: str = ""
+    chroma_enabled: bool = False
+    chroma_container: str = ""
+    chroma_volume: str = ""
+    chroma_image: str = (
+        "docker.io/chromadb/chroma@sha256:"
+        "bd21353aee6ccdf4a57bd91e6001626826700f3838e1f230d4aae75bfd4889a1"
+    )
     chroma_host: str = "localhost"
-    chroma_port: int = 8001
+    chroma_port: int = Field(default=8001, ge=1, le=65535)
+    backend_host: str = "127.0.0.1"
+    backend_port: int = Field(default=8000, ge=1, le=65535)
+    frontend_port: int = Field(default=5173, ge=1, le=65535)
     knowledge_collection: str = "pc_agent_knowledge"
     knowledge_score_threshold: float = 0.16
     deepseek_search_api_key: SecretStr = SecretStr("")
@@ -36,9 +61,7 @@ class Settings(BaseSettings):
     auth_access_token_minutes: int = 30
     auth_refresh_token_days: int = 14
 
-    backend_cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
-    )
+    backend_cors_origins: list[str] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[3] / ".env",
@@ -46,6 +69,32 @@ class Settings(BaseSettings):
         extra="ignore",
         enable_decoding=False,
     )
+
+    @model_validator(mode="after")
+    def local_defaults(self) -> "Settings":
+        if not self.database_url.strip():
+            host = self.postgres_host
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            self.database_url = (
+                f"postgresql+asyncpg://{quote(self.postgres_user, safe='')}:"
+                f"{quote(self.postgres_password.get_secret_value(), safe='')}@"
+                f"{host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}"
+            )
+        if not self.redis_url.strip():
+            self.redis_url = f"redis://localhost:{self.redis_port}/0"
+        if not self.backend_cors_origins:
+            self.backend_cors_origins = [
+                f"http://localhost:{self.frontend_port}", f"http://127.0.0.1:{self.frontend_port}",
+            ]
+        if not self.podman_network:
+            self.podman_network = f"{self.podman_project_name}-net"
+        for service in ("postgres", "redis", "chroma"):
+            for suffix, default in (("container", ""), ("volume", "-data")):
+                field = f"{service}_{suffix}"
+                if not getattr(self, field):
+                    setattr(self, field, f"{self.podman_project_name}-{service}{default}")
+        return self
 
     @property
     def resolved_search_api_key(self) -> str:

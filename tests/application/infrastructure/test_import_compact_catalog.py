@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from app.models import Spu
-from scripts.import_compact_catalog import (
+from scripts.demo.catalog import (
     PRODUCTS_PER_BRAND,
     SKUS_PER_PRODUCT,
     TARGET_CATEGORIES,

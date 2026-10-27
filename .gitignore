@@ -73,6 +73,10 @@ redis-data/
 /backend/data/*
 !/backend/data/knowledge_documents.json
 !/backend/data/knowledge_vector_index.json
+!/backend/data/demo/
+/backend/data/demo/*
+!/backend/data/demo/manifest.json
+!/backend/data/demo/README.md
 
 # 数据库备份与本地导出；普通 .sql 源码不一概忽略
 backups/
@@ -88,12 +92,16 @@ local-backups/
 *.aof
 
 # 个人笔记、临时整理材料与本地工具约定
-# docs/ 仅放行共享问题台账；模块与迭代文档继续保留在本地。
-# 逐级放行父目录，不扩大到其他 docs 或评测产物。
-/docs/*
-!/docs/development/
-/docs/development/*
-!/docs/development/issues.md
+# 开发资料全部本地保留，包括 issues；公共运行说明放根 README 和模块使用说明。
+# 已跟踪文件还需取消跟踪，忽略规则不清除远端历史。
+/docs/
+/tests/tools/catalog/TEST_PLAN.md
+# 新评测批次也默认留本地；固定用例、预期、复跑脚本不忽略。
+/tests/**/results/*
+!/tests/**/results/.gitkeep
+/tests/**/reports/
+/evals/**/results/
+/evals/**/reports/
 /private/
 /tmp/
 /temp/

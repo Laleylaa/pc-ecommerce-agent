@@ -1,17 +1,7 @@
 # 主流程首次工具选择测试
 
-> 最新：新增ib-11至14，当前目录43例；本轮仅新增4例各3次，10通过、2失败。[报告](results/20261025T062229Z-intent_boundaries-70bcc8c1/report.md)。下方39例成绩是历史版本，不并入本轮。
-
-
-准则版本：`tool-selection-review-v3`，2026-10-24。
-当前39条预标注、4个分类入口；2026-10-24真实模型各3次，程序＋独立LLM语义复检117通过，0失败/无法判定/未执行。
-本地[本轮汇总](results/summary-20261024-first-selection.md)链接各分类报告；不沿用旧成绩。
-
 **唯一目标：根据用户输入和当前工具职责，主流程能否选对工具。**
 不执行工具、不返回任何工具结果、不观察反馈后模型如何处理。
-v1/v2曾错误扩大为领域替身反馈后的循环测试，其报告不是本目标的验收证据。
-用户于2026-10-24明确要求删除错误测试结果：旧v1/v2批次及汇总已删除，不作为v3成绩。
-
 通用流程引用 [tests/README.md](../../../README.md) 和 [tests/REVIEW.md](../../../REVIEW.md)。
 工具职责来自[正式注册契约](../../../../backend/app/tools/contracts.py)，不在测试中复制description。
 
@@ -20,11 +10,10 @@ v1/v2曾错误扩大为领域替身反馈后的循环测试，其报告不是本
 | 类型 | 用例 | 批量入口 | 数量 | 只检查的业务选择 |
 | --- | --- | --- | ---: | --- |
 | 单一目的 | [single_intent_cases.json](single_intent_cases.json) | [run_single_intent.py](run_single_intent.py) | 12 | 候选搜索、指定对象事实/版本、目录枚举 |
-| 易混淆职责 | [intent_boundaries_cases.json](intent_boundaries_cases.json) | [run_intent_boundaries.py](run_intent_boundaries.py) | 10 | 无线筛选/事实/选项、品牌/型号、条件存在性 |
+| 易混淆职责 | [intent_boundaries_cases.json](intent_boundaries_cases.json) | [run_intent_boundaries.py](run_intent_boundaries.py) | 14 | 无线筛选/事实/选项、品牌/型号、条件存在性 |
 | 混合目的 | [mixed_goals_cases.json](mixed_goals_cases.json) | [run_mixed_goals.py](run_mixed_goals.py) | 8 | 三商品工具组合，及订单/政策/知识搭配 |
 | 既有上下文 | [context_scope_cases.json](context_scope_cases.json) | [run_context_scope.py](run_context_scope.py) | 9 | 已知候选指代、集合/逐型号、未知品类、缺对象澄清 |
 
-旧反馈与依赖7例整组退出；旧正常命中3例因反馈差异不属于选择目标而退出。
 [coverage.json](coverage.json)为当前清单；[contexts.json](contexts.json)只含调用前的历史输入，
 没有任何本轮业务输出、默认空结果或命中替身。未知品类请求仍按当前正式工具职责标注。
 
@@ -104,13 +93,12 @@ results/<时间-分类-批次>/
 填写[语义记录](semantic_record.example.json)的routing/coverage，再--render合并报告。
 已有判读修改前--archive；render也归档旧分析，始终不改原始调用证据。
 报告区分通过/失败/无法判定/未执行，不挑选最好一次，不由程序代填语义结论。
-当前检查器明确拒绝给v1/v2反馈循环批次重新评分；本地旧批次已按用户要求删除。
+当前检查器明确拒绝给v1/v2反馈循环批次重新评分。
 
 ## 5. 离线装置验证与限制
 
 [离线边界检查](../../contracts/test_tool_selection_boundary.py)验证正式首轮请求一致性、
 零工具执行/零反馈、工具集合比较、不检查参数/次数、冻结到报告的流程以及旧批次保护。
 生产scope/反馈回归仍在独立contracts文件，不能计为工具选择评测通过数。
-本轮10项装置检查通过，另7项既有scope/反馈契约回归通过；相关Ruff和差异检查通过。
-这些离线检查不调用真实模型；本轮39条首次选择用例的真实模型证据另见上方汇总。
+这些离线检查不调用真实模型；实际运行记录保存在本地结果目录。
 本测试不证明领域内部能力、主流程后续行为、完整上下文准备、回答或端到端效果。

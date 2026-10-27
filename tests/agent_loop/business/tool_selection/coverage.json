@@ -1,8 +1,6 @@
 {
   "version": "tool-selection-acceptance-v4",
   "measurement": "initial_tool_selection",
-  "status": "当前43例；本轮仅新增4例各3次，10通过2失败，不是全量复测。",
-  "latest_report": "results/20261025T062229Z-intent_boundaries-70bcc8c1/report.md",
   "total_cases": 43,
   "groups": {
     "single_intent": {

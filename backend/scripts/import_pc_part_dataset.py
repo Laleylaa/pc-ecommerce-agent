@@ -8,7 +8,7 @@ from typing import Any
 from app.core.database import AsyncSessionLocal
 from app.services.dataset_mapper import normalize_part_record
 
-from scripts.seed_demo import _upsert_product
+from scripts.demo.catalog_store import upsert_product
 
 DEFAULT_PART_TYPES = ("headphones", "keyboard", "mouse")
 
@@ -60,7 +60,7 @@ async def import_file(path: Path, part_type: str, limit: int | None) -> int:
             product = normalize_part_record(part_type, record)
             if product is None:
                 continue
-            await _upsert_product(session, product)
+            await upsert_product(session, product)
             imported += 1
             if limit and imported >= limit:
                 break

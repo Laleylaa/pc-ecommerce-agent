@@ -3,47 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-dotenv_get() {
-  local key="$1"
-  local default="$2"
-  local value="${!key-}"
-
-  if [ -z "$value" ] && [ -f .env ]; then
-    value="$(
-      { grep -E "^[[:space:]]*${key}=" .env 2>/dev/null || true; } \
-        | tail -n 1 \
-        | sed -E "s/^[[:space:]]*${key}=//; s/^['\"]//; s/['\"]$//"
-    )"
-  fi
-
-  printf '%s' "${value:-$default}"
-}
-
-PROJECT_NAME="$(dotenv_get PODMAN_PROJECT_NAME pc-agent)"
-NETWORK="$(dotenv_get PODMAN_NETWORK "${PROJECT_NAME}-net")"
-POSTGRES_CONTAINER="$(dotenv_get POSTGRES_CONTAINER "${PROJECT_NAME}-postgres")"
-REDIS_CONTAINER="$(dotenv_get REDIS_CONTAINER "${PROJECT_NAME}-redis")"
-CHROMA_CONTAINER="$(dotenv_get CHROMA_CONTAINER "${PROJECT_NAME}-chroma")"
-POSTGRES_VOLUME="$(dotenv_get POSTGRES_VOLUME "${PROJECT_NAME}-postgres-data")"
-REDIS_VOLUME="$(dotenv_get REDIS_VOLUME "${PROJECT_NAME}-redis-data")"
-CHROMA_VOLUME="$(dotenv_get CHROMA_VOLUME "${PROJECT_NAME}-chroma-data")"
-POSTGRES_IMAGE="$(dotenv_get POSTGRES_IMAGE postgres:16-alpine)"
-REDIS_IMAGE="$(dotenv_get REDIS_IMAGE redis:7-alpine)"
-CHROMA_IMAGE="$(dotenv_get CHROMA_IMAGE docker.io/chromadb/chroma@sha256:bd21353aee6ccdf4a57bd91e6001626826700f3838e1f230d4aae75bfd4889a1)"
-POSTGRES_PORT="$(dotenv_get POSTGRES_PORT 5432)"
-REDIS_PORT="$(dotenv_get REDIS_PORT 6379)"
-CHROMA_PORT="$(dotenv_get CHROMA_PORT 8001)"
-
-POSTGRES_DB="$(dotenv_get POSTGRES_DB pc_agent)"
-POSTGRES_USER="$(dotenv_get POSTGRES_USER pc_agent)"
-POSTGRES_PASSWORD="$(dotenv_get POSTGRES_PASSWORD pc_agent)"
+source ./scripts/local-config.sh
+NETWORK="$PODMAN_NETWORK"
 
 usage() {
   cat <<EOF
 Usage: ./scripts/podman-infra.sh <command>
 
 Commands:
-  up              Create or start PostgreSQL, Redis, and ChromaDB
+  up              Start PostgreSQL; Redis/Chroma only when enabled in .env
   down            Remove containers but keep volumes
   stop            Stop containers
   ps              Show service containers
@@ -199,16 +167,19 @@ up() {
   ensure_podman
   ensure_network
   run_postgres
-  run_redis
-  run_chroma
   wait_for_postgres
-  wait_for_redis
-  wait_for_chroma
+  if [ "$REDIS_ENABLED" = true ]; then
+    run_redis
+    wait_for_redis
+  fi
+  if [ "$CHROMA_ENABLED" = true ]; then
+    run_chroma
+    wait_for_chroma
+  fi
   ps
 }
 
 stop() {
-  ensure_podman
   ensure_podman
   for container in "$CHROMA_CONTAINER" "$REDIS_CONTAINER" "$POSTGRES_CONTAINER"; do
     if podman container exists "$container"; then
@@ -219,7 +190,6 @@ stop() {
 }
 
 down() {
-  ensure_podman
   ensure_podman
   for container in "$CHROMA_CONTAINER" "$REDIS_CONTAINER" "$POSTGRES_CONTAINER"; do
     if podman container exists "$container"; then

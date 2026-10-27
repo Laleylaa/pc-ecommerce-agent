@@ -15,13 +15,12 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
+from app.schemas.knowledge import LocalKnowledgeDocument
+from app.services.knowledge_documents import DEFAULT_KNOWLEDGE_DOCUMENT_PATH, read_documents
 from app.tools.schemas import DocumentSearchHit, DocumentSearchInput, DocumentSearchOutput
 
 POLICY_DOCUMENT_TYPES = {"policy", "store_rule", "faq"}
 KNOWLEDGE_DOCUMENT_TYPES = {"brand", "peripheral_knowledge", "faq", "store_rule"}
-DEFAULT_KNOWLEDGE_DOCUMENT_PATH = (
-    Path(__file__).resolve().parents[2] / "data" / "knowledge_documents.json"
-)
 DEFAULT_KNOWLEDGE_VECTOR_INDEX_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "knowledge_vector_index.json"
 )
@@ -53,18 +52,6 @@ class EmbeddingProvider(Protocol):
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         ...
-
-
-class LocalKnowledgeDocument(BaseModel):
-    id: int
-    title: str
-    document_type: str
-    content: str
-    metadata: dict = Field(default_factory=dict)
-
-    @property
-    def metadata_json(self) -> dict:
-        return self.metadata
 
 
 class KnowledgeVectorIndexChunk(BaseModel):
@@ -467,10 +454,7 @@ def _non_redundant_vector_chunks(
 
 @lru_cache(maxsize=8)
 def _load_local_documents(document_path: Path) -> list[LocalKnowledgeDocument]:
-    return [
-        LocalKnowledgeDocument.model_validate(item)
-        for item in json.loads(document_path.read_text(encoding="utf-8"))
-    ]
+    return read_documents(document_path)
 
 
 @lru_cache(maxsize=8)

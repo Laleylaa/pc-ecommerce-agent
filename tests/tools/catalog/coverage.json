@@ -1,6 +1,5 @@
 {
   "version": "catalog-output-budget-5",
-  "status": "输出预算追踪修复后：选定3条真实预算边界通过、相关离线140通过；未全量重跑65例，旧失败证据保留。",
   "total_cases": 65,
   "groups": {
     "lookup": {
@@ -24,23 +23,6 @@
       "business": 10,
       "boundary": 3
     }
-  },
-  "gaps": [
-    "当前65条真实设计不等于当前源码全量通过；历史报告按各自版本解释。",
-    "2026-10-26新增24项离线执行测试尚未运行；合成数据不能证明自然语言规划效果或真实SQL正确。",
-    "停止计划、错误映射与共享修复已有专项；传输失败后的Trace完整性检查仍需区分连接失败和响应缺失。",
-    "本批覆盖同SKU、部分预算、软偏好、未知/冲突、零库存与下架、范围和聚合计数；不穷尽所有字段/操作符、缓存隔离或真实数据异常。",
-    "三工具共用输入契约错误码已迁移但未重跑；shared/test_output_budget.py、test_tool_contracts.py其他旧错误码断言仍待迁移。",
-    "首次工具选择、聊天API、回答及前端不在本次工具测试范围。"
-  ],
-  "historical_results": "保留results原始证据；旧脚本从对应Git版本恢复，不用新检查器重判旧批次。",
-  "lookup_revision": "catalog-lookup-basic-3：删除标题和跨字段语义冲突推断；保留同字段来源一致性。v2单例重测是历史证据，非本次运行。",
-  "latest_facets_run": {
-    "status": "4/4通过；此前失败四例重跑，非全量回归",
-    "batches": [
-      "20261024T094544Z-facets-45e120",
-      "20261024T094547Z-facets-587242"
-    ]
   },
   "core_business_coverage": {
     "search": [
@@ -74,27 +56,6 @@
       "品牌计数与有限展示"
     ]
   },
-  "current_batches": [
-    "20261024T152303Z-search-82af78",
-    "20261024T152307Z-lookup-428d81"
-  ],
-  "preparation_only_batches": [
-    "20261024T144750Z-search-a91722",
-    "20261024T144804Z-lookup-dfb8c8",
-    "20261024T144807Z-facets-625e30"
-  ],
-  "current_report": "results/summary-20261024-boundary-correction.md",
-  "review_method": "用户指定当前Codex会话逐例复检；独立于工具内部自审，但非独立测试作者盲审，不另调外部评审API。",
-  "previous_business_run": {
-    "version": "catalog-core-business-2",
-    "batches": [
-      "20261024T144917Z-search-035a21",
-      "20261024T144928Z-lookup-15dfc8",
-      "20261024T144938Z-facets-2fe74a"
-    ],
-    "report": "results/summary-20261024-core-business.md",
-    "result": "30通过、2失败、4未执行；历史结果保留，不按修订用例改判。"
-  },
   "suite_versions": {
     "search": "catalog-boundary-correction-1",
     "lookup": "catalog-boundary-correction-1",
@@ -109,100 +70,5 @@
       "指定版本组合不存在且不报价",
       "简称跨品牌歧义且不擅自选定"
     ]
-  },
-  "latest_report": "results/summary-20261025-output-budget-retest.md",
-  "output_budget_acceptance": {
-    "total_cases": 65,
-    "selected_live_cases": 3,
-    "live_passed": 0,
-    "live_failed": 3,
-    "offline_passed": 394,
-    "offline_failed": 6,
-    "failure": "OB-001: output validation trace captures pre-budget data",
-    "report": "results/summary-20261025-output-budget.md"
-  },
-  "output_budget_retest": {
-    "selected_live_cases": 3,
-    "live_passed": 3,
-    "live_failed": 0,
-    "offline_passed": 140,
-    "offline_failed": 0,
-    "batches": [
-      "20261025T130609Z-search-5f42c0",
-      "20261025T130609Z-lookup-c3fc8a",
-      "20261025T130609Z-facets-96f096"
-    ],
-    "report": "results/summary-20261025-output-budget-retest.md",
-    "remaining": "非全量65例/完整聊天验收；search/lookup预算模板有旧歧义/零匹配说明待清理。"
-  },
-  "offline_expansion_20261026": {
-    "status": "设计与脚本已补齐，未运行、未pytest收集；静态AST核对，不是通过成绩",
-    "new_execution_items": 24,
-    "per_tool": {
-      "search": {
-        "tool_local_pytest": {
-          "smoke": 1,
-          "contract": 4,
-          "business": 4,
-          "boundary": 2
-        },
-        "new_pytest": {
-          "smoke": 1,
-          "business": 4,
-          "boundary": 2
-        },
-        "case_designs": {
-          "smoke": 1,
-          "business": 14,
-          "boundary": 5,
-          "contract": 4
-        }
-      },
-      "lookup": {
-        "tool_local_pytest": {
-          "smoke": 1,
-          "contract": 4,
-          "business": 4,
-          "boundary": 2
-        },
-        "new_pytest": {
-          "smoke": 1,
-          "business": 4,
-          "boundary": 2
-        },
-        "case_designs": {
-          "smoke": 1,
-          "business": 13,
-          "boundary": 5,
-          "contract": 4
-        }
-      },
-      "facets": {
-        "tool_local_pytest": {
-          "smoke": 1,
-          "contract": 4,
-          "business": 4,
-          "boundary": 2
-        },
-        "new_pytest": {
-          "smoke": 1,
-          "business": 4,
-          "boundary": 2
-        },
-        "case_designs": {
-          "smoke": 1,
-          "business": 10,
-          "contract": 4,
-          "boundary": 3
-        }
-      }
-    },
-    "shared_new": {
-      "file": "../shared/test_catalog_plan_repair.py",
-      "boundary": 3,
-      "purpose": "三工具真实规划器非法JSON修复，保留scope；脚本模型，无网络"
-    },
-    "shared_existing": "注册、预算、错误契约、停止计划和复核检查复用，不重复计入各工具专属目录",
-    "plan": "TEST_PLAN.md"
   }
 }

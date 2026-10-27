@@ -16,7 +16,6 @@
 
 三个工具复用字段和数据判断，但 facets 自己维护计数、聚合和完整性规则。
 Prompt 继续集中在 `tools/prompts/`；模型调用与预算仍由 `structured_planning.py` 管理。
-此前目录移动未改变公开工具 schema、Prompt 内容、业务规则、模型阶段或重试预算。
 
 当前范围阶段使用`scope_kind`描述查谁/在哪查，不判定工具职责；指定对象按需先确认身份，
 详细规划与现有语义复核判断事实、选购和统计的职责（包括停止计划）。search可通过
@@ -26,11 +25,8 @@ Prompt 继续集中在 `tools/prompts/`；模型调用与预算仍由 `structure
 三个正式工具均不注入catalog_context；主流程模型读取上下文，自行提交自足query及可选scope。
 facets计划不重复定义scope，执行时以原请求scope与计划条件取交集，复核结合两者判断。
 旧compatibility搜索输入保留其上下文类型，不属于正式三工具路径。
-验证使用根tests既有用例；真实批次和工具外语义复检见tests/tools/catalog/results。
+验证入口在根 tests；运行结果与复检记录只保留本地。
 
 当前正式 LLM facets 不导入 compatibility；显式关闭 LLM、未注入 planner 的路径仍按
 原行为延迟加载规则规划器。保留这个路径及旧测试调用方是 compatibility 的用途。
 待规则规划路径与旧调用方分别完成迁移、验证后，再删除兼容实现，不能直接删整个文件。
-
-内部 Python 导入已迁移，旧 `catalog_search.*`、`catalog_fields`、`catalog_scope`、
-`catalog_facets` 路径不保留转发层。旧评测产物需用对应版本解释，不能直接重跑旧冻结批次。

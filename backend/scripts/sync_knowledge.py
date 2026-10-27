@@ -6,6 +6,8 @@ from app.services.knowledge_rag import ChromaKnowledgeService
 
 
 async def main() -> None:
+    if not get_settings().chroma_enabled:
+        raise SystemExit("Set CHROMA_ENABLED=true and start Chroma before knowledge-sync.")
     async with AsyncSessionLocal() as session:
         count = await ChromaKnowledgeService(session, get_settings()).sync()
         await session.commit()

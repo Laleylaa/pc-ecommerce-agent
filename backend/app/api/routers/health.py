@@ -22,31 +22,35 @@ async def health(
     except Exception as exc:  # pragma: no cover - used for runtime diagnostics
         checks["postgres"] = f"error: {exc}"
 
-    try:
-        client = redis.from_url(settings.redis_url)
-        await client.ping()
-        await client.aclose()
-        checks["redis"] = "ok"
-    except Exception as exc:  # pragma: no cover
-        checks["redis"] = f"error: {exc}"
+    checks["redis"] = "disabled"
+    if settings.redis_enabled:
+        try:
+            async with redis.from_url(settings.redis_url, socket_timeout=2) as client:
+                await client.ping()
+            checks["redis"] = "ok"
+        except Exception as exc:  # pragma: no cover
+            checks["redis"] = f"error: {exc}"
 
-    try:
-        async with httpx.AsyncClient(timeout=2) as client:
-            last_status = None
-            for path in ("/api/v2/heartbeat", "/api/v1/heartbeat"):
-                response = await client.get(
-                    f"http://{settings.chroma_host}:{settings.chroma_port}{path}"
-                )
-                if response.is_success:
-                    checks["chroma"] = "ok"
-                    break
-                last_status = response.status_code
-            else:
-                checks["chroma"] = f"http {last_status}"
-    except Exception as exc:  # pragma: no cover
-        checks["chroma"] = f"error: {exc}"
+    checks["chroma"] = "disabled"
+    if settings.chroma_enabled:
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                last_status = None
+                for path in ("/api/v2/heartbeat", "/api/v1/heartbeat"):
+                    response = await client.get(
+                        f"http://{settings.chroma_host}:{settings.chroma_port}{path}"
+                    )
+                    if response.is_success:
+                        checks["chroma"] = "ok"
+                        break
+                    last_status = response.status_code
+                else:
+                    checks["chroma"] = f"http {last_status}"
+        except Exception as exc:  # pragma: no cover
+            checks["chroma"] = f"error: {exc}"
 
+    healthy = all(value in {"ok", "disabled"} for value in checks.values())
     return {
-        "status": "ok" if all(value == "ok" for value in checks.values()) else "degraded",
+        "status": "ok" if healthy else "degraded",
         "checks": checks,
     }

@@ -28,13 +28,15 @@ def test_factory_rejects_unknown_runtime():
 
 
 @pytest.mark.parametrize("selected", ["strands", "legacy"])
-def test_make_runtime_is_process_configuration(selected):
+def test_make_runtime_is_process_configuration(selected, tmp_path):
+    probe = tmp_path / "probe.mk"
+    probe.write_text("probe:\n\t@printf '%s\\n' \"$$AGENT_RUNTIME\" \"$$BACKEND_PORT\"\n")
     result = subprocess.run(
-        ["make", "-n", "backend", f"RUNTIME={selected}", "BACKEND_PORT=8123"],
+        ["make", "--no-print-directory", "-f", "Makefile", "-f", str(probe), "probe",
+         f"RUNTIME={selected}", "BACKEND_PORT=8123"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     )
-    assert f"AGENT_RUNTIME={selected} .venv/bin/uvicorn" in result.stdout
-    assert "--port 8123" in result.stdout
+    assert result.stdout.splitlines() == [selected, "8123"]
 
 
 @pytest.mark.parametrize("selected", ["both", "legacy strands"])

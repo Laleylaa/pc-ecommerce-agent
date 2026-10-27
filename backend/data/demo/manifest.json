@@ -1,0 +1,12 @@
+{
+  "version": "1",
+  "source": "Synthetic catalog and demo accounts; repository knowledge documents",
+  "categories": 6,
+  "spus": 192,
+  "skus": 2304,
+  "users": 6,
+  "orders": 26,
+  "conversations": 0,
+  "order_clock": "UTC initialization time; all order and logistics times relative to one anchor",
+  "schema": "Apply repository Alembic migrations before loading; never load over existing records"
+}

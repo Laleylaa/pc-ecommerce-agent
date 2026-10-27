@@ -47,7 +47,7 @@ knowledge/policy 等没有内部规划模型的工具不新增 Prompt；agent-lo
 以及[Prompt生成指南](https://developers.openai.com/api/docs/guides/prompt-generation)保留领域约束和示例的建议。
 采用的是组织方式，不更换当前模型，不引入特定供应商API特性，也不要求输出隐藏推理过程。
 
-## 基础品类与商品特征（2026-10-24）
+## 基础品类与商品特征
 
 scope.md 要求从可选基础品类选择标准名称，区分基础品类与特征修饰词。
 当前版本已删除具体商品名、品类映射及查询示例，只保留通用规则。

@@ -1,7 +1,7 @@
 [project]
 name = "pc-agent-backend"
 version = "0.1.0"
-description = "FastAPI + LangGraph backend for a PC peripherals ecommerce support agent."
+description = "FastAPI + Strands agent-loop backend for a PC peripherals ecommerce support agent."
 requires-python = ">=3.11"
 dependencies = [
   "alembic>=1.13.0",
