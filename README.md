@@ -23,6 +23,14 @@
 
 项目源自硕士毕业设计团队项目，目前用于持续开发与本地演示。团队来源见[致谢](#acknowledgements)。
 
+当前开发分支为 `develop`（原 `refactor/agent-loop`），默认使用 Strands agent loop；
+`archive/langgraph-workflow` 保留旧 `develop` 的 LangGraph workflow，供历史恢复与对照。
+`main` 的开源发布内容另行整理，尚未与当前开发版本同步。
+
+分支备份只包含 Git 跟踪的源码、测试输入和运行必需资料。真实环境配置、数据库、Phoenix trace、
+评测输出及被忽略的本地文档不随推送备份；这些资料需要单独做私有备份。
+
+
 <a id="features"></a>
 ## 功能亮点
 

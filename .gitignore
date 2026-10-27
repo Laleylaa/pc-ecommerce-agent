@@ -131,3 +131,18 @@ Desktop.ini
 
 # 本地历史测试档案，不随测试源码提交
 /tests/archives/*.zip
+
+# 本地凭据副本、浏览器网络导出与观测数据（可能含身份及会话信息）
+.env-*
+.netrc
+.pypirc
+/.aws/
+*.har
+/exports/
+/traces/
+/phoenix-data/
+
+# 旧 LangGraph 评测的运行输出；保留回归输入与手写说明
+/backend/evals/goal_planning/*.json
+!/backend/evals/goal_planning/cases.json
+/backend/evals/test_maintenance/*.json
