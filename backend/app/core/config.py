@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     postgres_volume: str = ""
     postgres_image: str = "postgres:16-alpine"
     postgres_host: str = "localhost"
+    postgres_bind_host: str = "127.0.0.1"
     postgres_port: int = Field(default=5432, ge=1, le=65535)
     postgres_db: str = "pc_agent"
     postgres_user: str = "pc_agent"
@@ -22,6 +24,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     backend_host: str = "127.0.0.1"
     backend_port: int = Field(default=8000, ge=1, le=65535)
+    frontend_host: str = "127.0.0.1"
     frontend_port: int = Field(default=5173, ge=1, le=65535)
     deepseek_search_api_key: SecretStr = SecretStr("")
 
@@ -83,6 +86,11 @@ class Settings(BaseSettings):
             if parsed.scheme != "https" or parsed.netloc != "api.deepseek.com":
                 return ""
         return self.llm_api_key.strip()
+
+    @field_validator("postgres_bind_host", "frontend_host")
+    @classmethod
+    def validate_bind_host(cls, value: str) -> str:
+        return str(ip_address(value.strip()))
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

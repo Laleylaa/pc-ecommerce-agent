@@ -11,6 +11,9 @@ endif
 ifneq ($(origin FRONTEND_PORT),undefined)
 export FRONTEND_PORT
 endif
+ifneq ($(origin FRONTEND_HOST),undefined)
+export FRONTEND_HOST
+endif
 
 .PHONY: help doctor install setup-local config-check backend-install frontend-install backend frontend infra-up infra-stop infra-status db-init db-status db-migrate demo-load demo-info knowledge-index model-prepare frontend-build spec-display spec-display-check
 

@@ -8,7 +8,7 @@ from app.core.config import Settings
 
 PODMAN_FIELDS = (
     "podman_network", "postgres_container", "postgres_volume", "postgres_image",
-    "postgres_port", "postgres_db", "postgres_user", "postgres_password",
+    "postgres_bind_host", "postgres_port", "postgres_db", "postgres_user", "postgres_password",
 )
 
 

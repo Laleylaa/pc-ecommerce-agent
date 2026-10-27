@@ -1,6 +1,7 @@
 [project]
 name = "pc-agent-backend"
 version = "0.1.0"
+license = {text = "MIT"}
 description = "FastAPI + Strands agent-loop backend for a PC peripherals ecommerce support agent."
 requires-python = ">=3.11"
 dependencies = [

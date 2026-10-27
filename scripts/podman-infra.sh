@@ -5,6 +5,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 source ./scripts/local-config.sh
 NETWORK="$PODMAN_NETWORK"
+POSTGRES_PUBLISH_HOST="$POSTGRES_BIND_HOST"
+if [[ "$POSTGRES_PUBLISH_HOST" == *:* ]]; then
+  POSTGRES_PUBLISH_HOST="[$POSTGRES_PUBLISH_HOST]"
+fi
 
 usage() {
   cat <<EOF
@@ -53,8 +57,9 @@ start_existing() {
 
 assert_existing_port() {
   local container="$1" internal="$2" expected="$3"
-  if ! podman port "$container" "$internal/tcp" | grep -Eq ":${expected}$"; then
-    echo "$container does not publish expected host port $expected. Check .env and existing container configuration." >&2
+  if [ "$(podman port "$container" "$internal/tcp")" != "${POSTGRES_PUBLISH_HOST}:${expected}" ]; then
+    echo "$container does not publish expected binding ${POSTGRES_PUBLISH_HOST}:${expected}." >&2
+    echo "Stop the application and recreate the container with its existing volume; see README. No container was changed." >&2
     exit 1
   fi
 }
@@ -70,7 +75,7 @@ run_postgres() {
   podman run -d \
     --name "$POSTGRES_CONTAINER" \
     --network "$NETWORK" \
-    -p "${POSTGRES_PORT}:5432" \
+    -p "${POSTGRES_PUBLISH_HOST}:${POSTGRES_PORT}:5432" \
     -e POSTGRES_DB="$POSTGRES_DB" \
     -e POSTGRES_USER="$POSTGRES_USER" \
     -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \

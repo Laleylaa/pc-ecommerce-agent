@@ -29,7 +29,8 @@ def main() -> None:
             host = "127.0.0.1"
         elif ":" in host and not host.startswith("["):
             host = f"[{host}]"
-        env = {**os.environ, "PC_FRONTEND_PORT": str(settings.frontend_port),
+        env = {**os.environ, "PC_FRONTEND_HOST": settings.frontend_host,
+               "PC_FRONTEND_PORT": str(settings.frontend_port),
                "PC_DEV_PROXY_TARGET": f"http://{host}:{settings.backend_port}"}
     raise SystemExit(subprocess.call(command, cwd=cwd, env=env))
 

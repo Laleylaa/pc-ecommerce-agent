@@ -73,6 +73,9 @@ openssl rand -hex 32
 
 其他配置见 [.env.example](.env.example)。默认端口为数据库 `5432`、后端 `8000`、前端 `5173`；
 端口冲突时先调整 `.env`。已有 `.env` 请按模板核对，不要覆盖。真实密钥只保存在本地。
+前端、后端及数据库发布端口默认仅绑定本机。可信局域网演示可显式设置
+`FRONTEND_HOST=0.0.0.0`，浏览器通过前端代理访问 API，后端和数据库仍可保持本机绑定。
+`POSTGRES_HOST` 是数据库连接地址，`POSTGRES_BIND_HOST` 是 Podman 发布端口的绑定地址。
 
 ### 3. 初始化
 
@@ -105,6 +108,15 @@ make model-prepare
 
 </details>
 
+<details>
+<summary>已有数据库容器提示端口绑定不一致</summary>
+
+脚本会拒绝复用绑定地址或端口与 `.env` 不一致的容器。先停止前后端，确认配置仍指向原有
+`POSTGRES_VOLUME`，再执行 `./scripts/podman-infra.sh down` 和 `make infra-up`。
+这会重建容器并复用原数据卷；不要执行 `reset` 或重新导入 Demo。
+
+</details>
+
 ### 4. 启动
 
 在项目根目录打开两个终端，分别运行：
@@ -119,6 +131,7 @@ make frontend
 
 打开 [http://localhost:5173](http://localhost:5173)。默认后端健康检查地址为
 [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)，正常时返回 `status: ok`。
+这些命令用于本地体验，使用 Vite 开发服务器和后端热重载，不是公网生产部署方案。
 
 <a id="demo-data"></a>
 ## 演示体验
@@ -153,3 +166,8 @@ make frontend
 
 项目源自硕士毕业设计团队共同开发的 [Loda951/pc-agnet](https://github.com/Loda951/pc-agnet)，
 感谢原团队的共同贡献。当前版本在此基础上持续完善 Agent Loop 与用户体验。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。第三方框架、模型及服务遵循各自条款，
+详见[第三方许可说明](THIRD_PARTY_NOTICES.md)。
